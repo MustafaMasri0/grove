@@ -519,7 +519,7 @@ export const useStore = create<State>()((set, get) => {
       const a = at();
       const { base } = get();
       if (!a) return;
-      if (!base) return set({ baseError: "No base branch found (looked for development, main and master)." });
+      if (!base) return set({ baseError: "No base branch found (looked for development, main, master and the default branch of origin). Pick one with Base." });
       try {
         const baseDiff = await api.branchChanges(a, base, currentRev());
         set({ baseDiff, baseError: null });

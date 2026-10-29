@@ -540,13 +540,13 @@ button.primary {
   font-size: calc(var(--ui-font-size) - 1px);
 }
 
-.base-row label {
+.base-select {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.base-row select {
+.base-select select {
   max-width: 170px;
   padding: 1px 4px;
 }
@@ -1773,6 +1773,16 @@ kbd {
   font-size: calc(var(--ui-font-size) + 7px);
   font-weight: 600;
   color: var(--fg-strong);
+}
+
+.ov-tools {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ov-tools .base-select select {
+  max-width: 220px;
 }
 
 .ov-refresh {

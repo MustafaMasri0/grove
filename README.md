@@ -66,6 +66,10 @@ paste a path.
   both sides only counts when the two versions differ and neither branch
   already contains the other. The count shows on the grid button. This uses
   only read commands (`status`, `diff`, `rev-list`, `merge-base`, `log`).
+- **Base branch**: what "Branch vs base" and the Worktrees overview compare
+  with. Pick it with **Base** on either, or in Settings; it is remembered per
+  repository. Until then Grove uses development, main or master (local first,
+  then origin's), else the default branch of origin (`origin/HEAD`).
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base),
   History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens
   Quick Open.

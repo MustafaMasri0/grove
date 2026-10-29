@@ -63,7 +63,8 @@ pub fn branches(h: &dyn GitHost, cwd: &str) -> Result<Vec<BranchRef>, String> {
 }
 
 /// The base branch for "Branch vs base": the preferred one if it still exists,
-/// else development, main, master (local first, then origin/).
+/// else development, main, master (local first, then origin/), else origin's
+/// default branch (`origin/HEAD`, set by `git clone`; local first again).
 pub fn resolve_base(h: &dyn GitHost, cwd: &str, preferred: Option<&str>) -> Result<Option<String>, String> {
     if let Some(p) = preferred.filter(|p| !p.is_empty()) {
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("{p}^{{commit}}")])? {
@@ -78,7 +79,15 @@ pub fn resolve_base(h: &dyn GitHost, cwd: &str, preferred: Option<&str>) -> Resu
             return Ok(Some(format!("origin/{name}")));
         }
     }
-    Ok(None)
+    let origin_head = h.git(cwd, &args(&["rev-parse", "--abbrev-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD"]), None)?;
+    let remote = String::from_utf8_lossy(&origin_head.stdout).trim().to_string();
+    let Some(name) = remote.strip_prefix("origin/").filter(|n| origin_head.code == 0 && !n.is_empty() && *n != "HEAD") else {
+        return Ok(None);
+    };
+    if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")])? {
+        return Ok(Some(name.to_string()));
+    }
+    Ok(Some(remote))
 }
 
 #[derive(Debug, Clone, Serialize)]

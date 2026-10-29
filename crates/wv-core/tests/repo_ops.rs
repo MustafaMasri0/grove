@@ -47,6 +47,24 @@ fn base_can_come_from_the_remote_when_there_is_no_local_branch() {
 }
 
 #[test]
+fn base_falls_back_to_the_remotes_default_branch() {
+    let r = temp_repo();
+    git(&r.path, &["branch", "-m", "main", "feature"]);
+    assert_eq!(ops::resolve_base(&h(), r.path_str(), None).unwrap(), None, "no known name and no origin/HEAD");
+
+    // As `git clone` leaves it: origin/HEAD points at the remote's default branch.
+    git(&r.path, &["update-ref", "refs/remotes/origin/trunk", "HEAD"]);
+    git(&r.path, &["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);
+    assert_eq!(ops::resolve_base(&h(), r.path_str(), None).unwrap().as_deref(), Some("origin/trunk"));
+    git(&r.path, &["branch", "trunk"]);
+    assert_eq!(ops::resolve_base(&h(), r.path_str(), None).unwrap().as_deref(), Some("trunk"), "a local branch of that name comes first");
+
+    // The known names still win, so repositories keep the base they had.
+    git(&r.path, &["branch", "main"]);
+    assert_eq!(ops::resolve_base(&h(), r.path_str(), None).unwrap().as_deref(), Some("main"));
+}
+
+#[test]
 fn branch_vs_base_lists_only_what_the_branch_changed() {
     let r = branched_repo();
     let d = ops::branch_changes(&h(), r.path_str(), "main", "feature").unwrap();

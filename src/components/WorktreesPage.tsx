@@ -4,6 +4,7 @@ import { changeCountTitle } from "../lib/changes";
 import { isoToUnix, relativeTime, splitPath } from "../lib/format";
 import { isActive, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
 import { useStore } from "../store";
+import { BaseSelect } from "./BaseSelect";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { BranchIcon, SyncIcon } from "./icons";
 
@@ -54,14 +55,20 @@ export function WorktreesPage() {
         <div>
           <h1>Worktrees</h1>
           <div className="muted">
-            {repo.name} · {base ? <>compared with <b>{base}</b></> : "no base branch"} · {overview?.worktrees.length ?? "…"} worktrees
+            {repo.name} · {overview?.worktrees.length ?? "…"} worktrees
+            {!base && <> · <span className="ov-warn-text">no base branch: pick one to compare with</span></>}
             {active > 0 && <> · <span className="ov-live-text">{active} active now</span></>}
             {shared.length > 0 && <> · <span className="ov-warn-text">{shared.length} shared file{shared.length === 1 ? "" : "s"}</span></>}
           </div>
         </div>
-        <button className="ov-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh (F5)">
-          <SyncIcon spin={loading} /> Refresh
-        </button>
+        <div className="ov-tools">
+          <span title="The branch every worktree is compared with (ahead/behind, shared files); remembered for this repository">
+            <BaseSelect />
+          </span>
+          <button className="ov-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh (F5)">
+            <SyncIcon spin={loading} /> Refresh
+          </button>
+        </div>
       </div>
       <div className="ov-body">
         {overviewError && <div className="banner error">{overviewError}</div>}

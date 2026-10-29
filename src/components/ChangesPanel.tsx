@@ -6,6 +6,7 @@ import { shortSha } from "../lib/format";
 import { useStore } from "../store";
 import { fileTab, revisionTab, uncommittedTab } from "../tabs";
 import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
+import { BaseSelect } from "./BaseSelect";
 import { currentWhere, menuEnv } from "./ContextMenu";
 
 interface Row {
@@ -26,10 +27,8 @@ export function ChangesPanel() {
   const viewBranch = useStore((s) => s.viewBranch);
   const cwd = useStore((s) => s.cwd);
   const base = useStore((s) => s.base);
-  const setBase = useStore((s) => s.setBase);
   const baseDiff = useStore((s) => s.baseDiff);
   const baseError = useStore((s) => s.baseError);
-  const branches = useStore((s) => s.branches);
   const openTab = useStore((s) => s.openTab);
   const activeTab = useStore((s) => s.activeTab);
   const worktrees = useStore((s) => s.worktrees);
@@ -95,8 +94,6 @@ export function ChangesPanel() {
       "Loading…"
     );
 
-  const baseChoices = branches.filter((b) => b.fullRef !== viewBranch?.fullRef);
-
   return (
     <div className="panel">
       <div className="segmented" role="tablist">
@@ -109,18 +106,7 @@ export function ChangesPanel() {
       </div>
       {mode === "base" && (
         <div className="base-row">
-          <label>
-            Base
-            <select value={base ?? ""} onChange={(e) => setBase(e.target.value)}>
-              {!base && <option value="">—</option>}
-              {base && !baseChoices.some((b) => b.name === base) && <option value={base}>{base}</option>}
-              {baseChoices.map((b) => (
-                <option key={b.fullRef} value={b.name}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <BaseSelect />
           {baseDiff && <span className="muted">{baseDiff.files.length} files · since {shortSha(baseDiff.mergeBase)}</span>}
         </div>
       )}
