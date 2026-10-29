@@ -145,6 +145,6 @@ fn watcher_sees_git_dir_changes_like_a_new_commit_and_tells_them_from_file_edits
 
     changes.lock().unwrap().clear();
     std::fs::write(repo.path.join("a.txt"), "edited\n").unwrap();
-    assert!(wait_for(|| changes.lock().unwrap().iter().any(|ch| ch.files)));
+    assert!(wait_for(|| changes.lock().unwrap().iter().any(|ch| ch.files && ch.paths == ["a.txt"])), "{:?}", changes.lock().unwrap());
     host.unwatch(id);
 }

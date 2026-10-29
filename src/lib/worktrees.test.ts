@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSummary, WorktreeSummary } from "../api";
-import { activityBetween, isActive, sharedFiles, worktreeName } from "./worktrees";
+import { activityBetween, editsOf, isActive, sharedFiles, worktreeName } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -48,10 +48,8 @@ describe("activityBetween", () => {
     expect(activityBetween([wt("a")], [next], 0).map((e) => e.text)).toEqual(["switched to other"]);
   });
 
-  it("lists files that started changing, not the ones already changed", () => {
-    const prev = wt("a", { uncommitted: dirty("src/old.ts") });
-    const next = wt("a", { uncommitted: dirty("src/old.ts", "src/a.ts", "b.ts", "c.ts", "d.ts") });
-    expect(activityBetween([prev], [next], 0)).toEqual([{ at: 0, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: dirty("src/a.ts", "b.ts", "c.ts", "d.ts") }]);
+  it("leaves file edits to the watcher", () => {
+    expect(activityBetween([wt("a")], [wt("a", { uncommitted: dirty("new.ts") })], 0)).toEqual([]);
   });
 
   it("reports worktrees added and removed", () => {
@@ -116,5 +114,27 @@ describe("worktreeName", () => {
     expect(worktreeName({ path: "/home/user/src/example/.claude/worktrees/agent-a" })).toBe("agent-a");
     expect(worktreeName({ path: "C:\\src\\example\\", isMain: false })).toBe("example");
     expect(worktreeName({ path: "/x", isMain: true })).toBe("main worktree");
+  });
+});
+
+describe("editsOf", () => {
+  const seen = (entries: Record<string, string[]>) => new Map(Object.entries(entries).map(([k, v]) => [k, new Set(v)]));
+
+  it("reports files edited again while already changed", () => {
+    const a = wt("a", { uncommitted: dirty("src/a.ts", "b.ts", "c.ts", "d.ts", "untouched.ts") });
+    expect(editsOf(seen({ a: ["src/a.ts", "b.ts", "c.ts", "d.ts"] }), [a], 7)).toEqual([
+      { at: 7, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: dirty("src/a.ts", "b.ts", "c.ts", "d.ts") },
+    ]);
+  });
+
+  it("skips what the Changes list does not show: ignored output, folders, edits undone", () => {
+    const a = wt("a", { uncommitted: dirty("src/a.ts") });
+    expect(editsOf(seen({ a: ["build/out.js", "src", "reverted.ts"] }), [a], 0)).toEqual([]);
+  });
+
+  it("finds a renamed file by either name, in worktree order", () => {
+    const a = wt("a", { uncommitted: [{ path: "new.ts", origPath: "old.ts", kind: "renamed" }] });
+    const b = wt("b", { uncommitted: dirty("x.ts") });
+    expect(editsOf(seen({ b: ["x.ts"], a: ["old.ts"] }), [a, b], 0).map((e) => e.path)).toEqual(["a", "b"]);
   });
 });

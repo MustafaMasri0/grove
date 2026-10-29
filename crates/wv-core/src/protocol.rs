@@ -35,5 +35,7 @@ pub enum Message {
         /// See [`crate::host::Change`]; an older helper does not say.
         #[serde(default)]
         files: bool,
+        #[serde(default)]
+        paths: Vec<String>,
     },
 }

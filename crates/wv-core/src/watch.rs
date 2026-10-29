@@ -15,6 +15,8 @@ use std::time::{Duration, Instant};
 
 const SKIP_NAMES: &[&str] = &["node_modules", "dist", ".turbo"];
 const QUIET: Duration = Duration::from_millis(250);
+/// A burst reports at most this many changed paths (a checkout or build can touch thousands).
+const MAX_PATHS: usize = 200;
 const MAX_DELAY: Duration = Duration::from_millis(1500);
 
 pub struct WorktreeWatcher {
@@ -94,6 +96,7 @@ impl WorktreeWatcher {
 
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = stop.clone();
+        let root = PathBuf::from(&spec.root);
         std::thread::spawn(move || {
             let mut first: Option<Instant> = None;
             let mut last = Instant::now();
@@ -112,7 +115,14 @@ impl WorktreeWatcher {
                         }
                         let relevant: Vec<_> = event.paths.iter().filter(|p| filter.relevant(p)).collect();
                         if !relevant.is_empty() {
-                            change.files |= relevant.iter().any(|p| !filter.in_git_dir(p));
+                            for p in relevant.iter().filter(|p| !filter.in_git_dir(p)) {
+                                change.files = true;
+                                if let Some(rel) = relative(&root, p).filter(|_| change.paths.len() < MAX_PATHS) {
+                                    if !change.paths.contains(&rel) {
+                                        change.paths.push(rel);
+                                    }
+                                }
+                            }
                             first.get_or_insert_with(Instant::now);
                             last = Instant::now();
                         }
@@ -131,6 +141,13 @@ impl WorktreeWatcher {
         });
         Ok(Self { stop })
     }
+}
+
+/// `path` relative to the worktree `root`, with `/` separators; None outside it.
+fn relative(root: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(root).ok()?;
+    let parts: Vec<_> = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect();
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 fn add_tree(w: &mut RecommendedWatcher, dir: &Path, filter: &Filter) {
@@ -166,6 +183,13 @@ mod tests {
         assert!(!f.relevant(Path::new("/r/.claude/worktrees/wt-1/a.ts")));
         // A file merely named like a skipped folder is still relevant.
         assert!(f.relevant(Path::new("/r/src/objects/a.ts")));
+    }
+
+    #[test]
+    fn paths_are_relative_to_the_worktree() {
+        assert_eq!(relative(Path::new("/r"), Path::new("/r/src/a.ts")).as_deref(), Some("src/a.ts"));
+        assert_eq!(relative(Path::new("/r"), Path::new("/other/a.ts")), None);
+        assert_eq!(relative(Path::new("/r"), Path::new("/r")), None);
     }
 
     #[test]

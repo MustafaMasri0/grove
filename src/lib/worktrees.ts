@@ -36,7 +36,11 @@ function list(paths: string[]): string {
   return paths.length > LISTED_FILES ? `${shown.join(", ")} and ${paths.length - LISTED_FILES} more` : shown.join(", ");
 }
 
-/** What happened between two overviews of the same repository, in worktree order. */
+/**
+ * What happened to HEADs and worktrees between two overviews of the same repository, in worktree
+ * order. File edits come from the watcher instead ({@link editsOf}): an already changed file that
+ * is edited again looks the same to `git status`.
+ */
 export function activityBetween(prev: readonly WorktreeSummary[], next: readonly WorktreeSummary[], at: number): ActivityEvent[] {
   const before = new Map(prev.map((w) => [w.path, w]));
   const events: ActivityEvent[] = [];
@@ -53,12 +57,25 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
       if (p.head && c.parents.includes(p.head)) push(w.path, "commit", `committed “${c.subject}”`, { sha: c.sha });
       else push(w.path, "moved", `now at ${shortSha(c.sha)} “${c.subject}”`, { sha: c.sha });
     }
-    const wasDirty = new Set(p.uncommitted.map((f) => f.path));
-    const started = w.uncommitted.filter((f) => !wasDirty.has(f.path));
-    if (started.length) push(w.path, "editing", `changed ${list(started.map((f) => f.path))}`, { files: started });
   }
   const still = new Set(next.map((w) => w.path));
   for (const p of prev) if (!still.has(p.path)) push(p.path, "removed", "worktree removed");
+  return events;
+}
+
+/**
+ * The files the watcher saw change (worktree path → paths relative to it), as Activity entries:
+ * only those the worktree's Changes list shows, so build output, ignored files and edits undone
+ * leave no entry. In worktree order.
+ */
+export function editsOf(seen: ReadonlyMap<string, ReadonlySet<string>>, worktrees: readonly WorktreeSummary[], at: number): ActivityEvent[] {
+  const events: ActivityEvent[] = [];
+  for (const w of worktrees) {
+    const paths = seen.get(w.path);
+    if (!paths) continue;
+    const files = w.uncommitted.filter((f) => paths.has(f.path) || (f.origPath !== null && paths.has(f.origPath)));
+    if (files.length) events.push({ at, path: w.path, kind: "editing", text: `changed ${list(files.map((f) => f.path))}`, files });
+  }
   return events;
 }
 

@@ -53,11 +53,13 @@ pub struct WatchSpec {
 }
 
 /// What a debounced burst of watcher events touched.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Change {
     /// Files of the worktree itself, not only git's own state (refs, index, HEAD), which
     /// worktrees share: a commit in one also moves refs every other worktree watches.
     pub files: bool,
+    /// Those files (and folders), relative to the worktree with `/`, in the order first seen; capped.
+    pub paths: Vec<String>,
 }
 
 pub type Progress<'a> = &'a (dyn Fn(&str) + Sync);
