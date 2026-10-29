@@ -1295,7 +1295,6 @@ button.primary {
   justify-content: center;
   width: 46px;
   border-right: none;
-  border-left: 1px solid var(--border);
   padding: 0;
   color: var(--muted);
 }
@@ -1310,6 +1309,8 @@ button.primary {
   display: flex;
   align-items: stretch;
   flex: none;
+  /* Keeps the app's buttons and the window's apart. */
+  margin-left: 8px;
 }
 
 .wc-button {
