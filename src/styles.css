@@ -1292,14 +1292,42 @@ button.primary {
 }
 
 .tb-settings {
+  justify-content: center;
+  width: 46px;
   border-right: none;
   border-left: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 0;
   color: var(--muted);
 }
 
 .tb-settings:hover {
   color: var(--fg-strong);
+}
+
+/* Minimize, Maximize/Restore and Close, as Windows draws them, but the bar's full
+   height so they line up with the Settings button next to them. */
+.window-controls {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+}
+
+.wc-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  color: var(--muted);
+}
+
+.wc-button:hover {
+  background: var(--bg-hover);
+  color: var(--fg-strong);
+}
+
+.wc-close:hover {
+  background: #c42b1c;
+  color: #fff;
 }
 
 button.link {

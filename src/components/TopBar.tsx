@@ -8,6 +8,7 @@ import { windowsPath } from "../lib/hostPaths";
 import { useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
 import { Dropdown, type DropdownItem } from "./Dropdown";
+import { WindowControls } from "./WindowControls";
 import { BranchIcon, GearIcon, PublishIcon, RepoIcon, SyncIcon, UpIcon, WorktreeIcon } from "./icons";
 
 function RepoSwitcher() {
@@ -271,15 +272,17 @@ export function TopBar() {
   const openSettings = useStore((s) => s.openSettings);
   return (
     <>
-      <header className="topbar">
+      {/* Also the window's title bar: empty space drags it, a double-click maximizes. */}
+      <header className="topbar" data-tauri-drag-region>
         <RepoSwitcher />
         <WorktreeSwitcher />
         <BranchSwitcher />
         <ActionButton />
-        <span className="spacer" />
+        <span className="spacer" data-tauri-drag-region />
         <button className="tb-button tb-settings" title="Settings (Ctrl+,)" aria-label="Settings" onClick={openSettings}>
           <GearIcon />
         </button>
+        <WindowControls />
       </header>
       {actionError && (
         <div className="banner error" role="alert">

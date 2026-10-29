@@ -1,11 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window: app commands, events, folder picker, zoom, and opening web links from Markdown in the browser.",
+  "description": "The main window: app commands, events, folder picker, zoom, its own title bar (move, minimize, maximize, close), and opening web links from Markdown in the browser.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:webview:allow-set-webview-zoom",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
     "dialog:allow-open",
     "opener:default"
   ]

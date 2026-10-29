@@ -19,6 +19,7 @@
         "minWidth": 800,
         "minHeight": 500,
         "backgroundColor": "#1e1e1e",
+        "decorations": false,
         "zoomHotkeysEnabled": false,
         "dragDropEnabled": false
       }
