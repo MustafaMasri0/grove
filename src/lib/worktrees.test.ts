@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CommitSummary, WorktreeSummary } from "../api";
+import type { ChangeKind, CommitSummary, WorktreeSummary } from "../api";
 import { activityBetween, isActive, sharedFiles, worktreeName } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
@@ -27,6 +27,7 @@ const wt = (path: string, over: Partial<WorktreeSummary> = {}): WorktreeSummary 
 });
 
 const dirty = (...paths: string[]) => paths.map((path) => ({ path, origPath: null, kind: "modified" as const }));
+const file = (path: string, kind: ChangeKind) => ({ path, origPath: null, kind });
 
 describe("activityBetween", () => {
   it("reports nothing when nothing changed", () => {
@@ -73,7 +74,12 @@ describe("isActive", () => {
 
 describe("sharedFiles", () => {
   it("lists each file once with every worktree it overlaps in, in worktree order", () => {
-    const worktrees = [wt("main", { uncommitted: dirty("gen.cc") }), wt("ios", { uncommitted: dirty("gen.cc") }), wt("fire", { committed: ["gen.cc", "api.ts"] }), wt("other")];
+    const worktrees = [
+      wt("main", { uncommitted: dirty("gen.cc") }),
+      wt("ios", { uncommitted: dirty("gen.cc"), committed: [file("api.ts", "added")] }),
+      wt("fire", { committed: [file("gen.cc", "modified"), file("api.ts", "added")] }),
+      wt("other"),
+    ];
     const files = sharedFiles(
       [
         { a: "main", b: "ios", files: ["gen.cc"] },
@@ -85,25 +91,35 @@ describe("sharedFiles", () => {
     expect(files).toEqual([
       {
         path: "api.ts",
+        kind: "added",
         worktrees: [
-          { path: "ios", uncommitted: false },
-          { path: "fire", uncommitted: false },
+          { path: "ios", kind: "added", uncommitted: false },
+          { path: "fire", kind: "added", uncommitted: false },
         ],
       },
       {
         path: "gen.cc",
+        kind: "modified",
         worktrees: [
-          { path: "main", uncommitted: true },
-          { path: "ios", uncommitted: true },
-          { path: "fire", uncommitted: false },
+          { path: "main", kind: "modified", uncommitted: true },
+          { path: "ios", kind: "modified", uncommitted: true },
+          { path: "fire", kind: "modified", uncommitted: false },
         ],
       },
     ]);
   });
 
-  it("counts a rename's old name as uncommitted too", () => {
+  it("has no single kind when worktrees change the file differently", () => {
+    const a = wt("a", { uncommitted: [{ path: "f.ts", origPath: null, kind: "deleted" }] });
+    const b = wt("b", { committed: [file("f.ts", "modified")] });
+    const [f] = sharedFiles([{ a: "a", b: "b", files: ["f.ts"] }], [a, b]);
+    expect(f.kind).toBeNull();
+    expect(f.worktrees.map((w) => w.kind)).toEqual(["deleted", "modified"]);
+  });
+
+  it("counts a rename's old name as uncommitted, and as deleted there", () => {
     const a = wt("a", { uncommitted: [{ path: "new.ts", origPath: "old.ts", kind: "renamed" }] });
-    expect(sharedFiles([{ a: "a", b: "b", files: ["old.ts"] }], [a, wt("b")])[0].worktrees[0]).toEqual({ path: "a", uncommitted: true });
+    expect(sharedFiles([{ a: "a", b: "b", files: ["old.ts"] }], [a, wt("b")])[0].worktrees[0]).toEqual({ path: "a", kind: "deleted", uncommitted: true });
   });
 
   it("is empty without overlaps", () => {

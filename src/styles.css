@@ -1975,17 +1975,20 @@ kbd {
 }
 
 .ov-shared .file-row {
-  flex: 1 1 220px;
+  flex: 0 1 auto;
   width: auto;
+  min-width: 160px;
   align-items: center;
 }
 
-.ov-shared .file-name {
-  color: var(--fg-strong);
+/* The status letter follows the name, as close as the folder allows. */
+.ov-shared .file-row .file-dir {
+  flex: 0 1 auto;
 }
 
 .ov-who {
   flex: none;
+  margin-left: auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -2003,6 +2006,10 @@ kbd {
   white-space: nowrap;
   font-size: calc(var(--ui-font-size) - 1px);
   background: var(--bg-active);
+}
+
+button.ov-who-chip .status-letter {
+  width: auto;
 }
 
 button.ov-who-chip {

@@ -4,7 +4,7 @@
 use crate::host::GitHost;
 use crate::porcelain::log::{parse_log, CommitSummary, LOG_FORMAT};
 use crate::porcelain::misc::{parse_left_right, parse_path_list};
-use crate::porcelain::name_status::ChangedFile;
+use crate::porcelain::name_status::{parse_name_status, ChangedFile};
 use crate::porcelain::ChangeKind;
 use crate::repo_ops::{run, run_text, status, succeeds};
 use serde::Serialize;
@@ -21,7 +21,7 @@ pub struct WorktreeSummary {
     /// What the Changes list shows: every status entry but ignored files.
     pub uncommitted: Vec<ChangedFile>,
     /// Files HEAD changed since it split from the base (renames as delete + add); empty without a base.
-    pub committed: Vec<String>,
+    pub committed: Vec<ChangedFile>,
     /// Commits on HEAD that the base does not have, and the other way round.
     pub base_ahead: u32,
     pub base_behind: u32,
@@ -38,7 +38,7 @@ impl WorktreeSummary {
 
     /// Every file the worktree changes against the base, committed or not.
     fn touched(&self) -> BTreeSet<&str> {
-        self.committed.iter().map(String::as_str).chain(self.uncommitted_paths()).collect()
+        self.committed.iter().map(|f| f.path.as_str()).chain(self.uncommitted_paths()).collect()
     }
 }
 
@@ -90,7 +90,7 @@ pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>) -> Result<Worktre
     if let Some(base) = base {
         // A base without a common ancestor (an unrelated history) has nothing to compare.
         if let Ok(merge_base) = run_text(h, cwd, &["merge-base", base, &head]) {
-            s.committed = parse_path_list(&run(h, cwd, &["diff", "--name-only", "-z", "--no-renames", &merge_base, &head, "--"])?);
+            s.committed = parse_name_status(&run(h, cwd, &["diff", "--name-status", "-z", "--no-renames", &merge_base, &head, "--"])?)?;
             (s.base_behind, s.base_ahead) = parse_left_right(&run(h, cwd, &["rev-list", "--left-right", "--count", &format!("{base}...{head}")])?)?;
         }
     }
@@ -170,7 +170,7 @@ mod tests {
             branch: Some(path.into()),
             head: Some(head.into()),
             uncommitted: uncommitted.iter().map(|p| ChangedFile { path: p.to_string(), orig_path: None, kind: ChangeKind::Modified }).collect(),
-            committed: committed.iter().map(|p| p.to_string()).collect(),
+            committed: committed.iter().map(|p| ChangedFile { path: p.to_string(), orig_path: None, kind: ChangeKind::Modified }).collect(),
             base_ahead: 0,
             base_behind: 0,
             upstream: None,

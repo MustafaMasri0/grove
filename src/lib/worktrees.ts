@@ -1,5 +1,5 @@
 // The Worktrees overview: names, live activity and overlaps between worktrees.
-import type { Overlap, WorktreeSummary } from "../api";
+import type { ChangeKind, Overlap, WorktreeSummary } from "../api";
 import { shortSha } from "./format";
 
 /** A worktree counts as active this long after its files last changed. */
@@ -62,11 +62,20 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
   return events;
 }
 
-/** A file several worktrees change, and whether each one's change is still uncommitted. */
+/** A file several worktrees change: how each one changes it, and whether that is still uncommitted. */
 export interface SharedFile {
   path: string;
   /** In the order of the overview's worktrees. */
-  worktrees: { path: string; uncommitted: boolean }[];
+  worktrees: { path: string; kind: ChangeKind; uncommitted: boolean }[];
+  /** How every worktree changes the file, when they all do it the same way; null when they differ. */
+  kind: ChangeKind | null;
+}
+
+/** How a worktree changes `path`: its uncommitted change if any (that is what is on disk), else its committed one. */
+function changeOf(w: WorktreeSummary, path: string): { kind: ChangeKind; uncommitted: boolean } {
+  const u = w.uncommitted.find((f) => f.path === path || f.origPath === path);
+  if (u) return { kind: u.origPath === path && u.path !== path ? "deleted" : u.kind, uncommitted: true };
+  return { kind: w.committed.find((f) => f.path === path)?.kind ?? "modified", uncommitted: false };
 }
 
 /** The overlaps by file instead of by pair: each file once, with every worktree it overlaps in. Sorted by path. */
@@ -79,11 +88,10 @@ export function sharedFiles(overlaps: readonly Overlap[], worktrees: readonly Wo
       by.set(f, set);
     }
   }
-  const dirty = new Map(worktrees.map((w) => [w.path, new Set(w.uncommitted.flatMap((f) => (f.origPath ? [f.path, f.origPath] : [f.path])))]));
   return [...by.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([path, set]) => ({
-      path,
-      worktrees: worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, uncommitted: dirty.get(w.path)!.has(path) })),
-    }));
+    .map(([path, set]) => {
+      const sides = worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, ...changeOf(w, path) }));
+      return { path, worktrees: sides, kind: sides.every((s) => s.kind === sides[0].kind) ? sides[0].kind : null };
+    });
 }
