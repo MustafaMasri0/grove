@@ -9,16 +9,21 @@ import {
   type CommitWithFiles,
   type FileHistoryEntry,
   type FileList,
+  type Overview,
   type RepoInfo,
   type Source,
   type Status,
+  type WorktreeChanged,
   type WorktreeInfo,
 } from "./api";
 import { uncommittedCount } from "./lib/changes";
+import { coalesce } from "./lib/coalesce";
+import { shortSha } from "./lib/format";
+import { activityBetween, addActivity, editsOf, readablePaths, type ActivityEvent } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
-import { isAppTab } from "./tabs";
+import { fileTab, isAppTab, revisionTab, uncommittedTab } from "./tabs";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
@@ -28,6 +33,8 @@ export type TabSpec =
   | { type: "file"; path: string; source: Source; line?: number }
   /** App-level tabs (no repository): the Settings page and settings.json. */
   | { type: "settings"; path: string }
+  /** The Worktrees overview of the current repository. */
+  | { type: "worktrees"; path: string }
   | { type: "settingsJson"; path: string };
 
 export interface Tab {
@@ -92,6 +99,13 @@ interface State {
   statusError: string | null;
   /** Worktree path → files with uncommitted changes; the current worktree's comes from its status. */
   changeCounts: Record<string, number>;
+  /** Every worktree of the repository side by side, and the files they both change. */
+  overview: Overview | null;
+  overviewError: string | null;
+  /** Worktree path → when its files last changed (unix seconds), from the watcher; this session only. */
+  lastChange: Record<string, number>;
+  /** What happened in the worktrees, newest first; this session only. */
+  activity: ActivityEvent[];
   leftTab: LeftTab;
   base: string | null;
   baseDiff: BaseDiff | null;
@@ -168,12 +182,26 @@ interface State {
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
-  loadChangeCounts(): Promise<void>;
+  openWorktrees(): void;
+  /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
+  loadOverview(): Promise<void>;
+  /** A watcher event: refreshes what it affects and records the activity. */
+  noteChange(change: WorktreeChanged): void;
+  /**
+   * Switches to worktree `cwd` and opens its change to `path`, as the Changes list would: the
+   * uncommitted diff, else the branch-vs-base diff, else the file itself.
+   */
+  openWorktreeChange(cwd: string, path: string): Promise<void>;
+  /** Switches to worktree `cwd` and shows commit `sha` in History. */
+  openWorktreeCommit(cwd: string, sha: string): Promise<void>;
 }
 
 let saveTimer: number | undefined;
-/** One count batch at a time; refreshes that arrive meanwhile are covered by the running one. */
-let countsLoading = false;
+let overviewTimer: number | undefined;
+/** Worktree path → files the watcher saw change since the last overview load, for Activity. */
+let edited = new Map<string, Set<string>>();
+/** The repository and worktrees being watched, so an unchanged list is not watched again. */
+let watched = "";
 
 export const useStore = create<State>()((set, get) => {
   const at = () => {
@@ -226,6 +254,52 @@ export const useStore = create<State>()((set, get) => {
     set({ tabs: copy, activeTab: tab.id });
   };
 
+  /** Watches every worktree of the repository, for refreshes and live activity. */
+  const watchWorktrees = () => {
+    const { repo, worktrees } = get();
+    if (!repo) return;
+    const paths = readablePaths(worktrees);
+    const key = [repo.id, ...paths].join("\n");
+    if (key === watched) return;
+    watched = key;
+    api.watch(repo.id, paths).catch(() => {
+      watched = "";
+    });
+  };
+
+  const loadOverviewOnce = async () => {
+    const { repo } = get();
+    if (!repo) return;
+    // Edits seen from here on go to the next load.
+    const seen = edited;
+    edited = new Map();
+    try {
+      const worktrees = await api.worktrees({ repo: repo.id, cwd: repo.root });
+      if (get().repo?.id !== repo.id) return;
+      set({ worktrees });
+      watchWorktrees();
+      const overview = await api.worktreesOverview(repo.id, readablePaths(worktrees), get().base);
+      if (get().repo?.id !== repo.id) return;
+      const prev = get().overview;
+      const now = Date.now() / 1000;
+      const events = [...(prev ? activityBetween(prev.worktrees, overview.worktrees, now) : []), ...editsOf(seen, overview.worktrees, now)];
+      const changeCounts = Object.fromEntries(overview.worktrees.map((w) => [w.path, w.uncommitted.length]));
+      // The current worktree's own status may be newer than this overview.
+      const { cwd, status, viewBranch } = get();
+      const own = !viewBranch && cwd ? uncommittedCount(status) : null;
+      if (cwd && own !== null) changeCounts[cwd] = own;
+      set((s) => ({ overview, overviewError: null, changeCounts, activity: addActivity(s.activity, events) }));
+    } catch (e) {
+      if (get().repo?.id === repo.id) set({ overviewError: errorText(e) });
+    }
+  };
+
+  /** Shows worktree `cwd` (not a viewed branch); false when that did not happen. */
+  const enterWorktree = async (cwd: string) => {
+    if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
+    return get().cwd === cwd && !get().viewBranch;
+  };
+
   const loadForLeftTab = () => {
     const { leftTab, settings } = get();
     if (leftTab === "history" && get().commits.length === 0 && !get().fileHistory) void get().loadMoreCommits();
@@ -248,6 +322,10 @@ export const useStore = create<State>()((set, get) => {
     status: null,
     statusError: null,
     changeCounts: {},
+    overview: null,
+    overviewError: null,
+    lastChange: {},
+    activity: [],
     leftTab: "changes",
     base: null,
     baseDiff: null,
@@ -321,7 +399,22 @@ export const useStore = create<State>()((set, get) => {
     },
 
     async selectRepo(id) {
-      set({ repoError: null, viewBranch: null, ...keepAppTabs(), worktrees: [], branches: [], status: null, cwd: null, githubRepo: null, changeCounts: {} });
+      set({
+        repoError: null,
+        viewBranch: null,
+        ...keepAppTabs(),
+        worktrees: [],
+        branches: [],
+        status: null,
+        cwd: null,
+        githubRepo: null,
+        changeCounts: {},
+        overview: null,
+        overviewError: null,
+        lastChange: {},
+        activity: [],
+      });
+      edited = new Map();
       resetViews();
       try {
         const info = await api.openRepo(id);
@@ -335,7 +428,7 @@ export const useStore = create<State>()((set, get) => {
         );
         const worktrees = await api.worktrees({ repo: id, cwd: info.root });
         set({ worktrees });
-        void get().loadChangeCounts();
+        watchWorktrees();
         const remembered = get().settings.lastWorktree[id];
         const pick =
           worktrees.find((w) => w.path === remembered && !w.missing) ??
@@ -354,7 +447,6 @@ export const useStore = create<State>()((set, get) => {
       resetViews();
       get().updateSettings({ lastWorktree: { ...settings.lastWorktree, [repo.id]: path } });
       const a = { repo: repo.id, cwd: path };
-      api.watch(a).catch(() => {});
       await Promise.all([
         loadStatus(),
         api.branches(a).then((branches) => set({ branches }), () => {}),
@@ -362,6 +454,7 @@ export const useStore = create<State>()((set, get) => {
         get().loadBranchStatus(),
       ]);
       loadForLeftTab();
+      void get().loadOverview();
     },
 
     async selectBranch(b) {
@@ -380,13 +473,7 @@ export const useStore = create<State>()((set, get) => {
       const { repo } = get();
       await Promise.all([
         loadStatus(),
-        api.worktrees(a).then(
-          (worktrees) => {
-            set({ worktrees });
-            void get().loadChangeCounts();
-          },
-          () => {},
-        ),
+        get().loadOverview(),
         api.branches(a).then((branches) => set({ branches }), () => {}),
         get().loadBranchStatus(),
       ]);
@@ -427,6 +514,7 @@ export const useStore = create<State>()((set, get) => {
       get().updateSettings({ base: { ...settings.base, [repo.id]: b } });
       set({ base: b, baseDiff: null });
       void get().loadBaseDiff();
+      void get().loadOverview();
     },
 
     setRepoBase(repoId, b) {
@@ -441,6 +529,7 @@ export const useStore = create<State>()((set, get) => {
           if (get().repo?.id !== repoId) return;
           set({ base: resolved, baseDiff: null });
           if (get().settings.changesMode === "base") void get().loadBaseDiff();
+          void get().loadOverview();
         },
         () => {},
       );
@@ -450,7 +539,7 @@ export const useStore = create<State>()((set, get) => {
       const a = at();
       const { base } = get();
       if (!a) return;
-      if (!base) return set({ baseError: "No base branch found (looked for development, main and master)." });
+      if (!base) return set({ baseError: "No base branch found (looked for development, main, master and the default branch of origin). Pick one with Base." });
       try {
         const baseDiff = await api.branchChanges(a, base, currentRev());
         set({ baseDiff, baseError: null });
@@ -669,30 +758,46 @@ export const useStore = create<State>()((set, get) => {
       set({ notice: n });
     },
 
-    async loadChangeCounts() {
-      const { repo, worktrees } = get();
-      if (!repo || countsLoading) return;
-      const paths = worktrees.filter((w) => !w.missing && !w.bare).map((w) => w.path);
-      if (paths.length === 0) return;
-      countsLoading = true;
-      try {
-        const counts = await api.changeCounts(repo.id, paths);
-        if (get().repo?.id !== repo.id) return;
-        const next: Record<string, number> = {};
-        paths.forEach((p, i) => {
-          const n = counts[i];
-          if (n !== null && n !== undefined) next[p] = n;
-        });
-        // The current worktree's own status is newer than this batch.
-        const { cwd, status, viewBranch } = get();
-        const own = !viewBranch && cwd ? uncommittedCount(status) : null;
-        if (cwd && own !== null) next[cwd] = own;
-        set({ changeCounts: next });
-      } catch {
-        // Counts are a hint; keep what is shown.
-      } finally {
-        countsLoading = false;
+    openWorktrees() {
+      openAppTab({ id: "app:worktrees", title: "Worktrees", description: "", spec: { type: "worktrees", path: "Worktrees" } });
+    },
+
+    loadOverview: coalesce(loadOverviewOnce),
+
+    async openWorktreeChange(cwd, path) {
+      const a = (await enterWorktree(cwd)) ? at() : null;
+      if (!a) return;
+      const entry = get().status?.entries.find((e) => e.kind !== "ignored" && (e.path === path || e.origPath === path));
+      if (entry) return get().openTab(uncommittedTab(cwd, entry), true);
+      const { base, worktrees } = get();
+      if (base) {
+        try {
+          const d = await api.branchChanges(a, base, "HEAD");
+          const f = d.files.find((f) => f.path === path || f.origPath === path);
+          const branch = worktrees.find((w) => w.path === cwd)?.branch ?? "HEAD";
+          if (f) return get().openTab(revisionTab(f, d.mergeBase, "HEAD", `${base} (${shortSha(d.mergeBase)})`, branch), true);
+        } catch {
+          // Open the file itself instead.
+        }
       }
+      get().openTab(fileTab(cwd, path, null), true);
+    },
+
+    async openWorktreeCommit(cwd, sha) {
+      if (await enterWorktree(cwd)) await get().showCommit(sha);
+    },
+
+    noteChange({ cwd, files, paths }) {
+      if (files) set((s) => ({ lastChange: { ...s.lastChange, [cwd]: Date.now() / 1000 } }));
+      if (paths.length) {
+        const seen = edited.get(cwd) ?? new Set<string>();
+        paths.forEach((p) => seen.add(p));
+        edited.set(cwd, seen);
+      }
+      // The current worktree refreshes as a whole, which includes the overview.
+      if (cwd === get().cwd) return void get().refresh();
+      window.clearTimeout(overviewTimer);
+      overviewTimer = window.setTimeout(() => void get().loadOverview(), 500);
     },
   };
 });

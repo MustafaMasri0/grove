@@ -24,15 +24,15 @@ fn args(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
-fn run(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn run(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<Vec<u8>, String> {
     h.git(cwd, &args(a), None)?.ok()
 }
 
-fn run_text(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<String, String> {
+pub(crate) fn run_text(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&run(h, cwd, a)?).trim().to_string())
 }
 
-fn succeeds(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<bool, String> {
+pub(crate) fn succeeds(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<bool, String> {
     Ok(h.git(cwd, &args(a), None)?.code == 0)
 }
 
@@ -58,32 +58,44 @@ pub fn status(h: &dyn GitHost, cwd: &str) -> Result<Status, String> {
     parse_status_v2(&run(h, cwd, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"])?)
 }
 
-/// How many files have uncommitted changes (what the Changes list shows): status entries minus ignored.
-pub fn change_count(h: &dyn GitHost, cwd: &str) -> Result<u32, String> {
-    Ok(status(h, cwd)?.entries.iter().filter(|e| e.kind != crate::porcelain::ChangeKind::Ignored).count() as u32)
-}
-
 pub fn branches(h: &dyn GitHost, cwd: &str) -> Result<Vec<BranchRef>, String> {
     parse_refs(&run(h, cwd, &["for-each-ref", REF_FORMAT, "--sort=-committerdate", "refs/heads", "refs/remotes"])?)
 }
 
 /// The base branch for "Branch vs base": the preferred one if it still exists,
-/// else development, main, master (local first, then origin/).
+/// else development, main, master (local first, then origin/), else origin's
+/// default branch (`origin/HEAD`, set by `git clone`; local first again).
 pub fn resolve_base(h: &dyn GitHost, cwd: &str, preferred: Option<&str>) -> Result<Option<String>, String> {
     if let Some(p) = preferred.filter(|p| !p.is_empty()) {
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("{p}^{{commit}}")])? {
             return Ok(Some(p.to_string()));
         }
     }
-    for name in ["development", "main", "master"] {
+    let local_or_origin = |name: &str| -> Result<Option<String>, String> {
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")])? {
             return Ok(Some(name.to_string()));
         }
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{name}")])? {
             return Ok(Some(format!("origin/{name}")));
         }
+        Ok(None)
+    };
+    for name in ["development", "main", "master"] {
+        if let Some(base) = local_or_origin(name)? {
+            return Ok(Some(base));
+        }
     }
-    Ok(None)
+    match origin_default_branch(h, cwd)? {
+        Some(name) => local_or_origin(&name),
+        None => Ok(None),
+    }
+}
+
+/// The branch `origin/HEAD` points at: the remote's default branch, as `git clone` sets it.
+fn origin_default_branch(h: &dyn GitHost, cwd: &str) -> Result<Option<String>, String> {
+    let out = h.git(cwd, &args(&["rev-parse", "--abbrev-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD"]), None)?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().strip_prefix("origin/").map(str::to_string);
+    Ok(name.filter(|n| out.code == 0 && !n.is_empty() && n != "HEAD"))
 }
 
 #[derive(Debug, Clone, Serialize)]

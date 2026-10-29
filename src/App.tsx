@@ -9,7 +9,7 @@ import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
 import { TopBar } from "./components/TopBar";
-import { api } from "./api";
+import { api, type WorktreeChanged } from "./api";
 import { ZOOM_STEPS } from "./lib/settingsSchema";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
@@ -35,6 +35,7 @@ function onKeyDown(e: KeyboardEvent) {
   const tabs: Record<string, LeftTab> = { "1": "changes", "2": "history", "3": "explorer" };
 
   if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
+  else if (ctrl && e.shiftKey && key === "o") s.openWorktrees();
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
@@ -100,9 +101,7 @@ export function App() {
     window.addEventListener("focus", onFocus);
 
     const unlisten = [
-      listen<{ cwd: string }>("worktree-changed", (e) => {
-        if (e.payload.cwd === useStore.getState().cwd) void useStore.getState().refresh();
-      }),
+      listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
       listen<{ line: string }>("action-progress", (e) => setActionProgress(e.payload.line)),
     ];
     return () => {
@@ -248,8 +247,29 @@ async function runAutomation() {
   if (auto.imageZoom) await zoomImageForTest(auto.imageZoom);
   if (auto.previewLink !== null) await followPreviewLinkForTest(auto.previewLink);
   if (auto.reveal) useStore.getState().revealInExplorer(auto.reveal);
+  if (auto.worktrees) await worktreesForTest(auto.worktrees);
   if (auto.listKeys) await pressListKeysForTest(auto.listKeys.split(","));
   if (auto.contextMenu) await openMenuForTest(auto.contextMenu);
+}
+
+/**
+ * WV_WORKTREES=1|chip:<n>|feed:<n>: opens the Worktrees overview, then clicks the n-th worktree chip of
+ * the shared files, or the n-th link in Activity (waiting up to a minute for one to appear).
+ */
+async function worktreesForTest(spec: string) {
+  useStore.getState().openWorktrees();
+  const [what, n] = spec.split(":");
+  if (what !== "chip" && what !== "feed") return;
+  const sel = what === "chip" ? ".ov-shared .ov-who-chip" : ".ov-feed button.link, .ov-feed .ov-file-link";
+  for (let i = 0; i < 600; i++) {
+    const el = document.querySelectorAll<HTMLElement>(sel)[Number(n)];
+    if (el) {
+      await new Promise((r) => setTimeout(r, 500));
+      return el.click();
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  console.error(`WV_WORKTREES: nothing matches ${sel} #${n}`);
 }
 
 /** WV_LIST_KEYS=ArrowDown,ArrowLeft,Ctrl+3,…: presses the keys in the left pane's list, as typing them there would. */

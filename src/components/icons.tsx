@@ -57,6 +57,16 @@ export const ChevronIcon = ({ open }: { open: boolean }) => (
   </svg>
 );
 
+/** The Worktrees overview: worktrees side by side. */
+export const OverviewIcon = () => (
+  <svg {...base}>
+    <rect x="2" y="2.5" width="5" height="5" rx="1" />
+    <rect x="9" y="2.5" width="5" height="5" rx="1" />
+    <rect x="2" y="9.5" width="5" height="4" rx="1" />
+    <rect x="9" y="9.5" width="5" height="4" rx="1" />
+  </svg>
+);
+
 export const GearIcon = () => (
   <svg {...base} strokeWidth={1.2}>
     <circle cx="8" cy="8" r="2" />

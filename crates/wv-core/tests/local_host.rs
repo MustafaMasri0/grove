@@ -6,7 +6,7 @@ use common::{git, temp_repo, wait_for};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use wv_core::host::{GitHost, WatchSpec};
+use wv_core::host::{Change, GitHost, WatchSpec};
 use wv_core::local::LocalHost;
 
 fn s(v: &[&str]) -> Vec<String> {
@@ -104,7 +104,7 @@ fn watcher_fires_once_per_burst_and_ignores_node_modules() {
     let h = hits.clone();
     let host = LocalHost::new();
     let spec = WatchSpec { root: repo.path_str().into(), git_dirs: vec![], exclude: vec![] };
-    let id = host.watch(spec, Arc::new(move || { h.fetch_add(1, Ordering::SeqCst); })).unwrap();
+    let id = host.watch(spec, Arc::new(move |_| { h.fetch_add(1, Ordering::SeqCst); })).unwrap();
     std::thread::sleep(Duration::from_millis(200));
 
     std::fs::write(repo.path.join("node_modules/pkg/index.js"), "x").unwrap();
@@ -129,16 +129,22 @@ fn watcher_fires_once_per_burst_and_ignores_node_modules() {
 }
 
 #[test]
-fn watcher_sees_git_dir_changes_like_a_new_commit() {
+fn watcher_sees_git_dir_changes_like_a_new_commit_and_tells_them_from_file_edits() {
     let repo = temp_repo();
-    let hits = Arc::new(AtomicUsize::new(0));
-    let h = hits.clone();
+    let changes = Arc::new(Mutex::new(Vec::<Change>::new()));
+    let c = changes.clone();
     let host = LocalHost::new();
     let git_dir = repo.path.join(".git");
     let spec = WatchSpec { root: repo.path_str().into(), git_dirs: vec![git_dir.to_str().unwrap().into()], exclude: vec![] };
-    let id = host.watch(spec, Arc::new(move || { h.fetch_add(1, Ordering::SeqCst); })).unwrap();
+    let id = host.watch(spec, Arc::new(move |ch| c.lock().unwrap().push(ch))).unwrap();
     std::thread::sleep(Duration::from_millis(200));
     git(&repo.path, &["commit", "-q", "--allow-empty", "-m", "second"]);
-    assert!(wait_for(|| hits.load(Ordering::SeqCst) >= 1));
+    assert!(wait_for(|| !changes.lock().unwrap().is_empty()));
+    std::thread::sleep(Duration::from_millis(600));
+    assert!(changes.lock().unwrap().iter().all(|ch| !ch.files), "a commit only moves git state: {:?}", changes.lock().unwrap());
+
+    changes.lock().unwrap().clear();
+    std::fs::write(repo.path.join("a.txt"), "edited\n").unwrap();
+    assert!(wait_for(|| changes.lock().unwrap().iter().any(|ch| ch.files && ch.paths == ["a.txt"])), "{:?}", changes.lock().unwrap());
     host.unwatch(id);
 }

@@ -167,6 +167,45 @@ export interface BranchStatus {
 
 export type Action = "fetch" | "push" | "publish";
 
+export interface WorktreeSummary {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  /** What the Changes list shows. */
+  uncommitted: ChangedFile[];
+  /** Files HEAD changed since it split from the base. */
+  committed: string[];
+  baseAhead: number;
+  baseBehind: number;
+  upstream: string | null;
+  upstreamAhead: number;
+  upstreamBehind: number;
+  lastCommit: CommitSummary | null;
+}
+
+/** Files two worktrees both change (`a` and `b` are worktree paths). */
+export interface Overlap {
+  a: string;
+  b: string;
+  files: string[];
+}
+
+export interface Overview {
+  worktrees: WorktreeSummary[];
+  /** Worktree path → why it could not be read. */
+  errors: Record<string, string>;
+  overlaps: Overlap[];
+}
+
+/** Payload of the `worktree-changed` event. */
+export interface WorktreeChanged {
+  cwd: string;
+  /** Files of the worktree changed, not only git state that worktrees share (refs, index). */
+  files: boolean;
+  /** Those files (and folders), relative to the worktree with `/`; capped. An older WSL helper sends none. */
+  paths: string[];
+}
+
 type At = { repo: string; cwd: string };
 type LeftTabName = "changes" | "history" | "explorer" | "search";
 
@@ -175,8 +214,8 @@ export const api = {
   worktrees: (a: At) => invoke<WorktreeInfo[]>("worktrees", a),
   branches: (a: At) => invoke<BranchRef[]>("branches", a),
   status: (a: At) => invoke<Status>("status", a),
-  /** Uncommitted file count of each worktree in `cwds` (null where it could not be read). */
-  changeCounts: (repo: string, cwds: string[]) => invoke<(number | null)[]>("change_counts", { repo, cwds }),
+  /** Every worktree in `cwds` compared with `base`, and the files they both change. */
+  worktreesOverview: (repo: string, cwds: string[], base: string | null) => invoke<Overview>("worktrees_overview", { repo, cwds, base }),
   resolveBase: (a: At, preferred: string | null) => invoke<string | null>("resolve_base", { ...a, preferred }),
   branchChanges: (a: At, base: string, rev: string) => invoke<BaseDiff>("branch_changes", { ...a, base, rev }),
   log: (a: At, rev: string, skip: number, limit: number) => invoke<CommitSummary[]>("log", { ...a, rev, skip, limit }),
@@ -191,7 +230,8 @@ export const api = {
   grep: (a: At, rev: string | null, query: GrepQuery) => invoke<GrepResult>("grep", { ...a, rev, query }),
   branchStatus: (a: At, branch: string) => invoke<BranchStatus>("branch_status", { ...a, branch }),
   runAction: (a: At, action: Action, branch: string) => invoke<string>("run_action", { ...a, action, branch }),
-  watch: (a: At) => invoke<void>("watch", a),
+  /** Watches these worktrees of `repo` (and stops watching anything else): `worktree-changed` events. */
+  watch: (repo: string, cwds: string[]) => invoke<void>("watch", { repo, cwds }),
   loadSettings: () => invoke<unknown>("load_settings"),
   saveSettings: (settings: unknown) => invoke<void>("save_settings", { settings }),
   /** settings.json as saved: its path, and its text (null before the first save). */
@@ -228,6 +268,7 @@ export const api = {
       previewLink: number | null;
       reveal: string | null;
       listKeys: string | null;
+      worktrees: string | null;
     }>("automation"),
 };
 

@@ -6,7 +6,8 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
-use wv_core::host::{DirEntry, GitHost};
+use wv_core::host::{Change, DirEntry, GitHost};
+use wv_core::overview::{self, Overview};
 use wv_core::paths::{wsl_unc, Route};
 use wv_core::preview;
 use wv_core::porcelain::blame::Blame;
@@ -20,8 +21,8 @@ use wv_core::repo_ops::{self as ops, Action, BaseDiff, BranchStatus, CommitWithF
 #[derive(Default)]
 pub struct App {
     pub hosts: Hosts,
-    /// The one watched worktree: (repo, watch id).
-    watch: Mutex<Option<(String, u64)>>,
+    /// The watched worktrees, all of one repository: (repo, watch ids).
+    watches: Mutex<Option<(String, Vec<u64>)>>,
     /// repo id → `owner/repo` on github.com (None: origin is elsewhere).
     github_repos: Mutex<std::collections::HashMap<String, Option<String>>>,
     /// The repository roots `wvfile:` URLs may read from.
@@ -121,15 +122,10 @@ pub async fn status(state: State<'_, AppState>, repo: String, cwd: String) -> Re
     with_host!(state, repo, |h| ops::status(h, &cwd))
 }
 
-/// Uncommitted file counts of several worktrees, run side by side; None where one cannot be read.
+/// Every worktree in `cwds` side by side, compared with `base`, and the files they both change.
 #[tauri::command]
-pub async fn change_counts(state: State<'_, AppState>, repo: String, cwds: Vec<String>) -> Res<Vec<Option<u32>>> {
-    with_host!(state, repo, |h| {
-        Ok(std::thread::scope(|s| {
-            let handles: Vec<_> = cwds.iter().map(|cwd| s.spawn(|| ops::change_count(h, cwd).ok())).collect();
-            handles.into_iter().map(|t| t.join().ok().flatten()).collect()
-        }))
-    })
+pub async fn worktrees_overview(state: State<'_, AppState>, repo: String, cwds: Vec<String>, base: Option<String>) -> Res<Overview> {
+    with_host!(state, repo, |h| Ok(overview::overview(h, &cwds, base.as_deref())))
 }
 
 #[tauri::command]
@@ -224,31 +220,36 @@ pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo:
 }
 
 #[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct ChangedEvent {
     cwd: String,
+    #[serde(flatten)]
+    change: Change,
 }
 
-/// Watches one worktree at a time; `worktree-changed` fires after debounced changes.
+/// Watches the worktrees of one repository, replacing whatever was watched before;
+/// `worktree-changed` fires for each after debounced changes. One that cannot be watched is skipped.
 #[tauri::command]
-pub async fn watch(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwd: String) -> Res<()> {
+pub async fn watch(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwds: Vec<String>) -> Res<()> {
     let app = state.inner().clone();
     blocking(move || {
-        if let Some((old_repo, id)) = app.watch.lock().unwrap().take() {
+        if let Some((old_repo, ids)) = app.watches.lock().unwrap().take() {
             if let Ok(h) = app.hosts.host(&old_repo) {
-                h.unwatch(id);
+                ids.into_iter().for_each(|id| h.unwatch(id));
             }
         }
         let host = app.hosts.host(&repo)?;
-        let spec = ops::watch_spec(&*host, &cwd)?;
-        let event_cwd = cwd.clone();
-        let id = host.watch(
-            spec,
-            Arc::new(move || {
-                let _ = app_handle.emit("worktree-changed", ChangedEvent { cwd: event_cwd.clone() });
-            }),
-        )?;
-        *app.watch.lock().unwrap() = Some((repo, id));
+        let ids = cwds
+            .into_iter()
+            .filter_map(|cwd| {
+                let spec = ops::watch_spec(&*host, &cwd).ok()?;
+                let app_handle = app_handle.clone();
+                let on_change = Arc::new(move |change| {
+                    let _ = app_handle.emit("worktree-changed", ChangedEvent { cwd: cwd.clone(), change });
+                });
+                host.watch(spec, on_change).ok()
+            })
+            .collect();
+        *app.watches.lock().unwrap() = Some((repo, ids));
         Ok(())
     })
     .await
@@ -317,6 +318,7 @@ pub struct Automation {
     preview_link: Option<u32>,
     reveal: Option<String>,
     list_keys: Option<String>,
+    worktrees: Option<String>,
 }
 
 /// Test hooks, so memory and screens can be checked without driving the window:
@@ -339,6 +341,8 @@ pub struct Automation {
 /// zooms the image view, and `WV_PREVIEW_LINK=n` follows the n-th link of an HTML preview.
 /// `WV_REVEAL=path` reveals a file in Explorer as "Reveal in Explorer" does, and
 /// `WV_LIST_KEYS=ArrowDown,ArrowLeft,…` then presses those keys in the left pane's list.
+/// `WV_WORKTREES=1` opens the Worktrees overview (`chip:<n>` then clicks the n-th worktree of a shared
+/// file, `feed:<n>` the n-th link in Activity once there is one).
 #[tauri::command]
 pub fn automation() -> Automation {
     Automation {
@@ -359,6 +363,7 @@ pub fn automation() -> Automation {
         preview_link: std::env::var("WV_PREVIEW_LINK").ok().and_then(|v| v.parse().ok()),
         reveal: std::env::var("WV_REVEAL").ok(),
         list_keys: std::env::var("WV_LIST_KEYS").ok(),
+        worktrees: std::env::var("WV_WORKTREES").ok(),
     }
 }
 

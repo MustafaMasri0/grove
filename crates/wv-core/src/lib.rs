@@ -3,6 +3,7 @@ pub mod exec;
 pub mod helper_client;
 pub mod host;
 pub mod local;
+pub mod overview;
 pub mod paths;
 pub mod porcelain;
 pub mod preview;

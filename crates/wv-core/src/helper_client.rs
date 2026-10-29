@@ -49,10 +49,10 @@ impl HelperClient {
                         Message::Hello { version } => {
                             let _ = hello_tx.send(version.clone());
                         }
-                        Message::Changed { watch_id } => {
+                        Message::Changed { watch_id, change } => {
                             let cb = watches.lock().unwrap().get(watch_id).cloned();
                             if let Some(cb) = cb {
-                                cb();
+                                cb(change.clone());
                             }
                         }
                         Message::Done { id, .. } | Message::Failed { id, .. } => {

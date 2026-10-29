@@ -5,7 +5,7 @@
 use serde::Serialize;
 use std::io::{BufRead, Write};
 use std::sync::{Arc, Mutex, OnceLock};
-use wv_core::host::GitHost;
+use wv_core::host::{Change, GitHost};
 use wv_core::local::LocalHost;
 use wv_core::protocol::{Message, Op, Request};
 
@@ -44,9 +44,9 @@ fn handle(host: &LocalHost, out: &Out, req: Request) {
             let (out2, wid) = (out.clone(), watch_id.clone());
             let result = host.watch(
                 spec,
-                Arc::new(move || {
+                Arc::new(move |change: Change| {
                     if let Some(&watch_id) = wid.get() {
-                        send(&out2, &Message::Changed { watch_id });
+                        send(&out2, &Message::Changed { watch_id, change });
                     }
                 }),
             );
