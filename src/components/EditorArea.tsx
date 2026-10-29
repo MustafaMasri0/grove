@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, type Blame, type Content } from "../api";
+import { api, errorText, type Blame, type Content, type ImageSource } from "../api";
 import { blameMargin, commitAtLine } from "../lib/blame";
 import { tabItems } from "../lib/contextMenus";
 import { editorOptions } from "../lib/editorOptions";
+import { viewKind } from "../lib/fileKinds";
 import { formatBytes, shortSha } from "../lib/format";
 import { joinPath, windowsPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
@@ -11,7 +12,9 @@ import { effectiveDark, useStore, type Tab } from "../store";
 import { isLive, tabsToClose, type CloseWhich } from "../tabs";
 import { menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { HtmlPreview } from "./HtmlPreview";
 import { GearIcon } from "./icons";
+import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SettingsPage } from "./SettingsPage";
 
@@ -30,6 +33,9 @@ interface Doc {
   revealed?: boolean;
   /** File views with blame on: who changed each line, for the content loaded at `tick`. */
   blame?: { tick: number; loading: boolean; data?: Blame; error?: string };
+  /** Files and diffs: shown as pictures (`images`, one per side) or as text in the editors. */
+  mode?: "image" | "text";
+  images?: ImageSource[];
 }
 
 /** The editor commands keyboard shortcuts reach from outside Monaco. */
@@ -46,6 +52,13 @@ function describe(c: Content): string | null {
 }
 
 const textOf = (c: Content) => (c.kind === "text" ? c.text : "");
+
+/** Whether a file or diff tab shows pictures: image files, except SVG while Source is chosen. */
+function showsImage(t: Tab, preview: boolean): boolean {
+  const s = t.spec;
+  if (s.type !== "file" && s.type !== "diff") return false;
+  return viewKind(s.path) === "image" && (preview || !/\.svg$/i.test(s.path));
+}
 
 /** The file a tab shows, as a Windows path; null for the Settings page. */
 function tabPath(t: Tab): string | null {
@@ -90,6 +103,7 @@ export function EditorArea() {
   const editorSettings = useStore((s) => s.settings.editor);
   const settingsSaved = useStore((s) => s.settingsSaved);
   const mdPreview = useStore((s) => s.settings.mdPreview);
+  const imageDiff = useStore((s) => s.settings.imageDiff);
   const dark = useStore(effectiveDark);
   const updateSettings = useStore((s) => s.updateSettings);
   const activateTab = useStore((s) => s.activateTab);
@@ -259,8 +273,27 @@ export function EditorArea() {
       }
       return rerender((n) => n + 1);
     }
+    const sources = spec.type === "diff" ? [spec.left, spec.right] : [spec.source];
+    if (showsImage(tab, useStore.getState().settings.mdPreview)) {
+      // Only sizes and URLs here; the pictures load when the view shows them.
+      try {
+        const images = await api.imageSources(at, sources);
+        if (!docs.current.has(tab.id)) return;
+        doc.loadedTick = useStore.getState().tick;
+        doc.mode = "image";
+        // The URLs change only when a file did (they carry its version), and with them the view.
+        doc.images = images;
+        doc.state = spec.type === "file" && images[0].kind === "missing" ? "message" : "ready";
+        doc.message = doc.state === "message" ? "This file does not exist." : undefined;
+      } catch (e) {
+        doc.state = "message";
+        doc.message = errorText(e);
+      }
+      return rerender((n) => n + 1);
+    }
+    doc.mode = "text";
+    doc.images = undefined;
     try {
-      const sources = spec.type === "diff" ? [spec.left, spec.right] : [spec.source];
       const contents = await api.readSources(at, sources);
       if (!docs.current.has(tab.id)) return;
       doc.loadedTick = useStore.getState().tick;
@@ -295,13 +328,15 @@ export function EditorArea() {
     const doc = docs.current.get(active.id);
     const json = active.spec.type === "settingsJson";
     const now = json ? settingsSaved : tick;
+    // SVG switches between picture and text with the Preview/Source toggle.
+    const modeChanged = !!doc?.mode && doc.mode !== (showsImage(active, mdPreview) ? "image" : "text");
     if (!doc) void load(active);
-    else if (doc.loadedTick < now && (json || isLive(active)) && doc.state !== "loading") {
+    else if (((doc.loadedTick < now && (json || isLive(active))) || modeChanged) && doc.state !== "loading") {
       doc.loadedTick = now;
       void load(active, doc);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, active?.spec, tick, settingsSaved]);
+  }, [active?.id, active?.spec, tick, settingsSaved, mdPreview]);
 
   // Attach the active tab's models to the right editor.
   useEffect(() => {
@@ -310,7 +345,7 @@ export function EditorArea() {
     if (prev && prevTab !== active?.id) {
       prev.viewState = prev.original ? diffEditor.current?.saveViewState() : codeEditor.current?.saveViewState();
     }
-    if (!active || !activeDoc || activeDoc.state !== "ready") return;
+    if (!active || !activeDoc || activeDoc.state !== "ready" || activeDoc.mode === "image") return;
     const isDiff = active.spec.type === "diff";
     if (shown.current !== active.id || (isDiff ? diffEditor.current?.getModel()?.modified !== activeDoc.modified : codeEditor.current?.getModel() !== activeDoc.modified)) {
       if (isDiff) {
@@ -343,10 +378,27 @@ export function EditorArea() {
   const ready = activeDoc?.state === "ready";
   const isMarkdown = active?.spec.type === "file" && languageFor(active.spec.path) === "markdown";
   const showPreview = isMarkdown && mdPreview && ready;
+  const kind = active && (active.spec.type === "file" || active.spec.type === "diff") ? viewKind(active.spec.path) : "text";
+  const isHtml = active?.spec.type === "file" && kind === "html";
+  const showHtml = isHtml && mdPreview && ready;
+  const showImage = ready && activeDoc?.mode === "image";
+  const isSvg = kind === "image" && /\.svg$/i.test(active!.spec.path);
+  /** Shown rendered rather than in the editor. */
+  const rendered = showPreview || showHtml || showImage;
+  const previewToggle = (
+    <div className="segmented small">
+      <button className={mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: true })}>
+        Preview
+      </button>
+      <button className={!mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: false })}>
+        Source
+      </button>
+    </div>
+  );
 
   // Blame: loaded for the active file view when on (again after the file reloads), shown in the line-number margin.
   useEffect(() => {
-    const doc = blameOn && active?.spec.type === "file" && activeDoc?.state === "ready" && !showPreview ? activeDoc : null;
+    const doc = blameOn && active?.spec.type === "file" && activeDoc?.state === "ready" && !rendered ? activeDoc : null;
     if (doc && active && !doc.blame?.loading && (!doc.blame || doc.blame.tick < doc.loadedTick)) void loadBlame(active, doc);
     const data = doc?.blame?.data ?? null;
     const lines = doc?.modified?.getLineCount() ?? 0;
@@ -424,22 +476,15 @@ export function EditorArea() {
             {spec.type === "diff" && spec.origPath && spec.origPath !== spec.path ? `${spec.origPath} → ` : ""}
             {spec.path}
           </span>
-          {isMarkdown && (
+          {spec.type === "file" && (isMarkdown || isHtml || isSvg) && (
             <>
               <span className="spacer" />
-              <div className="segmented small">
-                <button className={mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: true })}>
-                  Preview
-                </button>
-                <button className={!mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: false })}>
-                  Source
-                </button>
-              </div>
+              {previewToggle}
             </>
           )}
-          {spec.type === "file" && !showPreview && (
+          {spec.type === "file" && !rendered && !(kind === "image" && (mdPreview || !isSvg)) && (
             <>
-              {!isMarkdown && <span className="spacer" />}
+              {!(isMarkdown || isHtml || isSvg) && <span className="spacer" />}
               {blameOn && activeDoc?.blame?.loading && <span className="muted">Loading blame…</span>}
               {blameOn && activeDoc?.blame?.error && (
                 <span className="error-text ellipsis" title={activeDoc.blame.error}>
@@ -456,12 +501,35 @@ export function EditorArea() {
               </button>
             </>
           )}
-          {spec.type === "diff" && (
+          {spec.type === "diff" && showImage && (
             <>
               <span className="muted sides">
                 {spec.leftLabel} ↔ {spec.rightLabel}
               </span>
               <span className="spacer" />
+              {isSvg && previewToggle}
+              <div className="segmented small">
+                {(
+                  [
+                    ["sideBySide", "Side by side"],
+                    ["swipe", "Swipe"],
+                    ["onion", "Onion skin"],
+                  ] as const
+                ).map(([m, label]) => (
+                  <button key={m} className={imageDiff === m ? "on" : ""} onClick={() => updateSettings({ imageDiff: m })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {spec.type === "diff" && !showImage && (
+            <>
+              <span className="muted sides">
+                {spec.leftLabel} ↔ {spec.rightLabel}
+              </span>
+              <span className="spacer" />
+              {isSvg && previewToggle}
               <button className="icon-button" title="Previous change (Shift+F7)" onClick={() => editorCommands.goToDiff("previous")}>
                 ↑
               </button>
@@ -487,10 +555,18 @@ export function EditorArea() {
         </div>
       )}
       <div className="editor-stack">
-        <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready ? "visible" : "hidden" }} />
-        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !isSettings && ready && !showPreview ? "visible" : "hidden" }} />
+        <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "visible" : "hidden" }} />
+        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !isSettings && ready && !rendered ? "visible" : "hidden" }} />
         {isSettings && <SettingsPage />}
         {showPreview && active && activeDoc?.modified && <MarkdownPreview tab={active} text={activeDoc.modified.getValue()} />}
+        {showHtml && active && activeDoc?.modified && <HtmlPreview tab={active} text={activeDoc.modified.getValue()} />}
+        {showImage && spec && activeDoc?.images && (
+          <ImageView
+            key={`${active!.id}|${activeDoc.images.map((i) => (i.kind === "image" ? i.url : i.kind)).join("|")}`}
+            sides={spec.type === "diff" ? [{ label: spec.leftLabel, source: activeDoc.images[0] }, { label: spec.rightLabel, source: activeDoc.images[1] }] : [{ label: active!.title, source: activeDoc.images[0] }]}
+            mode={imageDiff}
+          />
+        )}
         {!active && (
           <div className="editor-empty">
             <p>Select a changed file, a commit file or a file in Explorer.</p>

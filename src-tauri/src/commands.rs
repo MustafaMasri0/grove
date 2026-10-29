@@ -309,6 +309,10 @@ pub struct Automation {
     file_history: Option<String>,
     blame: Option<String>,
     history_search: Option<String>,
+    open_rev_file: Option<String>,
+    open_commit_file: Option<String>,
+    image_zoom: Option<String>,
+    preview_link: Option<u32>,
 }
 
 /// Test hooks, so memory and screens can be checked without driving the window:
@@ -326,6 +330,9 @@ pub struct Automation {
 /// `WV_FILE_HISTORY=path` shows that file's history and opens its newest change,
 /// `WV_BLAME=1` turns on blame in file views (`click:<line>` then clicks that line's margin), and `WV_HISTORY_SEARCH=text` types
 /// that into the History search box.
+/// `WV_OPEN_REV_FILE=<rev>:<path>` opens a file at a revision, `WV_OPEN_COMMIT_FILE=path` opens
+/// that file's diff in the commit `WV_SHOW_HISTORY` selected, `WV_IMAGE_ZOOM=in|out|fit|<scale>`
+/// zooms the image view, and `WV_PREVIEW_LINK=n` follows the n-th link of an HTML preview.
 #[tauri::command]
 pub fn automation() -> Automation {
     Automation {
@@ -340,6 +347,10 @@ pub fn automation() -> Automation {
         file_history: std::env::var("WV_FILE_HISTORY").ok(),
         blame: std::env::var("WV_BLAME").ok(),
         history_search: std::env::var("WV_HISTORY_SEARCH").ok(),
+        open_rev_file: std::env::var("WV_OPEN_REV_FILE").ok(),
+        open_commit_file: std::env::var("WV_OPEN_COMMIT_FILE").ok(),
+        image_zoom: std::env::var("WV_IMAGE_ZOOM").ok(),
+        preview_link: std::env::var("WV_PREVIEW_LINK").ok().and_then(|v| v.parse().ok()),
     }
 }
 
@@ -353,25 +364,28 @@ pub enum ImageSource {
 }
 
 /// Sizes and URLs of image sources (both sides of a diff), checked side by side; nothing is read yet.
+/// Each URL carries the file's version, so it changes exactly when the file does.
 #[tauri::command]
 pub async fn image_sources(state: State<'_, AppState>, repo: String, cwd: String, sources: Vec<Source>) -> Res<Vec<ImageSource>> {
     let app = state.inner().clone();
     blocking(move || {
         let h = app.hosts.host(&repo)?;
         let h: &dyn GitHost = &*h;
-        let sizes: Vec<Res<Option<u64>>> = std::thread::scope(|s| {
-            let handles: Vec<_> = sources.iter().map(|src| s.spawn(|| ops::source_size(h, &cwd, src))).collect();
+        let stats: Vec<Res<Option<ops::SourceStat>>> = std::thread::scope(|s| {
+            let handles: Vec<_> = sources.iter().map(|src| s.spawn(|| ops::source_stat(h, &cwd, src))).collect();
             handles.into_iter().map(|t| t.join().map_err(|_| "reader panicked".to_string())?).collect()
         });
+        // The version makes a new URL only when the file changed, so the view keeps its picture (and zoom) otherwise.
+        let url = |rev: Option<&str>, path: &str, version: &str| format!("{}?v={}", preview::file_url(&app.previews.token(&repo, &cwd, rev), path), version);
         sources
             .iter()
-            .zip(sizes)
-            .map(|(src, size)| {
-                Ok(match (size?, src) {
+            .zip(stats)
+            .map(|(src, stat)| {
+                Ok(match (stat?, src) {
                     (None, _) | (_, Source::Empty) => ImageSource::Missing,
-                    (Some(size), _) if size > ops::MAX_IMAGE_BYTES => ImageSource::TooLarge { size },
-                    (Some(size), Source::Rev { rev, path }) => ImageSource::Image { size, url: preview::file_url(&app.previews.token(&repo, &cwd, Some(rev)), path) },
-                    (Some(size), Source::Worktree { path }) => ImageSource::Image { size, url: preview::file_url(&app.previews.token(&repo, &cwd, None), path) },
+                    (Some(st), _) if st.size > ops::MAX_IMAGE_BYTES => ImageSource::TooLarge { size: st.size },
+                    (Some(st), Source::Rev { rev, path }) => ImageSource::Image { size: st.size, url: url(Some(rev), path, &st.version) },
+                    (Some(st), Source::Worktree { path }) => ImageSource::Image { size: st.size, url: url(None, path, &st.version) },
                 })
             })
             .collect()

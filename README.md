@@ -65,8 +65,16 @@ paste a path.
   by message, author, email or SHA prefix.
 - **File history** follows renames. **Blame** shows each line's last commit in
   the margin. Click one to open that commit.
-- **Markdown** files open rendered, with working links between files. Images
-  and HTML files get a preview.
+- **Markdown** files open rendered, with working links between files.
+- **Images** (png, jpg, gif, webp, svg, ico, bmp, avif) open as pictures,
+  fitted to the window, over a checkerboard where they are transparent, with
+  their pixel and file size. Ctrl+wheel and Ctrl+= / Ctrl+- / Ctrl+0 zoom. A
+  changed image compares its before and after side by side, by swiping or as an
+  onion skin. Files over 32 MB or 64 megapixels are not shown.
+- **HTML** files open rendered (Preview/Source, like Markdown) in a sandboxed
+  frame: no scripts, no network and no access to the app. Relative images and
+  stylesheets load from the repository at the same revision, and links work
+  like Markdown links.
 - **Context menus** on files, folders, tabs, commits and the top-bar lists:
   copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in
   File Explorer, open a commit on GitHub, and more.
@@ -133,7 +141,10 @@ On Windows, `cargo test -p wv-core` runs the core tests against Windows git.
 - `crates/wv-helper`: a small Linux binary started once per distro with
   `wsl.exe -d <distro>`. It runs git, reads files and watches worktrees inside
   WSL, and talks JSON lines over stdin/stdout.
-- `src-tauri`: the Tauri 2 shell and commands.
+- `src-tauri`: the Tauri 2 shell and commands, and the `wvfile:` URL scheme
+  (`http://wvfile.localhost/`) that image views and HTML previews read
+  repository files from: images, stylesheets and fonts only, read-only, under a
+  random token per repository, worktree and revision, never cached.
 - `src`: the React UI. Monaco is bundled locally, with only the editor worker.
 
 ### Test hooks
@@ -146,7 +157,10 @@ own settings: `WV_CONFIG_DIR` (settings folder), `WV_TITLE` (window title),
 `WV_OPEN_SETTINGS=1|settings.json|<search>`, `WV_SETTINGS_PATCH=<json>`,
 `WV_CONTEXT_MENU=<place>[:key][>Label]` (e.g. `WV_CONTEXT_MENU="tab>Close others"`),
 `WV_FILE_HISTORY=path`, `WV_BLAME=1|click:<line>` and
-`WV_HISTORY_SEARCH=text`. Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
+`WV_HISTORY_SEARCH=text`, `WV_OPEN_REV_FILE=<rev>:<path>`,
+`WV_OPEN_COMMIT_FILE=path` (a file of the commit `WV_SHOW_HISTORY` selected),
+`WV_IMAGE_ZOOM=in|out|fit|<scale>` and `WV_PREVIEW_LINK=n` (follows an HTML
+preview's n-th link). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
 its own WebView2 processes. `scripts/test-run.ps1 -Repo <path>` starts such an
 instance, and `scripts/measure-memory.ps1 -Proc <name>` sums its memory use.
 

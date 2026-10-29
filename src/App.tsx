@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { CommitPane } from "./components/CommitPane";
 import { ContextMenuHost, isKeyboardEcho, keepMenusOnBlur } from "./components/ContextMenu";
 import { EditorArea, editorCommands } from "./components/EditorArea";
+import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
 import { TopBar } from "./components/TopBar";
@@ -43,9 +44,10 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && !e.shiftKey && tabs[key]) s.setLeftTab(tabs[key]);
   else if (ctrl && !e.shiftKey && key === ",") s.openSettings();
   else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) void s.refresh();
-  else if (ctrl && (key === "=" || key === "+")) stepZoom(1);
-  else if (ctrl && key === "-") stepZoom(-1);
-  else if (ctrl && key === "0") setZoom(1);
+  // While an image is shown these zoom the image, not the window.
+  else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);
+  else if (ctrl && key === "-") imageCommands.active ? imageCommands.zoom(-1) : stepZoom(-1);
+  else if (ctrl && key === "0") imageCommands.active ? imageCommands.zoom(0) : setZoom(1);
   // Browser shortcuts that make no sense here (print, reload, save page, find bar).
   else if (key === "F3" || (ctrl && (key === "s" || key === "u"))) {
     /* swallow */
@@ -197,6 +199,17 @@ async function runAutomation() {
   if (auto.leftTab) useStore.getState().setLeftTab(auto.leftTab);
   const { cwd } = useStore.getState();
   if (auto.openFile && cwd) useStore.getState().openTab(fileTab(cwd, auto.openFile, null), true);
+  if (auto.openRevFile && cwd) {
+    const at = auto.openRevFile.indexOf(":");
+    useStore.getState().openTab(fileTab(cwd, auto.openRevFile.slice(at + 1), auto.openRevFile.slice(0, at)), true);
+  }
+  if (auto.openCommitFile) {
+    // A file of the commit WV_SHOW_HISTORY selected, as clicking it in the commit pane would.
+    const c = useStore.getState().selectedCommit;
+    const f = c?.files.find((f) => f.path === auto.openCommitFile);
+    if (c && f) useStore.getState().openTab(commitFileTab(f, c.detail, c.parent), true);
+    else console.error(`WV_OPEN_COMMIT_FILE: ${auto.openCommitFile} is not in the selected commit`);
+  }
   if (auto.openSettings) {
     useStore.getState().openSettings();
     if (auto.openSettings === "settings.json") await useStore.getState().openSettingsFile();
@@ -231,6 +244,8 @@ async function runAutomation() {
     }
   }
   if (auto.blame?.startsWith("click:")) await clickBlameForTest(Number(auto.blame.slice(6)));
+  if (auto.imageZoom) await zoomImageForTest(auto.imageZoom);
+  if (auto.previewLink !== null) await followPreviewLinkForTest(auto.previewLink);
   if (auto.contextMenu) await openMenuForTest(auto.contextMenu);
 }
 
@@ -249,6 +264,29 @@ async function clickBlameForTest(line: number) {
     await new Promise((r) => setTimeout(r, 100));
   }
   console.error(`WV_BLAME: no blamed line ${line}`);
+}
+
+/** WV_IMAGE_ZOOM=in|out|fit|<scale>: once an image view shows, zooms it as Ctrl+= / Ctrl+- / Ctrl+0 would. */
+async function zoomImageForTest(z: string) {
+  if (!(await waitFor(".image-view img"))) return console.error("WV_IMAGE_ZOOM: no image shown");
+  await new Promise((r) => setTimeout(r, 500));
+  if (z === "in" || z === "out" || z === "fit") imageCommands.zoom(z === "in" ? 1 : z === "out" ? -1 : 0);
+  else imageCommands.set(Number(z));
+}
+
+/**
+ * WV_PREVIEW_LINK=n: once an HTML preview shows, follows its n-th link (from 0) the way a
+ * click does: the frame navigates to the link's URL. The page inside cannot be reached
+ * from here (it has its own origin), so the link is read from the page the app gave it.
+ */
+async function followPreviewLinkForTest(n: number) {
+  const frame = await waitFor<HTMLIFrameElement>("iframe.html-preview");
+  if (!frame) return console.error("WV_PREVIEW_LINK: no HTML preview");
+  await new Promise((r) => setTimeout(r, 1500));
+  const links = [...new DOMParser().parseFromString(frame.srcdoc, "text/html").querySelectorAll("a[href*='/~link?']")];
+  const href = links[n]?.getAttribute("href");
+  if (!href) return console.error(`WV_PREVIEW_LINK: the page has ${links.length} links`);
+  frame.contentWindow!.location.href = href;
 }
 
 async function waitFor<T extends Element>(sel: string): Promise<T | null> {

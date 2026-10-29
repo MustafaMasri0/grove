@@ -317,16 +317,39 @@ pub fn read_bytes_max(h: &dyn GitHost, cwd: &str, source: &Source, max: u64) -> 
 
 /// A source's size in bytes without reading it; None when it does not exist (or is [`Source::Empty`]).
 pub fn source_size(h: &dyn GitHost, cwd: &str, source: &Source) -> Result<Option<u64>, String> {
+    Ok(source_stat(h, cwd, source)?.map(|s| s.size))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceStat {
+    pub size: u64,
+    /// Changes when the content does: the blob id at a revision, size and modification time on disk.
+    pub version: String,
+}
+
+/// Size and version of a source without reading it; None when it does not exist (or is [`Source::Empty`]).
+pub fn source_stat(h: &dyn GitHost, cwd: &str, source: &Source) -> Result<Option<SourceStat>, String> {
     match source {
         Source::Empty => Ok(None),
         Source::Rev { rev, path } => {
-            let out = h.git(cwd, &args(&["cat-file", "-s", &format!("{rev}:{path}")]), None)?;
-            Ok((out.code == 0).then(|| String::from_utf8_lossy(&out.stdout).trim().parse().ok()).flatten())
+            let object = format!("{rev}:{path}");
+            let out = h.git(cwd, &args(&["rev-parse", "--verify", "--quiet", &object]), None)?;
+            if out.code != 0 {
+                return Ok(None);
+            }
+            let version = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let size = h.git(cwd, &args(&["cat-file", "-s", &version]), None)?;
+            let size = (size.code == 0).then(|| String::from_utf8_lossy(&size.stdout).trim().parse().ok()).flatten();
+            Ok(size.map(|size| SourceStat { size, version }))
         }
         Source::Worktree { path } => {
             let full = join(cwd, path);
             match h.read_file(&full, 0) {
-                Ok(f) => Ok(Some(f.size)),
+                Ok(f) => {
+                    let mtime = h.mtime(&full)?.unwrap_or(0);
+                    Ok(Some(SourceStat { size: f.size, version: format!("{}-{mtime}", f.size) }))
+                }
                 Err(e) => match h.mtime(&full)? {
                     None => Ok(None),
                     Some(_) => Err(e),

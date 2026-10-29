@@ -228,6 +228,31 @@ fn image_sources_report_size_missing_and_too_large() {
     assert_eq!(ops::read_bytes_max(&host, r.path_str(), &gone, 9999).unwrap(), None);
 }
 
+#[test]
+fn image_versions_change_only_when_the_file_does() {
+    let r = temp_repo();
+    std::fs::write(r.path.join("p.png"), [1u8; 64]).unwrap();
+    git(&r.path, &["add", "p.png"]);
+    git(&r.path, &["commit", "-q", "-m", "one"]);
+    let host = h();
+    let wt = Source::Worktree { path: "p.png".into() };
+    let head = Source::Rev { rev: "HEAD".into(), path: "p.png".into() };
+    let stat = |s: &Source| ops::source_stat(&host, r.path_str(), s).unwrap().unwrap();
+    let (w1, h1) = (stat(&wt), stat(&head));
+    assert_eq!((w1.size, h1.size), (64, 64));
+    assert_eq!(stat(&wt), w1);
+    assert_eq!(stat(&head), h1);
+
+    // Same size, new content: a new version on disk, and at HEAD once committed.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    std::fs::write(r.path.join("p.png"), [2u8; 64]).unwrap();
+    assert_ne!(stat(&wt).version, w1.version);
+    assert_eq!(stat(&head), h1);
+    git(&r.path, &["commit", "-q", "-am", "two"]);
+    assert_ne!(stat(&head).version, h1.version);
+    assert_eq!(ops::source_stat(&host, r.path_str(), &Source::Rev { rev: "HEAD".into(), path: "nope.png".into() }).unwrap(), None);
+}
+
 /// main: a.txt "first", "edit", then moved to `s/b c.txt` ("move it"), then an unrelated "other".
 /// Commits by "Ana Author <ana@example.com>" except "edit", by T.
 fn renamed_repo() -> TempRepo {
