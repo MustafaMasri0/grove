@@ -1850,18 +1850,16 @@ kbd {
   background: var(--accent);
 }
 
+/* Shown only while a worktree's files are changing. */
 .ov-dot {
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--k-ignored);
-  opacity: 0.6;
+  background: var(--k-added);
 }
 
 .ov-dot.live {
-  background: var(--k-added);
-  opacity: 1;
   animation: ov-pulse 1.4s ease-in-out infinite;
 }
 
@@ -1985,7 +1983,7 @@ kbd {
   max-width: 100%;
 }
 
-/* A worktree that changes the file; a dot when its change is not committed yet. */
+/* A worktree that changes the file; "committed" when its change already is. */
 .ov-who-chip {
   display: inline-flex;
   align-items: center;
@@ -1997,12 +1995,8 @@ kbd {
   background: var(--bg-active);
 }
 
-.ov-who-chip.uncommitted::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--k-modified);
+.ov-who-state {
+  color: var(--muted);
 }
 
 .ov-more {

@@ -83,8 +83,9 @@ export function WorktreesPage() {
             <section className="ov-section">
               <h2>Possible conflicts</h2>
               <p className="muted ov-hint">
-                Files that more than one worktree changes, committed since {base ?? "the base"} or <span className="ov-who-chip uncommitted">not committed yet</span>.
-                Committed files count only when the versions differ and neither branch already contains the other.
+                Files that more than one worktree changes. Each worktree's change is not committed yet, unless it is marked{" "}
+                <span className="ov-who-state">committed</span> (on its branch, since {base ?? "the base"}). Committed files count only when the
+                versions differ and neither branch already contains the other.
               </p>
               {shared.length === 0 ? (
                 <div className="muted ov-none">No two worktrees change the same file.</div>
@@ -145,7 +146,7 @@ function WorktreeCard(props: {
   return (
     <button className={`ov-card${current ? " current" : ""}`} onClick={() => void selectWorktree(w.path)} title={`Show ${info?.displayPath ?? w.path}`}>
       <div className="ov-card-title">
-        <span className={`ov-dot${live ? " live" : ""}`} title={live ? "Files changing now" : lastChange ? "Quiet" : "No file changes seen this session"} />
+        {live && <span className="ov-dot live" title="Files changing now" />}
         <span className="ov-name">{name(w.path)}</span>
         {current && <span className="ov-chip">current</span>}
       </div>
@@ -207,8 +208,9 @@ function SharedFileRow({ f, name }: { f: SharedFile; name: (path: string) => str
       </span>
       <span className="ov-who">
         {f.worktrees.map((w) => (
-          <span key={w.path} className={`ov-who-chip${w.uncommitted ? " uncommitted" : ""}`} title={`${name(w.path)}: ${w.uncommitted ? "not committed yet" : "committed"}`}>
+          <span key={w.path} className="ov-who-chip" title={`${name(w.path)}: ${w.uncommitted ? "not committed yet" : `committed, not on the base yet`}`}>
             {name(w.path)}
+            {!w.uncommitted && <span className="ov-who-state">committed</span>}
           </span>
         ))}
       </span>
