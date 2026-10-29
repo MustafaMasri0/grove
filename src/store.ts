@@ -20,7 +20,8 @@ import { ACTIVITY_LIMIT, activityBetween, type ActivityEvent } from "./lib/workt
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
-import { isAppTab } from "./tabs";
+import { fileTab, isAppTab, revisionTab, uncommittedTab } from "./tabs";
+import { shortSha } from "./lib/format";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
@@ -184,6 +185,13 @@ interface State {
   loadOverview(): Promise<void>;
   /** A watcher event: `files` when the worktree's own files changed, not only git state it shares. */
   noteChange(cwd: string, files: boolean): void;
+  /**
+   * Switches to worktree `cwd` and opens its change to `path`, as the Changes list would: the
+   * uncommitted diff, else the branch-vs-base diff, else the file itself.
+   */
+  openWorktreeChange(cwd: string, path: string): Promise<void>;
+  /** Switches to worktree `cwd` and shows commit `sha` in History. */
+  openWorktreeCommit(cwd: string, sha: string): Promise<void>;
 }
 
 let saveTimer: number | undefined;
@@ -756,6 +764,31 @@ export const useStore = create<State>()((set, get) => {
         overviewRun = null;
       });
       return overviewRun;
+    },
+
+    async openWorktreeChange(cwd, path) {
+      if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
+      const a = at();
+      if (a?.cwd !== cwd) return;
+      const entry = get().status?.entries.find((e) => e.kind !== "ignored" && (e.path === path || e.origPath === path));
+      if (entry) return get().openTab(uncommittedTab(cwd, entry), true);
+      const { base, worktrees } = get();
+      if (base) {
+        try {
+          const d = await api.branchChanges(a, base, "HEAD");
+          const f = d.files.find((f) => f.path === path || f.origPath === path);
+          const branch = worktrees.find((w) => w.path === cwd)?.branch ?? "HEAD";
+          if (f) return get().openTab(revisionTab(f, d.mergeBase, "HEAD", `${base} (${shortSha(d.mergeBase)})`, branch), true);
+        } catch {
+          // Open the file itself instead.
+        }
+      }
+      get().openTab(fileTab(cwd, path, null), true);
+    },
+
+    async openWorktreeCommit(cwd, sha) {
+      if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
+      if (get().cwd === cwd) await get().showCommit(sha);
     },
 
     noteChange(cwd, files) {

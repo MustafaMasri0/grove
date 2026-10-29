@@ -22,18 +22,25 @@ export interface ActivityEvent {
   path: string;
   kind: "commit" | "moved" | "branch" | "editing" | "added" | "removed";
   text: string;
+  /** Files that started changing ("editing"). */
+  files?: string[];
+  /** The commit HEAD is now at ("commit", "moved"). */
+  sha?: string;
 }
 
-function list(paths: string[], max = 3): string {
-  const shown = paths.slice(0, max).map((p) => p.split("/").pop() ?? p);
-  return paths.length > max ? `${shown.join(", ")} and ${paths.length - max} more` : shown.join(", ");
+/** Of a list of files, the ones shown by name; the rest are counted. */
+export const LISTED_FILES = 3;
+
+function list(paths: string[]): string {
+  const shown = paths.slice(0, LISTED_FILES).map((p) => p.split("/").pop() ?? p);
+  return paths.length > LISTED_FILES ? `${shown.join(", ")} and ${paths.length - LISTED_FILES} more` : shown.join(", ");
 }
 
 /** What happened between two overviews of the same repository, in worktree order. */
 export function activityBetween(prev: readonly WorktreeSummary[], next: readonly WorktreeSummary[], at: number): ActivityEvent[] {
   const before = new Map(prev.map((w) => [w.path, w]));
   const events: ActivityEvent[] = [];
-  const push = (path: string, kind: ActivityEvent["kind"], text: string) => events.push({ at, path, kind, text });
+  const push = (path: string, kind: ActivityEvent["kind"], text: string, more: Partial<ActivityEvent> = {}) => events.push({ at, path, kind, text, ...more });
   for (const w of next) {
     const p = before.get(w.path);
     if (!p) {
@@ -43,12 +50,12 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
     const c = w.lastCommit;
     if (p.branch !== w.branch) push(w.path, "branch", `switched to ${w.branch ?? `a detached HEAD at ${shortSha(w.head ?? "")}`}`);
     else if (p.head !== w.head && c) {
-      if (p.head && c.parents.includes(p.head)) push(w.path, "commit", `committed “${c.subject}”`);
-      else push(w.path, "moved", `now at ${shortSha(c.sha)} “${c.subject}”`);
+      if (p.head && c.parents.includes(p.head)) push(w.path, "commit", `committed “${c.subject}”`, { sha: c.sha });
+      else push(w.path, "moved", `now at ${shortSha(c.sha)} “${c.subject}”`, { sha: c.sha });
     }
     const wasDirty = new Set(p.uncommitted.map((f) => f.path));
     const started = w.uncommitted.map((f) => f.path).filter((f) => !wasDirty.has(f));
-    if (started.length) push(w.path, "editing", `changed ${list(started)}`);
+    if (started.length) push(w.path, "editing", `changed ${list(started)}`, { files: started });
   }
   const still = new Set(next.map((w) => w.path));
   for (const p of prev) if (!still.has(p.path)) push(p.path, "removed", "worktree removed");

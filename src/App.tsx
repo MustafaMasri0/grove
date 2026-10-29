@@ -246,9 +246,29 @@ async function runAutomation() {
   if (auto.imageZoom) await zoomImageForTest(auto.imageZoom);
   if (auto.previewLink !== null) await followPreviewLinkForTest(auto.previewLink);
   if (auto.reveal) useStore.getState().revealInExplorer(auto.reveal);
-  if (auto.worktrees) useStore.getState().openWorktrees();
+  if (auto.worktrees) await worktreesForTest(auto.worktrees);
   if (auto.listKeys) await pressListKeysForTest(auto.listKeys.split(","));
   if (auto.contextMenu) await openMenuForTest(auto.contextMenu);
+}
+
+/**
+ * WV_WORKTREES=1|chip:<n>|feed:<n>: opens the Worktrees overview, then clicks the n-th worktree chip of
+ * the shared files, or the n-th link in Activity (waiting up to a minute for one to appear).
+ */
+async function worktreesForTest(spec: string) {
+  useStore.getState().openWorktrees();
+  const [what, n] = spec.split(":");
+  if (what !== "chip" && what !== "feed") return;
+  const sel = what === "chip" ? ".ov-shared .ov-who-chip" : ".ov-feed button.link";
+  for (let i = 0; i < 600; i++) {
+    const el = document.querySelectorAll<HTMLElement>(sel)[Number(n)];
+    if (el) {
+      await new Promise((r) => setTimeout(r, 500));
+      return el.click();
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  console.error(`WV_WORKTREES: nothing matches ${sel} #${n}`);
 }
 
 /** WV_LIST_KEYS=ArrowDown,ArrowLeft,Ctrl+3,…: presses the keys in the left pane's list, as typing them there would. */

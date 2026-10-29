@@ -184,7 +184,8 @@ own settings: `WV_CONFIG_DIR` (settings folder), `WV_TITLE` (window title),
 `WV_IMAGE_ZOOM=in|out|fit|<scale>`, `WV_PREVIEW_LINK=n` (follows an HTML
 preview's n-th link), `WV_REVEAL=path` (Reveal in Explorer),
 `WV_LIST_KEYS=ArrowDown,ArrowLeft,…` (keys pressed in the left pane's list) and
-`WV_WORKTREES=1` (opens the Worktrees overview). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
+`WV_WORKTREES=1|chip:<n>|feed:<n>` (opens the Worktrees overview, then clicks
+the n-th worktree of a shared file or the n-th Activity link). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
 its own WebView2 processes. `scripts/test-run.ps1 -Repo <path>` starts such an
 instance, and `scripts/measure-memory.ps1 -Proc <name>` sums its memory use.
 `scripts/make-worktrees-demo.sh <folder>` builds a throwaway repository with

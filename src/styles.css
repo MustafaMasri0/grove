@@ -2005,6 +2005,29 @@ kbd {
   background: var(--bg-active);
 }
 
+button.ov-who-chip {
+  font: inherit;
+  font-size: calc(var(--ui-font-size) - 1px);
+  color: var(--fg);
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+button.ov-who-chip:hover {
+  color: var(--fg-strong);
+  border-color: var(--accent);
+}
+
+button.ov-who-chip:focus-visible {
+  outline: 1px solid var(--focus);
+}
+
+.ov-event-text button.link {
+  white-space: normal;
+  text-align: left;
+  font: inherit;
+}
+
 .ov-who-state {
   color: var(--muted);
 }

@@ -263,7 +263,7 @@ export const api = {
       previewLink: number | null;
       reveal: string | null;
       listKeys: string | null;
-      worktrees: boolean;
+      worktrees: string | null;
     }>("automation"),
 };
 

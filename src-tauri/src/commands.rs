@@ -317,7 +317,7 @@ pub struct Automation {
     preview_link: Option<u32>,
     reveal: Option<String>,
     list_keys: Option<String>,
-    worktrees: bool,
+    worktrees: Option<String>,
 }
 
 /// Test hooks, so memory and screens can be checked without driving the window:
@@ -340,7 +340,8 @@ pub struct Automation {
 /// zooms the image view, and `WV_PREVIEW_LINK=n` follows the n-th link of an HTML preview.
 /// `WV_REVEAL=path` reveals a file in Explorer as "Reveal in Explorer" does, and
 /// `WV_LIST_KEYS=ArrowDown,ArrowLeft,…` then presses those keys in the left pane's list.
-/// `WV_WORKTREES=1` opens the Worktrees overview.
+/// `WV_WORKTREES=1` opens the Worktrees overview (`chip:<n>` then clicks the n-th worktree of a shared
+/// file, `feed:<n>` the n-th link in Activity once there is one).
 #[tauri::command]
 pub fn automation() -> Automation {
     Automation {
@@ -361,7 +362,7 @@ pub fn automation() -> Automation {
         preview_link: std::env::var("WV_PREVIEW_LINK").ok().and_then(|v| v.parse().ok()),
         reveal: std::env::var("WV_REVEAL").ok(),
         list_keys: std::env::var("WV_LIST_KEYS").ok(),
-        worktrees: std::env::var_os("WV_WORKTREES").is_some(),
+        worktrees: std::env::var("WV_WORKTREES").ok(),
     }
 }
 

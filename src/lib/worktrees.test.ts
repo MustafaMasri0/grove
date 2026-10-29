@@ -35,12 +35,12 @@ describe("activityBetween", () => {
 
   it("reports a commit on top of the old HEAD", () => {
     const next = wt("a", { head: "h2", lastCommit: commit("h2", ["h1"], "Fix parser") });
-    expect(activityBetween([wt("a")], [next], 5)).toEqual([{ at: 5, path: "a", kind: "commit", text: "committed “Fix parser”" }]);
+    expect(activityBetween([wt("a")], [next], 5)).toEqual([{ at: 5, path: "a", kind: "commit", text: "committed “Fix parser”", sha: "h2" }]);
   });
 
   it("reports other HEAD moves (reset, rebase, pull) as a move", () => {
     const next = wt("a", { head: "h9", lastCommit: commit("h9000000", ["h8"], "Other") });
-    expect(activityBetween([wt("a")], [next], 0)[0]).toMatchObject({ kind: "moved", text: "now at h900000 “Other”" });
+    expect(activityBetween([wt("a")], [next], 0)[0]).toMatchObject({ kind: "moved", text: "now at h900000 “Other”", sha: "h9000000" });
   });
 
   it("reports a branch switch rather than the HEAD move it causes", () => {
@@ -51,7 +51,7 @@ describe("activityBetween", () => {
   it("lists files that started changing, not the ones already changed", () => {
     const prev = wt("a", { uncommitted: dirty("src/old.ts") });
     const next = wt("a", { uncommitted: dirty("src/old.ts", "src/a.ts", "b.ts", "c.ts", "d.ts") });
-    expect(activityBetween([prev], [next], 0)).toEqual([{ at: 0, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more" }]);
+    expect(activityBetween([prev], [next], 0)).toEqual([{ at: 0, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: ["src/a.ts", "b.ts", "c.ts", "d.ts"] }]);
   });
 
   it("reports worktrees added and removed", () => {
