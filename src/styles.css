@@ -1950,50 +1950,63 @@ kbd {
   padding: 6px 0;
 }
 
-.ov-overlap {
-  border-bottom: 1px solid var(--border);
-}
-
-.ov-overlap-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 0;
-  font: inherit;
-  text-align: left;
-  color: var(--fg);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.ov-chevron {
-  width: 12px;
-  color: var(--muted);
-}
-
-.ov-overlap-files {
-  margin: 0 0 8px;
-  padding: 0 0 0 18px;
+.ov-shared-list {
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
-.ov-overlap-files li {
+/* Name and folder on the left, the worktrees on the right; the worktrees move under the name when both do not fit. */
+.ov-shared {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 12px;
-  padding: 2px 0;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
 }
 
-.ov-file {
-  font-family: Consolas, "Cascadia Mono", monospace;
+.ov-shared .file-row {
+  flex: 1 1 220px;
+  width: auto;
+  align-items: center;
+}
+
+.ov-shared .file-name {
   color: var(--fg-strong);
 }
 
-.ov-sides {
+.ov-who {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: 100%;
+}
+
+/* A worktree that changes the file; a dot when its change is not committed yet. */
+.ov-who-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border-radius: 8px;
+  white-space: nowrap;
   font-size: calc(var(--ui-font-size) - 1px);
-  color: var(--muted);
+  background: var(--bg-active);
+}
+
+.ov-who-chip.uncommitted::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-modified);
+}
+
+.ov-more {
+  margin-top: 6px;
 }
 
 .ov-feed {

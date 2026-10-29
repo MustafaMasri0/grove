@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WorktreeInfo, WorktreeSummary } from "../api";
 import { changeCountTitle } from "../lib/changes";
-import { isoToUnix, relativeTime } from "../lib/format";
-import { isActive, overlapsByWorktree, worktreeName, type ActivityEvent } from "../lib/worktrees";
+import { isoToUnix, relativeTime, splitPath } from "../lib/format";
+import { isActive, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
 import { useStore } from "../store";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { BranchIcon, SyncIcon } from "./icons";
 
 function useNow(ms: number) {
@@ -30,7 +31,8 @@ export function WorktreesPage() {
 
   const info = useMemo(() => new Map(worktrees.map((w) => [w.path, w])), [worktrees]);
   const name = (path: string) => worktreeName(info.get(path) ?? { path });
-  const overlaps = useMemo(() => overlapsByWorktree(overview?.overlaps ?? []), [overview]);
+  const shared = useMemo(() => (overview ? sharedFiles(overview.overlaps, overview.worktrees) : []), [overview]);
+  const [allShared, setAllShared] = useState(false);
   const active = (overview?.worktrees ?? []).filter((w) => isActive(lastChange[w.path], now)).length;
 
   if (!repo)
@@ -46,7 +48,6 @@ export function WorktreesPage() {
     setLoading(false);
   };
 
-  const conflicts = overview?.overlaps.length ?? 0;
   return (
     <div className="ov-page">
       <div className="ov-head">
@@ -55,7 +56,7 @@ export function WorktreesPage() {
           <div className="muted">
             {repo.name} · {base ? <>compared with <b>{base}</b></> : "no base branch"} · {overview?.worktrees.length ?? "…"} worktrees
             {active > 0 && <> · <span className="ov-live-text">{active} active now</span></>}
-            {conflicts > 0 && <> · <span className="ov-warn-text">{conflicts} possible conflict{conflicts === 1 ? "" : "s"}</span></>}
+            {shared.length > 0 && <> · <span className="ov-warn-text">{shared.length} shared file{shared.length === 1 ? "" : "s"}</span></>}
           </div>
         </div>
         <button className="ov-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh (F5)">
@@ -69,7 +70,7 @@ export function WorktreesPage() {
           <>
             <section className="ov-cards">
               {overview.worktrees.map((w) => (
-                <WorktreeCard key={w.path} w={w} info={info.get(w.path)} lastChange={lastChange[w.path]} now={now} overlaps={overlaps.get(w.path) ?? []} name={name} />
+                <WorktreeCard key={w.path} w={w} info={info.get(w.path)} lastChange={lastChange[w.path]} now={now} shared={shared.filter((f) => f.worktrees.some((x) => x.path === w.path))} name={name} />
               ))}
               {Object.entries(overview.errors).map(([path, error]) => (
                 <div key={path} className="ov-card ov-card-error">
@@ -82,13 +83,24 @@ export function WorktreesPage() {
             <section className="ov-section">
               <h2>Possible conflicts</h2>
               <p className="muted ov-hint">
-                Files that two worktrees both change, committed since {base ?? "the base"} or not committed yet. Committed files count only when the two
-                versions differ and neither branch already contains the other.
+                Files that more than one worktree changes, committed since {base ?? "the base"} or <span className="ov-who-chip uncommitted">not committed yet</span>.
+                Committed files count only when the versions differ and neither branch already contains the other.
               </p>
-              {overview.overlaps.length === 0 ? (
+              {shared.length === 0 ? (
                 <div className="muted ov-none">No two worktrees change the same file.</div>
               ) : (
-                overview.overlaps.map((o) => <OverlapRow key={`${o.a}|${o.b}`} a={o.a} b={o.b} files={o.files} name={name} summaries={overview.worktrees} />)
+                <>
+                  <ul className="ov-shared-list">
+                    {(allShared ? shared : shared.slice(0, SHOWN_FILES)).map((f) => (
+                      <SharedFileRow key={f.path} f={f} name={name} />
+                    ))}
+                  </ul>
+                  {shared.length > SHOWN_FILES && (
+                    <button className="link ov-more" onClick={() => setAllShared(!allShared)}>
+                      {allShared ? "Show fewer" : `Show all ${shared.length} files`}
+                    </button>
+                  )}
+                </>
               )}
             </section>
 
@@ -116,10 +128,11 @@ function WorktreeCard(props: {
   info: WorktreeInfo | undefined;
   lastChange: number | undefined;
   now: number;
-  overlaps: { other: string; files: string[] }[];
+  /** The shared files this worktree is one of. */
+  shared: SharedFile[];
   name: (path: string) => string;
 }) {
-  const { w, info, lastChange, now, overlaps, name } = props;
+  const { w, info, lastChange, now, shared, name } = props;
   const cwd = useStore((s) => s.cwd);
   const viewBranch = useStore((s) => s.viewBranch);
   const selectWorktree = useStore((s) => s.selectWorktree);
@@ -127,7 +140,7 @@ function WorktreeCard(props: {
   const live = isActive(lastChange, now);
   const current = w.path === cwd && !viewBranch;
   const n = w.uncommitted.length;
-  const shared = overlaps.reduce((sum, o) => sum + o.files.length, 0);
+  const others = [...new Set(shared.flatMap((f) => f.worktrees.map((x) => x.path)).filter((p) => p !== w.path))].map(name);
 
   return (
     <button className={`ov-card${current ? " current" : ""}`} onClick={() => void selectWorktree(w.path)} title={`Show ${info?.displayPath ?? w.path}`}>
@@ -170,9 +183,9 @@ function WorktreeCard(props: {
       )}
       <div className="ov-foot">
         <span className={live ? "ov-live-text" : "muted"}>{lastChange ? `files changed ${relativeTime(lastChange / 1000, now / 1000)}` : "no activity yet"}</span>
-        {shared > 0 && (
-          <span className="ov-warn-text" title={overlaps.map((o) => `${o.files.length} with ${name(o.other)}`).join("\n")}>
-            ⚠ {shared} shared file{shared === 1 ? "" : "s"}
+        {shared.length > 0 && (
+          <span className="ov-warn-text" title={`Also changed in ${others.join(", ")}`}>
+            ⚠ {shared.length} shared file{shared.length === 1 ? "" : "s"}
           </span>
         )}
       </div>
@@ -180,34 +193,26 @@ function WorktreeCard(props: {
   );
 }
 
-function OverlapRow(props: { a: string; b: string; files: string[]; name: (path: string) => string; summaries: WorktreeSummary[] }) {
-  const { a, b, files, name, summaries } = props;
-  const [open, setOpen] = useState(files.length <= 5);
-  const dirty = (path: string) => new Set(summaries.find((w) => w.path === path)?.uncommitted.flatMap((f) => [f.path, f.origPath ?? ""]) ?? []);
-  const [da, db] = [dirty(a), dirty(b)];
-  const how = (d: Set<string>, f: string) => (d.has(f) ? <span className="k-modified">uncommitted</span> : <span className="muted">committed</span>);
+/** At first, the conflicts list shows this many files. */
+const SHOWN_FILES = 12;
+
+function SharedFileRow({ f, name }: { f: SharedFile; name: (path: string) => string }) {
+  const { name: file, dir } = splitPath(f.path);
   return (
-    <div className="ov-overlap">
-      <button className="ov-overlap-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span className="ov-chevron">{open ? "▾" : "▸"}</span>
-        <b>{name(a)}</b> ↔ <b>{name(b)}</b>
-        <span className="muted">
-          · {files.length} file{files.length === 1 ? "" : "s"}
-        </span>
-      </button>
-      {open && (
-        <ul className="ov-overlap-files">
-          {files.map((f) => (
-            <li key={f}>
-              <span className="ov-file">{f}</span>
-              <span className="ov-sides">
-                {name(a)}: {how(da, f)} · {name(b)}: {how(db, f)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <li className="ov-shared">
+      <span className="file-row" title={f.path}>
+        <FileTypeIcon name={file} />
+        <span className="file-name">{file}</span>
+        <span className="file-dir">{dir}</span>
+      </span>
+      <span className="ov-who">
+        {f.worktrees.map((w) => (
+          <span key={w.path} className={`ov-who-chip${w.uncommitted ? " uncommitted" : ""}`} title={`${name(w.path)}: ${w.uncommitted ? "not committed yet" : "committed"}`}>
+            {name(w.path)}
+          </span>
+        ))}
+      </span>
+    </li>
   );
 }
 

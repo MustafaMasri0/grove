@@ -5,7 +5,7 @@ import { changeCountTitle } from "../lib/changes";
 import { branchItems, repoItems, worktreeItems } from "../lib/contextMenus";
 import { relativeTime, shortSha } from "../lib/format";
 import { windowsPath } from "../lib/hostPaths";
-import { isActive, worktreeName } from "../lib/worktrees";
+import { isActive, sharedFiles, worktreeName } from "../lib/worktrees";
 import { useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
 import { Dropdown, type DropdownItem } from "./Dropdown";
@@ -273,16 +273,16 @@ function ActionButton() {
   );
 }
 
-/** Opens the Worktrees overview; shows how many pairs of worktrees change the same files. */
+/** Opens the Worktrees overview; shows how many files more than one worktree changes. */
 function OverviewButton() {
   const openWorktrees = useStore((s) => s.openWorktrees);
-  const overlaps = useStore((s) => s.overview?.overlaps.length ?? 0);
+  const shared = useStore((s) => (s.overview ? sharedFiles(s.overview.overlaps, s.overview.worktrees).length : 0));
   const repo = useStore((s) => s.repo);
-  const title = `Worktrees overview (Ctrl+Shift+O)${overlaps ? ` · ${overlaps} possible conflict${overlaps === 1 ? "" : "s"}` : ""}`;
+  const title = `Worktrees overview (Ctrl+Shift+O)${shared ? ` · ${shared} file${shared === 1 ? "" : "s"} changed in more than one worktree` : ""}`;
   return (
     <button className="tb-button tb-settings tb-overview" title={title} aria-label={title} onClick={openWorktrees} disabled={!repo}>
       <OverviewIcon />
-      {overlaps > 0 && <span className="tb-warn">{overlaps}</span>}
+      {shared > 0 && <span className="tb-warn">{shared}</span>}
     </button>
   );
 }

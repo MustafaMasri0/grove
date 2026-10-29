@@ -55,13 +55,28 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
   return events;
 }
 
-/** For each worktree path, the other worktrees it shares files with. */
-export function overlapsByWorktree(overlaps: readonly Overlap[]): Map<string, { other: string; files: string[] }[]> {
-  const by = new Map<string, { other: string; files: string[] }[]>();
-  const add = (path: string, other: string, files: string[]) => by.set(path, [...(by.get(path) ?? []), { other, files }]);
+/** A file several worktrees change, and whether each one's change is still uncommitted. */
+export interface SharedFile {
+  path: string;
+  /** In the order of the overview's worktrees. */
+  worktrees: { path: string; uncommitted: boolean }[];
+}
+
+/** The overlaps by file instead of by pair: each file once, with every worktree it overlaps in. Sorted by path. */
+export function sharedFiles(overlaps: readonly Overlap[], worktrees: readonly WorktreeSummary[]): SharedFile[] {
+  const by = new Map<string, Set<string>>();
   for (const o of overlaps) {
-    add(o.a, o.b, o.files);
-    add(o.b, o.a, o.files);
+    for (const f of o.files) {
+      const set = by.get(f) ?? new Set<string>();
+      set.add(o.a).add(o.b);
+      by.set(f, set);
+    }
   }
-  return by;
+  const dirty = new Map(worktrees.map((w) => [w.path, new Set(w.uncommitted.flatMap((f) => (f.origPath ? [f.path, f.origPath] : [f.path])))]));
+  return [...by.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([path, set]) => ({
+      path,
+      worktrees: worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, uncommitted: dirty.get(w.path)!.has(path) })),
+    }));
 }

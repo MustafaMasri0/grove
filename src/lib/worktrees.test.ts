@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSummary, WorktreeSummary } from "../api";
-import { activityBetween, isActive, overlapsByWorktree, worktreeName } from "./worktrees";
+import { activityBetween, isActive, sharedFiles, worktreeName } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -71,18 +71,43 @@ describe("isActive", () => {
   });
 });
 
-describe("overlapsByWorktree", () => {
-  it("lists each overlap under both worktrees", () => {
-    const by = overlapsByWorktree([
-      { a: "x", b: "y", files: ["f"] },
-      { a: "x", b: "z", files: ["g", "h"] },
+describe("sharedFiles", () => {
+  it("lists each file once with every worktree it overlaps in, in worktree order", () => {
+    const worktrees = [wt("main", { uncommitted: dirty("gen.cc") }), wt("ios", { uncommitted: dirty("gen.cc") }), wt("fire", { committed: ["gen.cc", "api.ts"] }), wt("other")];
+    const files = sharedFiles(
+      [
+        { a: "main", b: "ios", files: ["gen.cc"] },
+        { a: "main", b: "fire", files: ["gen.cc"] },
+        { a: "ios", b: "fire", files: ["api.ts", "gen.cc"] },
+      ],
+      worktrees,
+    );
+    expect(files).toEqual([
+      {
+        path: "api.ts",
+        worktrees: [
+          { path: "ios", uncommitted: false },
+          { path: "fire", uncommitted: false },
+        ],
+      },
+      {
+        path: "gen.cc",
+        worktrees: [
+          { path: "main", uncommitted: true },
+          { path: "ios", uncommitted: true },
+          { path: "fire", uncommitted: false },
+        ],
+      },
     ]);
-    expect(by.get("x")).toEqual([
-      { other: "y", files: ["f"] },
-      { other: "z", files: ["g", "h"] },
-    ]);
-    expect(by.get("z")).toEqual([{ other: "x", files: ["g", "h"] }]);
-    expect(by.get("w")).toBeUndefined();
+  });
+
+  it("counts a rename's old name as uncommitted too", () => {
+    const a = wt("a", { uncommitted: [{ path: "new.ts", origPath: "old.ts", kind: "renamed" }] });
+    expect(sharedFiles([{ a: "a", b: "b", files: ["old.ts"] }], [a, wt("b")])[0].worktrees[0]).toEqual({ path: "a", uncommitted: true });
+  });
+
+  it("is empty without overlaps", () => {
+    expect(sharedFiles([], [wt("a")])).toEqual([]);
   });
 });
 
