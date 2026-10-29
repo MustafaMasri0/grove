@@ -16,7 +16,7 @@ import {
   type WorktreeInfo,
 } from "./api";
 import { uncommittedCount } from "./lib/changes";
-import { ACTIVITY_LIMIT, activityBetween, editsOf, type ActivityEvent } from "./lib/worktrees";
+import { activityBetween, addActivity, editsOf, type ActivityEvent } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
@@ -283,13 +283,13 @@ export const useStore = create<State>()((set, get) => {
       if (get().repo?.id !== repo.id) return;
       const prev = get().overview;
       const now = Date.now();
-      const events = [...(prev ? activityBetween(prev.worktrees, overview.worktrees, now) : []), ...editsOf(seen, overview.worktrees, now)].reverse();
+      const events = [...(prev ? activityBetween(prev.worktrees, overview.worktrees, now) : []), ...editsOf(seen, overview.worktrees, now)];
       const changeCounts = Object.fromEntries(overview.worktrees.map((w) => [w.path, w.uncommitted.length]));
       // The current worktree's own status may be newer than this overview.
       const { cwd, status, viewBranch } = get();
       const own = !viewBranch && cwd ? uncommittedCount(status) : null;
       if (cwd && own !== null) changeCounts[cwd] = own;
-      set((s) => ({ overview, overviewError: null, changeCounts, activity: [...events, ...s.activity].slice(0, ACTIVITY_LIMIT) }));
+      set((s) => ({ overview, overviewError: null, changeCounts, activity: addActivity(s.activity, events) }));
     } catch (e) {
       if (get().repo?.id === repo.id) set({ overviewError: errorText(e) });
     }

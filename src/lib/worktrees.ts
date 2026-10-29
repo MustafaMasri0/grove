@@ -63,6 +63,30 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
   return events;
 }
 
+/** A worktree's edits join its last "changed …" entry while they are less than this far apart. */
+export const MERGE_MS = 2 * 60_000;
+
+/**
+ * The feed (newest first) with `events` (oldest first) added. An edit joins the worktree's latest
+ * entry when that is also an edit, less than {@link MERGE_MS} older: the entry moves to the top with
+ * the new time and the files edited since listed first. So steady work reads as one entry, and a
+ * commit or a pause starts the next. At most {@link ACTIVITY_LIMIT} entries are kept.
+ */
+export function addActivity(feed: readonly ActivityEvent[], events: readonly ActivityEvent[]): ActivityEvent[] {
+  let next = [...feed];
+  for (const e of events) {
+    const i = next.findIndex((x) => x.path === e.path);
+    const last = next[i];
+    if (e.kind === "editing" && last?.kind === "editing" && e.at - last.at < MERGE_MS) {
+      const fresh = new Set(e.files!.map((f) => f.path));
+      const files = [...e.files!, ...last.files!.filter((f) => !fresh.has(f.path))];
+      next.splice(i, 1);
+      next = [{ ...e, files, text: `changed ${list(files.map((f) => f.path))}` }, ...next];
+    } else next = [e, ...next];
+  }
+  return next.slice(0, ACTIVITY_LIMIT);
+}
+
 /**
  * The files the watcher saw change (worktree path → paths relative to it), as Activity entries:
  * only those the worktree's Changes list shows, so build output, ignored files and edits undone

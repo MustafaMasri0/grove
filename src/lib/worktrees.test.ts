@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSummary, WorktreeSummary } from "../api";
-import { activityBetween, editsOf, isActive, sharedFiles, worktreeName } from "./worktrees";
+import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, MERGE_MS, sharedFiles, worktreeName, type ActivityEvent } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -114,6 +114,32 @@ describe("worktreeName", () => {
     expect(worktreeName({ path: "/home/user/src/example/.claude/worktrees/agent-a" })).toBe("agent-a");
     expect(worktreeName({ path: "C:\\src\\example\\", isMain: false })).toBe("example");
     expect(worktreeName({ path: "/x", isMain: true })).toBe("main worktree");
+  });
+});
+
+describe("addActivity", () => {
+  const edit = (path: string, at: number, ...files: string[]): ActivityEvent => ({ at, path, kind: "editing", text: "", files: dirty(...files) });
+  const commit = (path: string, at: number): ActivityEvent => ({ at, path, kind: "commit", text: "committed", sha: "s" });
+  const view = (feed: ActivityEvent[]) => feed.map((e) => `${e.path} ${e.kind}@${e.at} ${(e.files ?? []).map((f) => f.path).join(",")}`.trim());
+
+  it("joins a worktree's steady edits into one entry, newest files first", () => {
+    let feed = addActivity([], [edit("a", 0, "x.ts")]);
+    feed = addActivity(feed, [edit("b", 10, "y.ts")]);
+    feed = addActivity(feed, [edit("a", 20, "z.ts", "x.ts")]);
+    expect(view(feed)).toEqual(["a editing@20 z.ts,x.ts", "b editing@10 y.ts"]);
+    expect(feed[0].text).toBe("changed z.ts, x.ts");
+  });
+
+  it("starts a new entry after a commit or a pause", () => {
+    let feed = addActivity([], [edit("a", 0, "x.ts"), commit("a", 5)]);
+    feed = addActivity(feed, [edit("a", 10, "y.ts")]);
+    feed = addActivity(feed, [edit("a", 10 + MERGE_MS, "z.ts")]);
+    expect(view(feed)).toEqual([`a editing@${10 + MERGE_MS} z.ts`, "a editing@10 y.ts", "a commit@5", "a editing@0 x.ts"]);
+  });
+
+  it("keeps at most the limit", () => {
+    const many = Array.from({ length: ACTIVITY_LIMIT + 5 }, (_, i) => commit("a", i));
+    expect(addActivity([], many)).toHaveLength(ACTIVITY_LIMIT);
   });
 });
 
