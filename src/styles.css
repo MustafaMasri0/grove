@@ -228,6 +228,10 @@ button:disabled {
   color: var(--muted);
 }
 
+.icon {
+  display: inline-flex;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -671,6 +675,11 @@ button.primary {
   gap: 2px;
   width: 100%;
   min-width: 0;
+}
+
+.tree-chevron svg {
+  width: 12px;
+  height: 12px;
 }
 
 .tree-chevron {
@@ -1288,7 +1297,6 @@ button.primary {
 .ficon.tab-gear svg {
   width: 15px;
   height: 15px;
-  fill: none;
 }
 
 .tb-settings {

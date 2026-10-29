@@ -9,7 +9,7 @@ import { useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
 import { Dropdown, type DropdownItem } from "./Dropdown";
 import { WindowControls } from "./WindowControls";
-import { BranchIcon, GearIcon, PublishIcon, RepoIcon, SyncIcon, UpIcon, WorktreeIcon } from "./icons";
+import { Icon } from "./Icon";
 
 function RepoSwitcher() {
   const settings = useStore((s) => s.settings);
@@ -61,7 +61,7 @@ function RepoSwitcher() {
     <Dropdown
       caption="Repository"
       value={repo ? repo.name : "Add a repository"}
-      icon={<RepoIcon />}
+      icon={<Icon name="root-folder" />}
       items={items}
       searchable
       placeholder="Filter repositories"
@@ -133,7 +133,7 @@ function WorktreeSwitcher() {
     <Dropdown
       caption={`Worktree${worktrees.length > 1 ? ` (${worktrees.length})` : ""}`}
       value={current ? name(current) : "—"}
-      icon={<WorktreeIcon />}
+      icon={<Icon name="worktree" />}
       items={items}
       searchable={worktrees.length > 6}
       placeholder="Filter worktrees"
@@ -175,7 +175,7 @@ function BranchSwitcher() {
     <Dropdown
       caption={viewBranch ? "Branch (view only)" : "Branch"}
       value={value}
-      icon={<BranchIcon />}
+      icon={<Icon name="git-branch" />}
       items={items}
       searchable
       placeholder="Filter branches"
@@ -211,7 +211,7 @@ function ActionButton() {
   let kind: "fetch" | "push" | "publish" = "fetch";
   let title = "Fetch origin";
   let caption = fetched;
-  let icon = <SyncIcon spin={action.running} />;
+  let icon = <Icon name="sync" className={action.running ? "spin" : undefined} />;
   let pushBlocked: string | null = null;
 
   if (!bs.hasOrigin) pushBlocked = "This repository has no remote named origin.";
@@ -221,7 +221,7 @@ function ActionButton() {
     kind = "publish";
     title = "Publish branch";
     caption = `Push ${bs.branch} to origin`;
-    icon = <PublishIcon />;
+    icon = <Icon name="cloud-upload" />;
   } else if (bs.behind > 0) {
     caption = `↓${bs.behind}${bs.ahead ? ` ↑${bs.ahead}` : ""} · ${fetched}`;
     pushBlocked = bs.ahead
@@ -231,13 +231,13 @@ function ActionButton() {
     kind = "push";
     title = `Push origin ↑${bs.ahead}`;
     caption = fetched;
-    icon = <UpIcon />;
+    icon = <Icon name="arrow-up" />;
   }
 
   if (action.running) {
     title = action.label;
     caption = action.progress || "Working…";
-    icon = <SyncIcon spin />;
+    icon = <Icon name="sync" className="spin" />;
   }
 
   const needsSeparateFetch = kind !== "fetch" && bs.hasOrigin;
@@ -258,7 +258,7 @@ function ActionButton() {
       </button>
       {needsSeparateFetch && !action.running && (
         <button className="tb-button fetch-only" title={`Fetch origin · ${fetched}`} onClick={() => void runAction("fetch")}>
-          <SyncIcon />
+          <Icon name="sync" />
         </button>
       )}
       {pushBlocked && kind === "fetch" && bs.hasOrigin && bs.branch && !action.running && <div className="push-reason">{pushBlocked}</div>}
@@ -280,7 +280,7 @@ export function TopBar() {
         <ActionButton />
         <span className="spacer" data-tauri-drag-region />
         <button className="tb-button tb-settings" title="Settings (Ctrl+,)" aria-label="Settings" onClick={openSettings}>
-          <GearIcon />
+          <Icon name="gear" />
         </button>
         <WindowControls />
       </header>

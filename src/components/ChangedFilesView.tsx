@@ -7,7 +7,7 @@ import { useStore } from "../store";
 import { currentWhere, menuEnv } from "./ContextMenu";
 import { FileRow } from "./FileRow";
 import { FolderTypeIcon } from "./FileTypeIcon";
-import { ChevronIcon, ListViewIcon, TreeViewIcon } from "./icons";
+import { Icon } from "./Icon";
 import { ListView } from "./ListView";
 
 interface ChangedItem {
@@ -36,7 +36,7 @@ export function ChangesViewToggle() {
   const tree = view === "tree";
   return (
     <button className="icon-button view-toggle" title={tree ? "View as list" : "View as tree"} aria-pressed={tree} onClick={() => update({ changesView: tree ? "list" : "tree" })}>
-      {tree ? <ListViewIcon /> : <TreeViewIcon />}
+      <Icon name={tree ? "list-flat" : "list-tree"} />
     </button>
   );
 }
@@ -145,7 +145,7 @@ function ChangedFilesTree<T extends ChangedItem>(p: Props<T>) {
         return (
           <span className="tree-row" style={pad} title={n.path}>
             <span className="tree-chevron">
-              <ChevronIcon open={open} />
+              <Icon name={open ? "chevron-down" : "chevron-right"} />
             </span>
             <span className="tree-icon">
               <FolderTypeIcon name={n.path.slice(n.path.lastIndexOf("/") + 1)} open={open} />

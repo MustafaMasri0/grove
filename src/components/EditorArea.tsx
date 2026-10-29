@@ -13,7 +13,7 @@ import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
-import { GearIcon } from "./icons";
+import { Icon } from "./Icon";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SettingsPage } from "./SettingsPage";
@@ -452,7 +452,7 @@ export function EditorArea() {
           >
             {t.spec.type === "settings" ? (
               <span className="ficon tab-gear">
-                <GearIcon />
+                <Icon name="gear" />
               </span>
             ) : (
               <FileTypeIcon name={t.title} />
