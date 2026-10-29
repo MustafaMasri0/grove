@@ -173,8 +173,8 @@ export interface WorktreeSummary {
   head: string | null;
   /** What the Changes list shows. */
   uncommitted: ChangedFile[];
-  /** Files HEAD changed since it split from the base (renames as delete + add). */
-  committed: ChangedFile[];
+  /** Files HEAD changed since it split from the base. */
+  committed: string[];
   baseAhead: number;
   baseBehind: number;
   upstream: string | null;

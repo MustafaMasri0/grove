@@ -419,8 +419,7 @@ fn summary_compares_with_the_base_and_the_upstream() {
     git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
     let s = overview::summary(&h(), wt.to_str().unwrap(), Some("main")).unwrap();
     assert_eq!(s.branch.as_deref(), Some("feature"));
-    let committed: Vec<_> = s.committed.iter().map(|f| (f.path.as_str(), f.kind)).collect();
-    assert_eq!(committed, vec![("a.txt", ChangeKind::Modified), ("f.txt", ChangeKind::Added)]);
+    assert_eq!(s.committed, vec!["a.txt", "f.txt"]);
     assert_eq!((s.base_ahead, s.base_behind), (1, 1));
     assert_eq!(s.last_commit.unwrap().subject, "feature work");
 

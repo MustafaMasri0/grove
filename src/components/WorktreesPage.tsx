@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WorktreeInfo, WorktreeSummary } from "../api";
 import { changeCountTitle } from "../lib/changes";
-import { isoToUnix, relativeTime, splitPath, STATUS_TITLE } from "../lib/format";
+import { isoToUnix, relativeTime, splitPath } from "../lib/format";
 import { isActive, LISTED_FILES, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
 import { useStore } from "../store";
 import { BaseSelect } from "./BaseSelect";
-import { FileRow, StatusLetter } from "./FileRow";
+import { FileRow } from "./FileRow";
+import { FileTypeIcon } from "./FileTypeIcon";
 import { BranchIcon, SyncIcon } from "./icons";
 
 function useNow(ms: number) {
@@ -205,22 +206,25 @@ function WorktreeCard(props: {
 const SHOWN_FILES = 12;
 
 function SharedFileRow({ f, name }: { f: SharedFile; name: (path: string) => string }) {
-  const file = splitPath(f.path).name;
+  const { name: file, dir } = splitPath(f.path);
   const open = useStore((s) => s.openWorktreeChange);
   return (
     <li className="ov-shared">
-      <FileRow path={f.path} kind={f.kind} />
+      <span className="file-row" title={f.path}>
+        <FileTypeIcon name={file} />
+        <span className="file-name">{file}</span>
+        <span className="file-dir">{dir}</span>
+      </span>
       <span className="ov-who">
         {f.worktrees.map((w) => (
           <button
             key={w.path}
             className="ov-who-chip"
-            title={`Open ${name(w.path)}'s change to ${file} (${STATUS_TITLE[w.kind].toLowerCase()}, ${w.uncommitted ? "not committed yet" : "committed, not on the base yet"})`}
+            title={`Open ${name(w.path)}'s change to ${file} (${w.uncommitted ? "not committed yet" : "committed, not on the base yet"})`}
             onClick={() => void open(w.path, f.path)}
           >
             {name(w.path)}
             {!w.uncommitted && <span className="ov-who-state">committed</span>}
-            {!f.kind && <StatusLetter kind={w.kind} />}
           </button>
         ))}
       </span>
