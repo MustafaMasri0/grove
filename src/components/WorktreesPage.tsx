@@ -8,7 +8,7 @@ import { useStore } from "../store";
 import { BaseSelect } from "./BaseSelect";
 import { FileRow } from "./FileRow";
 import { FileTypeIcon } from "./FileTypeIcon";
-import { BranchIcon, SyncIcon } from "./icons";
+import { Icon } from "./Icon";
 
 /** At first, the conflicts list shows this many files. */
 const SHOWN_FILES = 12;
@@ -71,7 +71,7 @@ export function WorktreesPage() {
             <BaseSelect />
           </span>
           <button className="ov-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh (F5)">
-            <SyncIcon spin={loading} /> Refresh
+            <Icon name="sync" className={loading ? "spin" : undefined} /> Refresh
           </button>
         </div>
       </div>
@@ -171,7 +171,7 @@ function WorktreeCard(props: {
         {current && <span className="ov-chip">current</span>}
       </div>
       <div className="ov-branch">
-        <BranchIcon /> {w.branch ?? (w.head ? `detached @ ${shortSha(w.head)}` : "no commits")}
+        <Icon name="git-branch" /> {w.branch ?? (w.head ? `detached @ ${shortSha(w.head)}` : "no commits")}
       </div>
       <div className="ov-stats">
         <span className={n ? "k-modified" : "muted"} title={changeCountTitle(n)}>

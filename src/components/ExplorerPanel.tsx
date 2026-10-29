@@ -6,7 +6,7 @@ import { useAt, useStore } from "../store";
 import { fileTab, revealPathOf } from "../tabs";
 import { currentWhere, menuEnv } from "./ContextMenu";
 import { FileTypeIcon, FolderTypeIcon } from "./FileTypeIcon";
-import { ChevronIcon } from "./icons";
+import { Icon } from "./Icon";
 import { ListView } from "./ListView";
 
 interface Node extends TreeEntry {
@@ -175,7 +175,7 @@ export function ExplorerPanel() {
           const cls = classFor(n);
           return (
             <span className={`tree-row ${cls}`} style={{ paddingLeft: 6 + n.depth * 14 }} title={n.path}>
-              <span className="tree-chevron">{n.isDir ? <ChevronIcon open={expanded.has(n.path)} /> : null}</span>
+              <span className="tree-chevron">{n.isDir ? <Icon name={expanded.has(n.path) ? "chevron-down" : "chevron-right"} /> : null}</span>
               <span className="tree-icon">{n.isDir ? <FolderTypeIcon name={n.name} open={expanded.has(n.path)} /> : <FileTypeIcon name={n.name} />}</span>
               <span className={`tree-name ${cls}`}>{n.name}</span>
             </span>

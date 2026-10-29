@@ -17,6 +17,9 @@ importers:
       '@tauri-apps/plugin-opener':
         specifier: ^2.7.2
         version: 2.7.2
+      '@vscode/codicons':
+        specifier: 0.0.46-24
+        version: 0.0.46-24
       dompurify:
         specifier: ^3.4.17
         version: 3.4.17
@@ -427,6 +430,9 @@ packages:
 
   '@vitest/spy@5.0.5':
     resolution: {integrity: sha512-lwJRExuH417257Q5wv9QYugN9IMJkoxcrKrYxGPQkBzl7wlNpTUxD/5yNX4ESKVUIShKPgkGchYPFMWOOk0wzw==}
+
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -980,6 +986,8 @@ snapshots:
       vite: 8.3.5(@types/node@26.6.6)
 
   '@vitest/spy@5.0.5': {}
+
+  '@vscode/codicons@0.0.46-24': {}
 
   assertion-error@2.0.1: {}
 
