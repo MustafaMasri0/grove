@@ -78,9 +78,13 @@ paste a path.
   changed image compares its before and after side by side, by swiping or as an
   onion skin. Files over 32 MB or 64 megapixels are not shown.
 - **HTML** files open rendered (Preview/Source, like Markdown) in a sandboxed
-  frame: no scripts, no network and no access to the app. Relative images and
-  stylesheets load from the repository at the same revision, and links work
-  like Markdown links.
+  frame with its own opaque origin: no network and no access to the app.
+  Relative images and stylesheets load from the repository at the same
+  revision, and links work like Markdown links. Scripts are off by default;
+  **Run scripts** in the toolbar turns them on for a repository you trust. Then
+  the page's inline scripts and its scripts from the repository run, still
+  without network access (scripts from a CDN do not load), and web links ask
+  before opening.
 - **Context menus** on files, folders, tabs, commits and the top-bar lists:
   copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in
   File Explorer, open a commit on GitHub, and more.
@@ -149,8 +153,11 @@ On Windows, `cargo test -p wv-core` runs the core tests against Windows git.
   WSL, and talks JSON lines over stdin/stdout.
 - `src-tauri`: the Tauri 2 shell and commands, and the `wvfile:` URL scheme
   (`http://wvfile.localhost/`) that image views and HTML previews read
-  repository files from: images, stylesheets and fonts only, read-only, under a
-  random token per repository, worktree and revision, never cached.
+  repository files from: images, stylesheets, fonts and scripts only,
+  read-only, under a random token per repository, worktree and revision, never
+  cached. HTML previews are served from it too, prepared by the UI, under a
+  content security policy that allows no network and scripts only when the
+  repository allows them.
 - `src`: the React UI. Monaco is bundled locally, with only the editor worker.
 
 ### Test hooks

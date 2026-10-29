@@ -1,6 +1,6 @@
 //! The `wvfile:` resources that image views and HTML previews load from the repository.
 
-use wv_core::preview::{self, image_mime, served_mime, Request, Roots};
+use wv_core::preview::{self, image_mime, served_mime, Pages, Request, Roots};
 use wv_core::repo_ops::Source;
 
 #[test]
@@ -81,7 +81,10 @@ fn only_images_styles_and_fonts_are_served() {
     assert_eq!(served_mime("x.jpeg"), Some("image/jpeg"));
     assert_eq!(served_mime("s.css"), Some("text/css"));
     assert_eq!(served_mime("f.woff2"), Some("font/woff2"));
-    for no in ["page.html", "app.js", "data.json", "README", "x.exe", "a.htm", "m.mjs"] {
+    // Scripts too, for previews that may run them; the page's policy decides.
+    assert_eq!(served_mime("app.js"), Some("text/javascript"));
+    assert_eq!(served_mime("m.mjs"), Some("text/javascript"));
+    for no in ["page.html", "data.json", "README", "x.exe", "a.htm"] {
         assert_eq!(served_mime(no), None, "{no}");
     }
     assert_eq!(image_mime("s.css"), None);
@@ -101,4 +104,50 @@ fn responses_are_never_cached_sniffed_or_scripted() {
     assert!(csp.contains("default-src 'none'") && csp.contains("sandbox"), "{csp}");
     // Fonts are fetched in CORS mode from the preview's opaque origin.
     assert_eq!(get("Access-Control-Allow-Origin"), Some("*"));
+}
+
+#[test]
+fn prepared_pages_are_kept_until_dropped_and_only_the_latest_few() {
+    let pages = Pages::default();
+    let a = pages.put("<p>a</p>".into(), false);
+    let b = pages.put("<p>b</p>".into(), true);
+    assert_ne!(a, b);
+    assert!(a.len() >= 24 && a.chars().all(|c| c.is_ascii_hexdigit()), "{a}");
+    assert_eq!(pages.get(&a).map(|p| (p.html.to_string(), p.scripts)), Some(("<p>a</p>".into(), false)));
+    assert_eq!(pages.get(&b).map(|p| p.scripts), Some(true));
+    pages.remove(&a);
+    assert!(pages.get(&a).is_none());
+    // A page left behind (a crash, a missed drop) does not pile up.
+    let ids: Vec<_> = (0..20).map(|i| pages.put(format!("{i}"), false)).collect();
+    assert!(pages.get(&ids[0]).is_none());
+    assert!(pages.get(ids.last().unwrap()).is_some());
+    assert_eq!(preview::page_url(&b), format!("http://wvfile.localhost/~page/{b}"));
+}
+
+#[test]
+fn page_requests_route_by_id() {
+    let roots = Roots::default();
+    match preview::route(&roots, "/~page/abc123", None) {
+        Request::Page { id } => assert_eq!(id, "abc123"),
+        other => panic!("{other:?}"),
+    }
+    assert!(matches!(preview::route(&roots, "/~page/", None), Request::NotFound));
+    assert!(matches!(preview::route(&roots, "/~page/a/b", None), Request::NotFound));
+}
+
+#[test]
+fn a_page_runs_scripts_only_when_asked_and_never_reaches_the_network() {
+    let get = |h: &[(&str, String)], k: &str| h.iter().find(|(n, _)| n.eq_ignore_ascii_case(k)).map(|(_, v)| v.clone()).unwrap();
+    let off = preview::page_headers(false);
+    let on = preview::page_headers(true);
+    assert_eq!(get(&off, "Content-Type"), "text/html; charset=utf-8");
+    assert_eq!(get(&off, "Cache-Control"), "no-store");
+    let (c_off, c_on) = (get(&off, "Content-Security-Policy"), get(&on, "Content-Security-Policy"));
+    assert!(c_off.contains("script-src 'none'") && c_off.ends_with("sandbox"), "{c_off}");
+    assert!(c_on.contains("script-src http://wvfile.localhost 'unsafe-inline' 'unsafe-eval'") && c_on.ends_with("sandbox allow-scripts"), "{c_on}");
+    for c in [&c_off, &c_on] {
+        for d in ["default-src 'none'", "connect-src 'none'", "frame-src 'none'", "form-action 'none'"] {
+            assert!(c.contains(d), "{d} in {c}");
+        }
+    }
 }

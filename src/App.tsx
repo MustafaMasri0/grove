@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { CommitPane } from "./components/CommitPane";
 import { ContextMenuHost, isKeyboardEcho, keepMenusOnBlur } from "./components/ContextMenu";
 import { EditorArea, editorCommands } from "./components/EditorArea";
+import { previewForTest } from "./components/HtmlPreview";
 import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
@@ -300,7 +301,7 @@ async function followPreviewLinkForTest(n: number) {
   const frame = await waitFor<HTMLIFrameElement>("iframe.html-preview");
   if (!frame) return console.error("WV_PREVIEW_LINK: no HTML preview");
   await new Promise((r) => setTimeout(r, 1500));
-  const links = [...new DOMParser().parseFromString(frame.srcdoc, "text/html").querySelectorAll("a[href*='/~link?']")];
+  const links = [...new DOMParser().parseFromString(previewForTest.html, "text/html").querySelectorAll("a[href*='/~link?']")];
   const href = links[n]?.getAttribute("href");
   if (!href) return console.error(`WV_PREVIEW_LINK: the page has ${links.length} links`);
   frame.contentWindow!.location.href = href;

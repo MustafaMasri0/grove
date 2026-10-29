@@ -11,6 +11,8 @@ export default defineConfig({
     // CSS imports; point straight at its ESM tree instead.
     alias: { "monaco-esm": fileURLToPath(new URL("./node_modules/monaco-editor/esm/vs", import.meta.url)) },
   },
+  // The dev optimizer pre-bundles `?worker` imports without their default export.
+  optimizeDeps: { exclude: ["monaco-esm/editor/editor.worker.js", "monaco-esm/editor/editor.worker.js?worker"] },
   server: { port: 1420, strictPort: true },
   build: {
     target: "es2022",

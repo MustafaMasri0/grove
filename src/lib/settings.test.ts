@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, getSetting, isDefault, normalizeSettings, resetAll, withSetting, type SettingPath } from "./settings";
+import { defaultSettings, getSetting, isDefault, normalizeSettings, resetAll, scriptsAllowed, withRunScripts, withSetting, type SettingPath } from "./settings";
 
 // What settings.json looked like before the Settings page existed.
 const v1 = {
@@ -35,6 +35,12 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ imageDiff: "swipe" }).imageDiff).toBe("swipe");
     expect(normalizeSettings({ imageDiff: "onion" }).imageDiff).toBe("onion");
     expect(normalizeSettings({ imageDiff: "flip" }).imageDiff).toBe("sideBySide");
+  });
+
+  it("runs no scripts in HTML previews until a repository is trusted", () => {
+    expect(defaultSettings.runScripts).toEqual([]);
+    expect(normalizeSettings({ runScripts: ["D:\\src\\a", 3, null] }).runScripts).toEqual(["D:\\src\\a"]);
+    expect(normalizeSettings({ runScripts: "D:\\src\\a" }).runScripts).toEqual([]);
   });
 
   it("returns the defaults for a missing or unreadable file", () => {
@@ -154,5 +160,17 @@ describe("setting paths", () => {
     expect(next.diff).toEqual({ ...s.diff, sideBySide: true });
     expect(next.repos).toEqual(v1.repos);
     expect(next.zoom).toBe(1.25);
+  });
+});
+
+describe("withRunScripts", () => {
+  it("turns scripts on and off for one repository only", () => {
+    const on = { ...defaultSettings, ...withRunScripts(defaultSettings, "D:\\src\\a", true) };
+    expect(scriptsAllowed(on, "D:\\src\\a")).toBe(true);
+    expect(scriptsAllowed(on, "D:\\src\\b")).toBe(false);
+    expect(withRunScripts(on, "D:\\src\\a", true).runScripts).toEqual(["D:\\src\\a"]);
+    const off = { ...on, ...withRunScripts(on, "D:\\src\\a", false) };
+    expect(scriptsAllowed(off, "D:\\src\\a")).toBe(false);
+    expect(off.runScripts).toEqual([]);
   });
 });

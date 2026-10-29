@@ -8,24 +8,32 @@ import { classifyLink, resolveRepoPath } from "./mdLinks";
 export const PREVIEW_ORIGIN = "http://wvfile.localhost";
 const O = PREVIEW_ORIGIN;
 
-export const PREVIEW_CSP = [
-  "default-src 'none'",
-  `img-src ${O} data:`,
-  `style-src ${O} 'unsafe-inline'`,
-  `font-src ${O} data:`,
-  "media-src 'none'",
-  "script-src 'none'",
-  "object-src 'none'",
-  "frame-src 'none'",
-  "child-src 'none'",
-  "worker-src 'none'",
-  "connect-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-].join("; ");
+/**
+ * The policy put first in a preview's <head> (the backend serves the page under the
+ * same one): nothing from the network; with `scripts`, the page's own scripts run,
+ * inline or from the repository.
+ */
+export const previewCsp = (scripts: boolean) =>
+  [
+    "default-src 'none'",
+    `img-src ${O} data:`,
+    `style-src ${O} 'unsafe-inline'`,
+    `font-src ${O} data:`,
+    "media-src 'none'",
+    scripts ? `script-src ${O} 'unsafe-inline' 'unsafe-eval'` : "script-src 'none'",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "child-src 'none'",
+    "worker-src 'none'",
+    "connect-src 'none'",
+    "form-action 'none'",
+    "base-uri 'none'",
+  ].join("; ");
 
-/** Elements that run code, embed other documents or change where URLs point. */
-const REMOVE = "script, iframe, frame, frameset, object, embed, applet, portal, base, meta[http-equiv]";
+export const PREVIEW_CSP = previewCsp(false);
+
+/** Elements that embed other documents or change where URLs point (and scripts, unless allowed). */
+const REMOVE = "iframe, frame, frameset, object, embed, applet, portal, base, meta[http-equiv]";
 
 /** `<link>`s other than stylesheets only prefetch, preload or point at icons: dropped. */
 const isStylesheet = (el: Element) => (el.getAttribute("rel") ?? "").toLowerCase().split(/\s+/).includes("stylesheet");
@@ -36,8 +44,10 @@ const encodePath = (p: string) => p.split("/").map(encodeURIComponent).join("/")
  * The HTML in `html`, from repository file `path`, ready for the preview frame's
  * srcdoc; `base` is the wvfile: URL of the repository root at the file's revision.
  * Links carry `nonce`, so only this page's own links are followed (see {@link linkTarget}).
+ * With `scripts`, the page's inline scripts and event handlers stay, and its scripts
+ * from the repository load at the same revision; scripts from the web are dropped.
  */
-export function prepareHtml(html: string, path: string, base: string, nonce: string): string {
+export function prepareHtml(html: string, path: string, base: string, nonce: string, scripts = false): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   const docUrl = base + encodePath(path);
 
@@ -88,7 +98,12 @@ export function prepareHtml(html: string, path: string, base: string, nonce: str
     return parts.length ? parts.join(", ") : null;
   };
 
-  doc.querySelectorAll(REMOVE).forEach((el) => el.remove());
+  doc.querySelectorAll(scripts ? REMOVE : `script, ${REMOVE}`).forEach((el) => el.remove());
+  doc.querySelectorAll("script[src]").forEach((el) => {
+    const src = resource(el.getAttribute("src")!);
+    if (src) el.setAttribute("src", src);
+    else el.remove();
+  });
   doc.querySelectorAll("link").forEach((el) => {
     const href = isStylesheet(el) ? resource(el.getAttribute("href") ?? "") : null;
     if (href) el.setAttribute("href", href);
@@ -97,7 +112,7 @@ export function prepareHtml(html: string, path: string, base: string, nonce: str
 
   for (const el of [...doc.getElementsByTagName("*")]) {
     for (const a of [...el.attributes]) {
-      if (/^on/i.test(a.name) || a.name === "ping" || a.name === "formaction" || a.name === "srcdoc") el.removeAttribute(a.name);
+      if ((!scripts && /^on/i.test(a.name)) || a.name === "ping" || a.name === "formaction" || a.name === "srcdoc") el.removeAttribute(a.name);
     }
     const tag = el.localName.toLowerCase();
     switch (tag) {
@@ -141,7 +156,7 @@ export function prepareHtml(html: string, path: string, base: string, nonce: str
 
   const policy = doc.createElement("meta");
   policy.setAttribute("http-equiv", "Content-Security-Policy");
-  policy.setAttribute("content", PREVIEW_CSP);
+  policy.setAttribute("content", previewCsp(scripts));
   doc.head.prepend(policy);
   return `<!doctype html>\n${doc.documentElement.outerHTML}`;
 }

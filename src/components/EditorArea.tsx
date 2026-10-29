@@ -4,6 +4,7 @@ import { blameMargin, commitAtLine } from "../lib/blame";
 import { tabItems } from "../lib/contextMenus";
 import { editorOptions } from "../lib/editorOptions";
 import { viewKind } from "../lib/fileKinds";
+import { scriptsAllowed, withRunScripts } from "../lib/settings";
 import { formatBytes, shortSha } from "../lib/format";
 import { joinPath, windowsPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
@@ -106,6 +107,7 @@ export function EditorArea() {
   const settingsSaved = useStore((s) => s.settingsSaved);
   const mdPreview = useStore((s) => s.settings.mdPreview);
   const imageDiff = useStore((s) => s.settings.imageDiff);
+  const runScripts = useStore((s) => !!s.repo && scriptsAllowed(s.settings, s.repo.id));
   const dark = useStore(effectiveDark);
   const updateSettings = useStore((s) => s.updateSettings);
   const activateTab = useStore((s) => s.activateTab);
@@ -481,6 +483,16 @@ export function EditorArea() {
           {spec.type === "file" && (isMarkdown || isHtml || isSvg) && (
             <>
               <span className="spacer" />
+              {showHtml && active && (
+                <button
+                  className={`toggle${runScripts ? " on" : ""}`}
+                  title={"Run this page's own scripts, inline or from the repository, in every HTML preview of this repository.\nThe page still cannot reach the network or the app; web links ask first."}
+                  aria-pressed={runScripts}
+                  onClick={() => updateSettings(withRunScripts(useStore.getState().settings, active.repo, !runScripts))}
+                >
+                  Run scripts
+                </button>
+              )}
               {previewToggle}
             </>
           )}
