@@ -1,5 +1,5 @@
 // The Worktrees overview: names, live activity and overlaps between worktrees.
-import type { ChangeKind, Overlap, WorktreeSummary } from "../api";
+import type { ChangedFile, ChangeKind, Overlap, WorktreeSummary } from "../api";
 import { shortSha } from "./format";
 
 /** A worktree counts as active this long after its files last changed. */
@@ -23,7 +23,7 @@ export interface ActivityEvent {
   kind: "commit" | "moved" | "branch" | "editing" | "added" | "removed";
   text: string;
   /** Files that started changing ("editing"). */
-  files?: string[];
+  files?: ChangedFile[];
   /** The commit HEAD is now at ("commit", "moved"). */
   sha?: string;
 }
@@ -54,8 +54,8 @@ export function activityBetween(prev: readonly WorktreeSummary[], next: readonly
       else push(w.path, "moved", `now at ${shortSha(c.sha)} “${c.subject}”`, { sha: c.sha });
     }
     const wasDirty = new Set(p.uncommitted.map((f) => f.path));
-    const started = w.uncommitted.map((f) => f.path).filter((f) => !wasDirty.has(f));
-    if (started.length) push(w.path, "editing", `changed ${list(started)}`, { files: started });
+    const started = w.uncommitted.filter((f) => !wasDirty.has(f.path));
+    if (started.length) push(w.path, "editing", `changed ${list(started.map((f) => f.path))}`, { files: started });
   }
   const still = new Set(next.map((w) => w.path));
   for (const p of prev) if (!still.has(p.path)) push(p.path, "removed", "worktree removed");

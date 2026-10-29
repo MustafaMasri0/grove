@@ -52,7 +52,7 @@ describe("activityBetween", () => {
   it("lists files that started changing, not the ones already changed", () => {
     const prev = wt("a", { uncommitted: dirty("src/old.ts") });
     const next = wt("a", { uncommitted: dirty("src/old.ts", "src/a.ts", "b.ts", "c.ts", "d.ts") });
-    expect(activityBetween([prev], [next], 0)).toEqual([{ at: 0, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: ["src/a.ts", "b.ts", "c.ts", "d.ts"] }]);
+    expect(activityBetween([prev], [next], 0)).toEqual([{ at: 0, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: dirty("src/a.ts", "b.ts", "c.ts", "d.ts") }]);
   });
 
   it("reports worktrees added and removed", () => {

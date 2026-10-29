@@ -234,31 +234,11 @@ function FeedRow({ e, name, now, exists }: { e: ActivityEvent; name: (path: stri
   const openChange = useStore((s) => s.openWorktreeChange);
   const openCommit = useStore((s) => s.openWorktreeCommit);
   const [all, setAll] = useState(false);
+  const files = e.files ?? [];
+  const shown = all ? files : files.slice(0, LISTED_FILES);
   let text: React.ReactNode = e.text;
-  if (exists && e.files) {
-    const shown = all ? e.files : e.files.slice(0, LISTED_FILES);
-    text = (
-      <>
-        changed{" "}
-        {shown.map((f, i) => (
-          <span key={f}>
-            {i > 0 && ", "}
-            <button className="link" title={`Open ${name(e.path)}'s change to ${f}`} onClick={() => void openChange(e.path, f)}>
-              {splitPath(f).name}
-            </button>
-          </span>
-        ))}
-        {e.files.length > shown.length && (
-          <>
-            {" and "}
-            <button className="link" onClick={() => setAll(true)}>
-              {e.files.length - shown.length} more
-            </button>
-          </>
-        )}
-      </>
-    );
-  } else if (exists && e.sha) {
+  if (files.length) text = `changed ${files.length} file${files.length === 1 ? "" : "s"}`;
+  else if (exists && e.sha) {
     const sha = e.sha;
     text = (
       <button className="link" title={`Show the commit in ${name(e.path)}'s History`} onClick={() => void openCommit(e.path, sha)}>
@@ -272,6 +252,28 @@ function FeedRow({ e, name, now, exists }: { e: ActivityEvent; name: (path: stri
       <span className="ov-event-who">{name(e.path)}</span>
       <span className="ov-event-text">{text}</span>
       <span className="muted ov-event-time">{relativeTime(e.at / 1000, now / 1000)}</span>
+      {files.length > 0 && (
+        <ul className="ov-event-files">
+          {shown.map((f) => (
+            <li key={f.path}>
+              {exists ? (
+                <button className="ov-file-link" title={`Open ${name(e.path)}'s change to ${f.path}`} onClick={() => void openChange(e.path, f.path)}>
+                  <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
+                </button>
+              ) : (
+                <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
+              )}
+            </li>
+          ))}
+          {files.length > shown.length && (
+            <li>
+              <button className="link ov-more" onClick={() => setAll(true)}>
+                {files.length - shown.length} more
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
     </li>
   );
 }
