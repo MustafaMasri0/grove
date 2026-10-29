@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The main window: app commands, events, folder picker, zoom, and opening web links from Markdown in the browser.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:webview:allow-set-webview-zoom",
+    "dialog:allow-open",
+    "opener:default"
+  ]
+}

@@ -1,0 +1,23 @@
+[package]
+name = "grove"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Grove, a Git client for worktrees: repositories, branches, diffs and files"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+base64.workspace = true
+# Avatars: HTTPS through Windows' own TLS (SChannel); tauri already builds reqwest without TLS.
+reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
+sha2 = "0.10"
+serde.workspace = true
+serde_json.workspace = true
+wv-core.workspace = true
+# "Copy path" and the other copy options: text only, without arboard's image support.
+arboard = { version = "3", default-features = false }

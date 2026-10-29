@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Grove",
+  "version": "0.1.0",
+  "identifier": "app.grove.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Grove",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 500,
+        "backgroundColor": "#1e1e1e",
+        "zoomHotkeysEnabled": false,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' http://wvfile.localhost; worker-src 'self' blob:; img-src 'self' data: blob: http://wvfile.localhost; font-src 'self' data: http://wvfile.localhost; frame-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"],
+    "windows": {
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

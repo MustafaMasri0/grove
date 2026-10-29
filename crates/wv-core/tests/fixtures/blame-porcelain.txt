@@ -1,0 +1,41 @@
+d50d41840fa337ccb7d367ca6163c1440a9f6af7 1 1 1
+author T
+author-mail <t@e.com>
+author-time 1793251797
+author-tz +0400
+committer T
+committer-mail <t@e.com>
+committer-time 1793251797
+committer-tz +0400
+summary first
+boundary
+filename a.txt
+	one
+721e70cb80a8339b701cec164ddf48cb035cadc2 2 2 2
+author T
+author-mail <t@e.com>
+author-time 1793251797
+author-tz +0400
+committer T
+committer-mail <t@e.com>
+committer-time 1793251797
+committer-tz +0400
+summary edit
+previous d50d41840fa337ccb7d367ca6163c1440a9f6af7 a.txt
+filename a.txt
+	TWO
+721e70cb80a8339b701cec164ddf48cb035cadc2 3 3
+	three
+0000000000000000000000000000000000000000 4 4 1
+author Not Committed Yet
+author-mail <not.committed.yet>
+author-time 1793251797
+author-tz +0400
+committer Not Committed Yet
+committer-mail <not.committed.yet>
+committer-time 1793251797
+committer-tz +0400
+summary Version of s/b c.txt from s/b c.txt
+previous 72a940b9724471d8ad2d73bdfcbdaa085550dde8 s/b c.txt
+filename s/b c.txt
+	uncommitted
