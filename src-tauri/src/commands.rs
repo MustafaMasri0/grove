@@ -218,13 +218,10 @@ pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo:
 }
 
 #[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct ChangedEvent {
     cwd: String,
-    /// Files of the worktree changed, not only git state it shares with other worktrees.
-    files: bool,
-    /// Those files, relative to the worktree.
-    paths: Vec<String>,
+    #[serde(flatten)]
+    change: Change,
 }
 
 /// Watches the worktrees of one repository, replacing whatever was watched before;
@@ -244,8 +241,8 @@ pub async fn watch(app_handle: AppHandle, state: State<'_, AppState>, repo: Stri
             .filter_map(|cwd| {
                 let spec = ops::watch_spec(&*host, &cwd).ok()?;
                 let app_handle = app_handle.clone();
-                let on_change = Arc::new(move |change: Change| {
-                    let _ = app_handle.emit("worktree-changed", ChangedEvent { cwd: cwd.clone(), files: change.files, paths: change.paths });
+                let on_change = Arc::new(move |change| {
+                    let _ = app_handle.emit("worktree-changed", ChangedEvent { cwd: cwd.clone(), change });
                 });
                 host.watch(spec, on_change).ok()
             })

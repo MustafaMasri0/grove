@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CommitSummary, WorktreeSummary } from "../api";
-import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, MERGE_MS, sharedFiles, worktreeName, type ActivityEvent } from "./worktrees";
+import type { CommitSummary, WorktreeInfo, WorktreeSummary } from "../api";
+import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, MERGE_SECS, readablePaths, sharedFiles, worktreeName, type ActivityEvent } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -64,8 +64,15 @@ describe("activityBetween", () => {
 describe("isActive", () => {
   it("is active for a while after the last change", () => {
     expect(isActive(undefined, 100)).toBe(false);
-    expect(isActive(1000, 1000 + 14_999)).toBe(true);
-    expect(isActive(1000, 1000 + 15_000)).toBe(false);
+    expect(isActive(1000, 1000 + 14.9)).toBe(true);
+    expect(isActive(1000, 1000 + 15)).toBe(false);
+  });
+});
+
+describe("readablePaths", () => {
+  it("leaves out missing and bare worktrees", () => {
+    const w = (path: string, over: Partial<WorktreeInfo> = {}) => ({ path, missing: false, bare: false, ...over }) as WorktreeInfo;
+    expect(readablePaths([w("a"), w("gone", { missing: true }), w("bare", { bare: true }), w("b")])).toEqual(["a", "b"]);
   });
 });
 
@@ -118,23 +125,22 @@ describe("worktreeName", () => {
 });
 
 describe("addActivity", () => {
-  const edit = (path: string, at: number, ...files: string[]): ActivityEvent => ({ at, path, kind: "editing", text: "", files: dirty(...files) });
+  const edit = (path: string, at: number, ...files: string[]): ActivityEvent => ({ at, path, kind: "editing", files: dirty(...files) });
   const commit = (path: string, at: number): ActivityEvent => ({ at, path, kind: "commit", text: "committed", sha: "s" });
-  const view = (feed: ActivityEvent[]) => feed.map((e) => `${e.path} ${e.kind}@${e.at} ${(e.files ?? []).map((f) => f.path).join(",")}`.trim());
+  const view = (feed: ActivityEvent[]) => feed.map((e) => `${e.path} ${e.kind}@${e.at} ${e.kind === "editing" ? e.files.map((f) => f.path).join(",") : ""}`.trim());
 
   it("joins a worktree's steady edits into one entry, newest files first", () => {
     let feed = addActivity([], [edit("a", 0, "x.ts")]);
     feed = addActivity(feed, [edit("b", 10, "y.ts")]);
     feed = addActivity(feed, [edit("a", 20, "z.ts", "x.ts")]);
     expect(view(feed)).toEqual(["a editing@20 z.ts,x.ts", "b editing@10 y.ts"]);
-    expect(feed[0].text).toBe("changed z.ts, x.ts");
   });
 
   it("starts a new entry after a commit or a pause", () => {
     let feed = addActivity([], [edit("a", 0, "x.ts"), commit("a", 5)]);
     feed = addActivity(feed, [edit("a", 10, "y.ts")]);
-    feed = addActivity(feed, [edit("a", 10 + MERGE_MS, "z.ts")]);
-    expect(view(feed)).toEqual([`a editing@${10 + MERGE_MS} z.ts`, "a editing@10 y.ts", "a commit@5", "a editing@0 x.ts"]);
+    feed = addActivity(feed, [edit("a", 10 + MERGE_SECS, "z.ts")]);
+    expect(view(feed)).toEqual([`a editing@${10 + MERGE_SECS} z.ts`, "a editing@10 y.ts", "a commit@5", "a editing@0 x.ts"]);
   });
 
   it("keeps at most the limit", () => {
@@ -149,7 +155,7 @@ describe("editsOf", () => {
   it("reports files edited again while already changed", () => {
     const a = wt("a", { uncommitted: dirty("src/a.ts", "b.ts", "c.ts", "d.ts", "untouched.ts") });
     expect(editsOf(seen({ a: ["src/a.ts", "b.ts", "c.ts", "d.ts"] }), [a], 7)).toEqual([
-      { at: 7, path: "a", kind: "editing", text: "changed a.ts, b.ts, c.ts and 1 more", files: dirty("src/a.ts", "b.ts", "c.ts", "d.ts") },
+      { at: 7, path: "a", kind: "editing", files: dirty("src/a.ts", "b.ts", "c.ts", "d.ts") },
     ]);
   });
 

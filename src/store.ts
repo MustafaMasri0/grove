@@ -2,7 +2,6 @@ import { create } from "zustand";
 import {
   api,
   errorText,
-  type Overview,
   type BaseDiff,
   type BranchRef,
   type BranchStatus,
@@ -10,18 +9,21 @@ import {
   type CommitWithFiles,
   type FileHistoryEntry,
   type FileList,
+  type Overview,
   type RepoInfo,
   type Source,
   type Status,
+  type WorktreeChanged,
   type WorktreeInfo,
 } from "./api";
 import { uncommittedCount } from "./lib/changes";
-import { activityBetween, addActivity, editsOf, type ActivityEvent } from "./lib/worktrees";
+import { coalesce } from "./lib/coalesce";
+import { shortSha } from "./lib/format";
+import { activityBetween, addActivity, editsOf, readablePaths, type ActivityEvent } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
 import { fileTab, isAppTab, revisionTab, uncommittedTab } from "./tabs";
-import { shortSha } from "./lib/format";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
@@ -100,7 +102,7 @@ interface State {
   /** Every worktree of the repository side by side, and the files they both change. */
   overview: Overview | null;
   overviewError: string | null;
-  /** Worktree path → when its files last changed (unix ms), from the watcher; this session only. */
+  /** Worktree path → when its files last changed (unix seconds), from the watcher; this session only. */
   lastChange: Record<string, number>;
   /** What happened in the worktrees, newest first; this session only. */
   activity: ActivityEvent[];
@@ -183,8 +185,8 @@ interface State {
   openWorktrees(): void;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
-  /** A watcher event: `files` when the worktree's own files changed (`paths`), not only git state it shares. */
-  noteChange(cwd: string, files: boolean, paths: string[]): void;
+  /** A watcher event: refreshes what it affects and records the activity. */
+  noteChange(change: WorktreeChanged): void;
   /**
    * Switches to worktree `cwd` and opens its change to `path`, as the Changes list would: the
    * uncommitted diff, else the branch-vs-base diff, else the file itself.
@@ -195,8 +197,6 @@ interface State {
 }
 
 let saveTimer: number | undefined;
-let overviewRun: Promise<void> | null = null;
-let overviewAgain = false;
 let overviewTimer: number | undefined;
 /** Worktree path → files the watcher saw change since the last overview load, for Activity. */
 let edited = new Map<string, Set<string>>();
@@ -258,7 +258,7 @@ export const useStore = create<State>()((set, get) => {
   const watchWorktrees = () => {
     const { repo, worktrees } = get();
     if (!repo) return;
-    const paths = worktrees.filter((w) => !w.missing && !w.bare).map((w) => w.path);
+    const paths = readablePaths(worktrees);
     const key = [repo.id, ...paths].join("\n");
     if (key === watched) return;
     watched = key;
@@ -278,11 +278,10 @@ export const useStore = create<State>()((set, get) => {
       if (get().repo?.id !== repo.id) return;
       set({ worktrees });
       watchWorktrees();
-      const paths = worktrees.filter((w) => !w.missing && !w.bare).map((w) => w.path);
-      const overview = await api.worktreesOverview(repo.id, paths, get().base);
+      const overview = await api.worktreesOverview(repo.id, readablePaths(worktrees), get().base);
       if (get().repo?.id !== repo.id) return;
       const prev = get().overview;
-      const now = Date.now();
+      const now = Date.now() / 1000;
       const events = [...(prev ? activityBetween(prev.worktrees, overview.worktrees, now) : []), ...editsOf(seen, overview.worktrees, now)];
       const changeCounts = Object.fromEntries(overview.worktrees.map((w) => [w.path, w.uncommitted.length]));
       // The current worktree's own status may be newer than this overview.
@@ -293,6 +292,12 @@ export const useStore = create<State>()((set, get) => {
     } catch (e) {
       if (get().repo?.id === repo.id) set({ overviewError: errorText(e) });
     }
+  };
+
+  /** Shows worktree `cwd` (not a viewed branch); false when that did not happen. */
+  const enterWorktree = async (cwd: string) => {
+    if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
+    return get().cwd === cwd && !get().viewBranch;
   };
 
   const loadForLeftTab = () => {
@@ -757,26 +762,11 @@ export const useStore = create<State>()((set, get) => {
       openAppTab({ id: "app:worktrees", title: "Worktrees", description: "", spec: { type: "worktrees", path: "Worktrees" } });
     },
 
-    loadOverview() {
-      if (overviewRun) {
-        overviewAgain = true;
-        return overviewRun;
-      }
-      overviewRun = (async () => {
-        do {
-          overviewAgain = false;
-          await loadOverviewOnce();
-        } while (overviewAgain);
-      })().finally(() => {
-        overviewRun = null;
-      });
-      return overviewRun;
-    },
+    loadOverview: coalesce(loadOverviewOnce),
 
     async openWorktreeChange(cwd, path) {
-      if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
-      const a = at();
-      if (a?.cwd !== cwd) return;
+      const a = (await enterWorktree(cwd)) ? at() : null;
+      if (!a) return;
       const entry = get().status?.entries.find((e) => e.kind !== "ignored" && (e.path === path || e.origPath === path));
       if (entry) return get().openTab(uncommittedTab(cwd, entry), true);
       const { base, worktrees } = get();
@@ -794,16 +784,15 @@ export const useStore = create<State>()((set, get) => {
     },
 
     async openWorktreeCommit(cwd, sha) {
-      if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
-      if (get().cwd === cwd) await get().showCommit(sha);
+      if (await enterWorktree(cwd)) await get().showCommit(sha);
     },
 
-    noteChange(cwd, files, paths) {
-      if (files) set((s) => ({ lastChange: { ...s.lastChange, [cwd]: Date.now() } }));
+    noteChange({ cwd, files, paths }) {
+      if (files) set((s) => ({ lastChange: { ...s.lastChange, [cwd]: Date.now() / 1000 } }));
       if (paths.length) {
-        const set = edited.get(cwd) ?? new Set<string>();
-        paths.forEach((p) => set.add(p));
-        edited.set(cwd, set);
+        const seen = edited.get(cwd) ?? new Set<string>();
+        paths.forEach((p) => seen.add(p));
+        edited.set(cwd, seen);
       }
       // The current worktree refreshes as a whole, which includes the overview.
       if (cwd === get().cwd) return void get().refresh();

@@ -203,7 +203,7 @@ export interface WorktreeChanged {
   /** Files of the worktree changed, not only git state that worktrees share (refs, index). */
   files: boolean;
   /** Those files (and folders), relative to the worktree with `/`; capped. An older WSL helper sends none. */
-  paths?: string[];
+  paths: string[];
 }
 
 type At = { repo: string; cwd: string };

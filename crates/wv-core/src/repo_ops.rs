@@ -20,7 +20,7 @@ const BINARY_SNIFF: usize = 8000;
 const EMPTY_TREE_SHA1: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const EMPTY_TREE_SHA256: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
 
-pub(crate) fn args(a: &[&str]) -> Vec<String> {
+fn args(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
@@ -71,23 +71,31 @@ pub fn resolve_base(h: &dyn GitHost, cwd: &str, preferred: Option<&str>) -> Resu
             return Ok(Some(p.to_string()));
         }
     }
-    for name in ["development", "main", "master"] {
+    let local_or_origin = |name: &str| -> Result<Option<String>, String> {
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")])? {
             return Ok(Some(name.to_string()));
         }
         if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{name}")])? {
             return Ok(Some(format!("origin/{name}")));
         }
-    }
-    let origin_head = h.git(cwd, &args(&["rev-parse", "--abbrev-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD"]), None)?;
-    let remote = String::from_utf8_lossy(&origin_head.stdout).trim().to_string();
-    let Some(name) = remote.strip_prefix("origin/").filter(|n| origin_head.code == 0 && !n.is_empty() && *n != "HEAD") else {
-        return Ok(None);
+        Ok(None)
     };
-    if succeeds(h, cwd, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{name}")])? {
-        return Ok(Some(name.to_string()));
+    for name in ["development", "main", "master"] {
+        if let Some(base) = local_or_origin(name)? {
+            return Ok(Some(base));
+        }
     }
-    Ok(Some(remote))
+    match origin_default_branch(h, cwd)? {
+        Some(name) => local_or_origin(&name),
+        None => Ok(None),
+    }
+}
+
+/// The branch `origin/HEAD` points at: the remote's default branch, as `git clone` sets it.
+fn origin_default_branch(h: &dyn GitHost, cwd: &str) -> Result<Option<String>, String> {
+    let out = h.git(cwd, &args(&["rev-parse", "--abbrev-ref", "--verify", "--quiet", "refs/remotes/origin/HEAD"]), None)?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().strip_prefix("origin/").map(str::to_string);
+    Ok(name.filter(|n| out.code == 0 && !n.is_empty() && n != "HEAD"))
 }
 
 #[derive(Debug, Clone, Serialize)]

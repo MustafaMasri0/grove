@@ -60,8 +60,8 @@ paste a path.
   branch, uncommitted files, commits ahead of and behind the base branch and
   origin, and its last commit. Grove watches all worktrees while it is open: a
   worktree whose files are changing pulses green (also in the worktree list),
-  and an activity feed lists commits, branch switches and newly changed files
-  in any of them. **Possible conflicts** lists files that two worktrees both
+  and an activity feed lists commits, branch switches and file edits in any of
+  them. **Possible conflicts** lists files that two worktrees both
   change, committed since the base or not committed yet. A file committed on
   both sides only counts when the two versions differ and neither branch
   already contains the other. The count shows on the grid button. This uses

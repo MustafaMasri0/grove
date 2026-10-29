@@ -46,7 +46,7 @@ fn handle(host: &LocalHost, out: &Out, req: Request) {
                 spec,
                 Arc::new(move |change: Change| {
                     if let Some(&watch_id) = wid.get() {
-                        send(&out2, &Message::Changed { watch_id, files: change.files, paths: change.paths });
+                        send(&out2, &Message::Changed { watch_id, change });
                     }
                 }),
             );

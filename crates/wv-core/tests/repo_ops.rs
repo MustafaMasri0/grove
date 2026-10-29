@@ -389,21 +389,15 @@ fn history_search_stays_on_the_revision_and_reports_truncation() {
 fn summary_counts_what_the_changes_list_shows() {
     let r = temp_repo();
     assert!(overview::summary(&h(), r.path_str(), None).unwrap().uncommitted.is_empty());
-    std::fs::write(r.path.join("a.txt"), "edited
-").unwrap();
-    std::fs::write(r.path.join("staged.txt"), "s
-").unwrap();
+    std::fs::write(r.path.join("a.txt"), "edited\n").unwrap();
+    std::fs::write(r.path.join("staged.txt"), "s\n").unwrap();
     git(&r.path, &["add", "staged.txt"]);
     std::fs::create_dir(r.path.join("new")).unwrap();
-    std::fs::write(r.path.join("new/u1.txt"), "u
-").unwrap();
-    std::fs::write(r.path.join("new/u2.txt"), "u
-").unwrap();
+    std::fs::write(r.path.join("new/u1.txt"), "u\n").unwrap();
+    std::fs::write(r.path.join("new/u2.txt"), "u\n").unwrap();
     // Ignored files are not changes.
-    std::fs::write(r.path.join(".git/info/exclude"), "*.log
-").unwrap();
-    std::fs::write(r.path.join("x.log"), "l
-").unwrap();
+    std::fs::write(r.path.join(".git/info/exclude"), "*.log\n").unwrap();
+    std::fs::write(r.path.join("x.log"), "l\n").unwrap();
     let s = overview::summary(&h(), r.path_str(), None).unwrap();
     let paths: Vec<_> = s.uncommitted.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(paths.len(), 4, "{paths:?}");
@@ -446,24 +440,20 @@ fn overview_finds_files_two_worktrees_both_change() {
         git(wt, &["commit", "-q", "-m", file]);
     };
     let a = add("agent-a", "main");
-    commit(&a, "a.txt", "from a
-");
+    commit(&a, "a.txt", "from a\n");
     let b = add("agent-b", "main");
-    commit(&b, "a.txt", "from b
-");
+    commit(&b, "a.txt", "from b\n");
     // Stacked on agent-a: a fast-forward of it, so their shared a.txt cannot conflict.
     let c = add("agent-c", "agent-a");
-    commit(&c, "c.txt", "c
-");
+    commit(&c, "c.txt", "c\n");
     // Uncommitted work in the main worktree touches the file agent-c added.
-    std::fs::write(r.path.join("c.txt"), "main
-").unwrap();
+    std::fs::write(r.path.join("c.txt"), "main\n").unwrap();
 
     let cwds: Vec<String> = [&r.path, &a, &b, &c, &r.dir.path().join("gone")].iter().map(|p| p.to_str().unwrap().to_string()).collect();
     let o = overview::overview(&h(), &cwds, Some("main"));
     assert_eq!(o.worktrees.len(), 4);
     assert!(o.errors.contains_key(&cwds[4]));
     let name = |p: &str| std::path::Path::new(p).file_name().unwrap().to_str().unwrap().to_string();
-    let pairs: Vec<_> = o.overlaps.iter().map(|x| (name(&x.a), name(&x.b), x.files.join(","))).collect();
-    assert_eq!(pairs, vec![("repo".into(), "agent-c".into(), "c.txt".into()), ("agent-a".into(), "agent-b".into(), "a.txt".into()), ("agent-b".into(), "agent-c".into(), "a.txt".into())] as Vec<(String, String, String)>);
+    let pairs: Vec<_> = o.overlaps.iter().map(|x| format!("{} {} {}", name(&x.a), name(&x.b), x.files.join(","))).collect();
+    assert_eq!(pairs, ["repo agent-c c.txt", "agent-a agent-b a.txt", "agent-b agent-c a.txt"]);
 }

@@ -100,7 +100,7 @@ export function App() {
     window.addEventListener("focus", onFocus);
 
     const unlisten = [
-      listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload.cwd, e.payload.files, e.payload.paths ?? [])),
+      listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
       listen<{ line: string }>("action-progress", (e) => setActionProgress(e.payload.line)),
     ];
     return () => {

@@ -1,22 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { WorktreeInfo, WorktreeSummary } from "../api";
 import { changeCountTitle } from "../lib/changes";
-import { isoToUnix, relativeTime, splitPath } from "../lib/format";
-import { isActive, LISTED_FILES, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
+import { isoToUnix, relativeTime, shortSha, splitPath } from "../lib/format";
+import { useNow } from "../lib/useNow";
+import { isActive, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
 import { useStore } from "../store";
 import { BaseSelect } from "./BaseSelect";
 import { FileRow } from "./FileRow";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { BranchIcon, SyncIcon } from "./icons";
 
-function useNow(ms: number) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), ms);
-    return () => window.clearInterval(t);
-  }, [ms]);
-  return now;
-}
+/** At first, the conflicts list shows this many files. */
+const SHOWN_FILES = 12;
+/** At first, an Activity entry shows this many of its files. */
+const SHOWN_EVENT_FILES = 3;
+
+const KIND_MARK: Record<ActivityEvent["kind"], string> = { commit: "●", moved: "↷", branch: "⑂", editing: "✎", added: "+", removed: "−" };
+
+type NameOf = (path: string) => string;
+
+const plural = (n: number, what: string) => `${n} ${what}${n === 1 ? "" : "s"}`;
 
 /** The Worktrees overview: every worktree at a glance, what they both change, and what just happened. */
 export function WorktreesPage() {
@@ -30,11 +33,12 @@ export function WorktreesPage() {
   const loadOverview = useStore((s) => s.loadOverview);
   const now = useNow(1000);
   const [loading, setLoading] = useState(false);
+  const [allShared, setAllShared] = useState(false);
 
   const info = useMemo(() => new Map(worktrees.map((w) => [w.path, w])), [worktrees]);
-  const name = (path: string) => worktreeName(info.get(path) ?? { path });
   const shared = useMemo(() => (overview ? sharedFiles(overview.overlaps, overview.worktrees) : []), [overview]);
-  const [allShared, setAllShared] = useState(false);
+  const present = useMemo(() => new Set(overview?.worktrees.map((w) => w.path)), [overview]);
+  const name: NameOf = (path) => worktreeName(info.get(path) ?? { path });
   const active = (overview?.worktrees ?? []).filter((w) => isActive(lastChange[w.path], now)).length;
 
   if (!repo)
@@ -59,7 +63,7 @@ export function WorktreesPage() {
             {repo.name} · {overview?.worktrees.length ?? "…"} worktrees
             {!base && <> · <span className="ov-warn-text">no base branch: pick one to compare with</span></>}
             {active > 0 && <> · <span className="ov-live-text">{active} active now</span></>}
-            {shared.length > 0 && <> · <span className="ov-warn-text">{shared.length} shared file{shared.length === 1 ? "" : "s"}</span></>}
+            {shared.length > 0 && <> · <span className="ov-warn-text">{plural(shared.length, "shared file")}</span></>}
           </div>
         </div>
         <div className="ov-tools">
@@ -78,7 +82,15 @@ export function WorktreesPage() {
           <>
             <section className="ov-cards">
               {overview.worktrees.map((w) => (
-                <WorktreeCard key={w.path} w={w} info={info.get(w.path)} lastChange={lastChange[w.path]} now={now} shared={shared.filter((f) => f.worktrees.some((x) => x.path === w.path))} name={name} />
+                <WorktreeCard
+                  key={w.path}
+                  w={w}
+                  info={info.get(w.path)}
+                  lastChange={lastChange[w.path]}
+                  now={now}
+                  shared={shared.filter((f) => f.worktrees.some((x) => x.path === w.path))}
+                  name={name}
+                />
               ))}
               {Object.entries(overview.errors).map(([path, error]) => (
                 <div key={path} className="ov-card ov-card-error">
@@ -116,11 +128,11 @@ export function WorktreesPage() {
             <section className="ov-section">
               <h2>Activity</h2>
               {activity.length === 0 ? (
-                <div className="muted ov-none">Nothing yet. Commits, branch switches and newly changed files in any worktree show up here while Grove is open.</div>
+                <div className="muted ov-none">Nothing yet. Commits, branch switches and file edits in any worktree show up here while Grove is open.</div>
               ) : (
                 <ul className="ov-feed">
                   {activity.map((e, i) => (
-                    <FeedRow key={`${e.at}-${i}`} e={e} name={name} now={now} exists={overview.worktrees.some((w) => w.path === e.path)} />
+                    <FeedRow key={`${e.at}-${i}`} e={e} name={name} now={now} exists={present.has(e.path)} />
                   ))}
                 </ul>
               )}
@@ -139,7 +151,7 @@ function WorktreeCard(props: {
   now: number;
   /** The shared files this worktree is one of. */
   shared: SharedFile[];
-  name: (path: string) => string;
+  name: NameOf;
 }) {
   const { w, info, lastChange, now, shared, name } = props;
   const cwd = useStore((s) => s.cwd);
@@ -159,7 +171,7 @@ function WorktreeCard(props: {
         {current && <span className="ov-chip">current</span>}
       </div>
       <div className="ov-branch">
-        <BranchIcon /> {w.branch ?? (w.head ? `detached @ ${w.head.slice(0, 7)}` : "no commits")}
+        <BranchIcon /> {w.branch ?? (w.head ? `detached @ ${shortSha(w.head)}` : "no commits")}
       </div>
       <div className="ov-stats">
         <span className={n ? "k-modified" : "muted"} title={changeCountTitle(n)}>
@@ -187,14 +199,14 @@ function WorktreeCard(props: {
       {w.lastCommit && (
         <div className="ov-commit" title={`${w.lastCommit.authorName} · ${w.lastCommit.sha}`}>
           <span className="ov-commit-subject">{w.lastCommit.subject}</span>
-          <span className="muted"> · {relativeTime(isoToUnix(w.lastCommit.authorDate), now / 1000)}</span>
+          <span className="muted"> · {relativeTime(isoToUnix(w.lastCommit.authorDate), now)}</span>
         </div>
       )}
       <div className="ov-foot">
-        <span className={live ? "ov-live-text" : "muted"}>{lastChange ? `files changed ${relativeTime(lastChange / 1000, now / 1000)}` : "no activity yet"}</span>
+        <span className={live ? "ov-live-text" : "muted"}>{lastChange ? `files changed ${relativeTime(lastChange, now)}` : "no activity yet"}</span>
         {shared.length > 0 && (
           <span className="ov-warn-text" title={`Also changed in ${others.join(", ")}`}>
-            ⚠ {shared.length} shared file{shared.length === 1 ? "" : "s"}
+            ⚠ {plural(shared.length, "shared file")}
           </span>
         )}
       </div>
@@ -202,10 +214,7 @@ function WorktreeCard(props: {
   );
 }
 
-/** At first, the conflicts list shows this many files. */
-const SHOWN_FILES = 12;
-
-function SharedFileRow({ f, name }: { f: SharedFile; name: (path: string) => string }) {
+function SharedFileRow({ f, name }: { f: SharedFile; name: NameOf }) {
   const { name: file, dir } = splitPath(f.path);
   const open = useStore((s) => s.openWorktreeChange);
   return (
@@ -232,52 +241,54 @@ function SharedFileRow({ f, name }: { f: SharedFile; name: (path: string) => str
   );
 }
 
-const KIND_MARK: Record<ActivityEvent["kind"], string> = { commit: "●", moved: "↷", branch: "⑂", editing: "✎", added: "+", removed: "−" };
-
-function FeedRow({ e, name, now, exists }: { e: ActivityEvent; name: (path: string) => string; now: number; exists: boolean }) {
-  const openChange = useStore((s) => s.openWorktreeChange);
+/** One Activity entry; its links open the worktree's commit or changes while the worktree still `exists`. */
+function FeedRow({ e, name, now, exists }: { e: ActivityEvent; name: NameOf; now: number; exists: boolean }) {
   const openCommit = useStore((s) => s.openWorktreeCommit);
-  const [all, setAll] = useState(false);
-  const files = e.files ?? [];
-  const shown = all ? files : files.slice(0, LISTED_FILES);
-  let text: React.ReactNode = e.text;
-  if (files.length) text = `changed ${files.length} file${files.length === 1 ? "" : "s"}`;
-  else if (exists && e.sha) {
+  let text: ReactNode;
+  if (e.kind === "editing") text = `changed ${plural(e.files.length, "file")}`;
+  else if (exists && (e.kind === "commit" || e.kind === "moved")) {
     const sha = e.sha;
     text = (
       <button className="link" title={`Show the commit in ${name(e.path)}'s History`} onClick={() => void openCommit(e.path, sha)}>
         {e.text}
       </button>
     );
-  }
+  } else text = e.text;
   return (
     <li className={`ov-event ev-${e.kind}`}>
       <span className="ov-event-mark">{KIND_MARK[e.kind]}</span>
       <span className="ov-event-who">{name(e.path)}</span>
       <span className="ov-event-text">{text}</span>
-      <span className="muted ov-event-time">{relativeTime(e.at / 1000, now / 1000)}</span>
-      {files.length > 0 && (
-        <ul className="ov-event-files">
-          {shown.map((f) => (
-            <li key={f.path}>
-              {exists ? (
-                <button className="ov-file-link" title={`Open ${name(e.path)}'s change to ${f.path}`} onClick={() => void openChange(e.path, f.path)}>
-                  <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
-                </button>
-              ) : (
-                <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
-              )}
-            </li>
-          ))}
-          {files.length > shown.length && (
-            <li>
-              <button className="link ov-more" onClick={() => setAll(true)}>
-                {files.length - shown.length} more
-              </button>
-            </li>
-          )}
-        </ul>
-      )}
+      <span className="muted ov-event-time">{relativeTime(e.at, now)}</span>
+      {e.kind === "editing" && <EventFiles e={e} name={name} exists={exists} />}
     </li>
+  );
+}
+
+function EventFiles({ e, name, exists }: { e: Extract<ActivityEvent, { kind: "editing" }>; name: NameOf; exists: boolean }) {
+  const openChange = useStore((s) => s.openWorktreeChange);
+  const [all, setAll] = useState(false);
+  const shown = all ? e.files : e.files.slice(0, SHOWN_EVENT_FILES);
+  return (
+    <ul className="ov-event-files">
+      {shown.map((f) => (
+        <li key={f.path}>
+          {exists ? (
+            <button className="ov-file-link" title={`Open ${name(e.path)}'s change to ${f.path}`} onClick={() => void openChange(e.path, f.path)}>
+              <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
+            </button>
+          ) : (
+            <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />
+          )}
+        </li>
+      ))}
+      {e.files.length > shown.length && (
+        <li>
+          <button className="link ov-more" onClick={() => setAll(true)}>
+            {e.files.length - shown.length} more
+          </button>
+        </li>
+      )}
+    </ul>
   );
 }

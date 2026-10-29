@@ -2,7 +2,7 @@
 //! (normally `wsl.exe -d <distro> -- helper`) and multiplexes concurrent calls over it.
 
 use crate::allowlist;
-use crate::host::{Change, DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
+use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
 use crate::protocol::{Message, Op, Request};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -49,10 +49,10 @@ impl HelperClient {
                         Message::Hello { version } => {
                             let _ = hello_tx.send(version.clone());
                         }
-                        Message::Changed { watch_id, files, paths } => {
+                        Message::Changed { watch_id, change } => {
                             let cb = watches.lock().unwrap().get(watch_id).cloned();
                             if let Some(cb) = cb {
-                                cb(Change { files: *files, paths: paths.clone() });
+                                cb(change.clone());
                             }
                         }
                         Message::Done { id, .. } | Message::Failed { id, .. } => {

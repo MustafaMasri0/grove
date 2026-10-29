@@ -112,6 +112,7 @@ pub fn overview(h: &dyn GitHost, cwds: &[String], base: Option<&str>) -> Overvie
             }
         }
     }
+    // Worktrees share one object store, so any of them can compare commits of the others.
     if let Some(first) = out.worktrees.first().map(|w| w.path.clone()) {
         out.overlaps = overlaps(&out.worktrees, |a, b| diverging(h, &first, a, b));
     }
@@ -142,9 +143,9 @@ pub fn overlaps(worktrees: &[WorktreeSummary], mut diverging: impl FnMut(&str, &
             }
             let (a, b) = (&worktrees[i], &worktrees[j]);
             let committed_only = |f: &&str| !dirty[i].contains(f) && !dirty[j].contains(f);
+            // Only committed-only files need git to tell whether the two versions differ.
             let differ = match (&a.head, &b.head) {
-                _ if !shared.iter().any(committed_only) => None,
-                (Some(ha), Some(hb)) => diverging(ha, hb).ok(),
+                (Some(ha), Some(hb)) if shared.iter().any(committed_only) => diverging(ha, hb).ok(),
                 _ => None,
             };
             let files: Vec<String> = shared

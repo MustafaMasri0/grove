@@ -1,10 +1,11 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { errorText } from "../api";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems, repoItems, worktreeItems } from "../lib/contextMenus";
 import { relativeTime, shortSha } from "../lib/format";
 import { windowsPath } from "../lib/hostPaths";
+import { useNow } from "../lib/useNow";
 import { isActive, sharedFiles, worktreeName } from "../lib/worktrees";
 import { useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
@@ -113,7 +114,7 @@ function WorktreeSwitcher() {
   const selectWorktree = useStore((s) => s.selectWorktree);
   const current = worktrees.find((w) => w.path === cwd);
   const label = (w: (typeof worktrees)[number]) => (w.branch ? w.branch : w.head ? `detached @ ${shortSha(w.head)}` : "bare");
-  const now = useNow(5_000) * 1000;
+  const now = useNow(5_000);
 
   const items: DropdownItem[] = worktrees.map((w) => ({
     key: w.path,
@@ -194,15 +195,6 @@ function BranchSwitcher() {
       }}
     />
   );
-}
-
-function useNow(ms: number) {
-  const [now, setNow] = useState(() => Date.now() / 1000);
-  useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now() / 1000), ms);
-    return () => window.clearInterval(t);
-  }, [ms]);
-  return now;
 }
 
 function ActionButton() {

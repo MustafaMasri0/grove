@@ -1,88 +1,81 @@
 // The Worktrees overview: names, live activity and overlaps between worktrees.
-import type { ChangedFile, Overlap, WorktreeSummary } from "../api";
+// Times are unix seconds, like the rest of the app.
+import type { ChangedFile, Overlap, WorktreeInfo, WorktreeSummary } from "../api";
 import { shortSha } from "./format";
 
 /** A worktree counts as active this long after its files last changed. */
-export const ACTIVE_MS = 15_000;
-/** The activity feed keeps this many events. */
+export const ACTIVE_SECS = 15;
+/** A worktree's edits join its last "changed" entry while they are less than this far apart. */
+export const MERGE_SECS = 120;
+/** The activity feed keeps this many entries. */
 export const ACTIVITY_LIMIT = 200;
 
 export function worktreeName(w: { path: string; isMain?: boolean }): string {
   return w.isMain ? "main worktree" : w.path.split(/[\\/]/).filter(Boolean).pop() ?? w.path;
 }
 
+/** The worktrees git can read (not missing, not bare), by path. */
+export function readablePaths(worktrees: readonly WorktreeInfo[]): string[] {
+  return worktrees.filter((w) => !w.missing && !w.bare).map((w) => w.path);
+}
+
 export function isActive(lastChange: number | undefined, now: number): boolean {
-  return lastChange !== undefined && now - lastChange < ACTIVE_MS;
+  return lastChange !== undefined && now - lastChange < ACTIVE_SECS;
 }
 
-export interface ActivityEvent {
-  /** Unix milliseconds. */
-  at: number;
-  /** The worktree's path. */
-  path: string;
-  kind: "commit" | "moved" | "branch" | "editing" | "added" | "removed";
-  text: string;
-  /** Files that started changing ("editing"). */
-  files?: ChangedFile[];
-  /** The commit HEAD is now at ("commit", "moved"). */
-  sha?: string;
+/** The paths a change touches: its own, and a rename's old one. */
+export function namesOf(f: ChangedFile): string[] {
+  return f.origPath ? [f.path, f.origPath] : [f.path];
 }
 
-/** Of a list of files, the ones shown by name; the rest are counted. */
-export const LISTED_FILES = 3;
-
-function list(paths: string[]): string {
-  const shown = paths.slice(0, LISTED_FILES).map((p) => p.split("/").pop() ?? p);
-  return paths.length > LISTED_FILES ? `${shown.join(", ")} and ${paths.length - LISTED_FILES} more` : shown.join(", ");
-}
+/** Something that happened in a worktree (`path`). */
+export type ActivityEvent = { at: number; path: string } & (
+  /** Files of the Changes list the watcher saw change. */
+  | { kind: "editing"; files: ChangedFile[] }
+  /** HEAD moved to `sha`: a commit on top of it, or anything else (reset, rebase, pull). */
+  | { kind: "commit" | "moved"; text: string; sha: string }
+  | { kind: "branch" | "added" | "removed"; text: string }
+);
 
 /**
  * What happened to HEADs and worktrees between two overviews of the same repository, in worktree
  * order. File edits come from the watcher instead ({@link editsOf}): an already changed file that
  * is edited again looks the same to `git status`.
  */
-export function activityBetween(prev: readonly WorktreeSummary[], next: readonly WorktreeSummary[], at: number): ActivityEvent[] {
+export function activityBetween(prev: readonly WorktreeSummary[], next: readonly WorktreeSummary[], at: number): Exclude<ActivityEvent, { kind: "editing" }>[] {
   const before = new Map(prev.map((w) => [w.path, w]));
-  const events: ActivityEvent[] = [];
-  const push = (path: string, kind: ActivityEvent["kind"], text: string, more: Partial<ActivityEvent> = {}) => events.push({ at, path, kind, text, ...more });
+  const events: Exclude<ActivityEvent, { kind: "editing" }>[] = [];
   for (const w of next) {
     const p = before.get(w.path);
-    if (!p) {
-      push(w.path, "added", `new worktree on ${w.branch ?? "a detached HEAD"}`);
-      continue;
-    }
     const c = w.lastCommit;
-    if (p.branch !== w.branch) push(w.path, "branch", `switched to ${w.branch ?? `a detached HEAD at ${shortSha(w.head ?? "")}`}`);
+    if (!p) events.push({ at, path: w.path, kind: "added", text: `new worktree on ${w.branch ?? "a detached HEAD"}` });
+    else if (p.branch !== w.branch) events.push({ at, path: w.path, kind: "branch", text: `switched to ${w.branch ?? `a detached HEAD at ${shortSha(w.head ?? "")}`}` });
     else if (p.head !== w.head && c) {
-      if (p.head && c.parents.includes(p.head)) push(w.path, "commit", `committed “${c.subject}”`, { sha: c.sha });
-      else push(w.path, "moved", `now at ${shortSha(c.sha)} “${c.subject}”`, { sha: c.sha });
+      if (p.head && c.parents.includes(p.head)) events.push({ at, path: w.path, kind: "commit", text: `committed “${c.subject}”`, sha: c.sha });
+      else events.push({ at, path: w.path, kind: "moved", text: `now at ${shortSha(c.sha)} “${c.subject}”`, sha: c.sha });
     }
   }
   const still = new Set(next.map((w) => w.path));
-  for (const p of prev) if (!still.has(p.path)) push(p.path, "removed", "worktree removed");
+  for (const p of prev) if (!still.has(p.path)) events.push({ at, path: p.path, kind: "removed", text: "worktree removed" });
   return events;
 }
 
-/** A worktree's edits join its last "changed …" entry while they are less than this far apart. */
-export const MERGE_MS = 2 * 60_000;
-
 /**
  * The feed (newest first) with `events` (oldest first) added. An edit joins the worktree's latest
- * entry when that is also an edit, less than {@link MERGE_MS} older: the entry moves to the top with
+ * entry when that is also an edit, less than {@link MERGE_SECS} older: the entry moves to the top with
  * the new time and the files edited since listed first. So steady work reads as one entry, and a
  * commit or a pause starts the next. At most {@link ACTIVITY_LIMIT} entries are kept.
  */
 export function addActivity(feed: readonly ActivityEvent[], events: readonly ActivityEvent[]): ActivityEvent[] {
-  let next = [...feed];
+  const next = [...feed];
   for (const e of events) {
     const i = next.findIndex((x) => x.path === e.path);
     const last = next[i];
-    if (e.kind === "editing" && last?.kind === "editing" && e.at - last.at < MERGE_MS) {
-      const fresh = new Set(e.files!.map((f) => f.path));
-      const files = [...e.files!, ...last.files!.filter((f) => !fresh.has(f.path))];
+    if (e.kind === "editing" && last?.kind === "editing" && e.at - last.at < MERGE_SECS) {
+      const fresh = new Set(e.files.map((f) => f.path));
       next.splice(i, 1);
-      next = [{ ...e, files, text: `changed ${list(files.map((f) => f.path))}` }, ...next];
-    } else next = [e, ...next];
+      next.unshift({ ...e, files: [...e.files, ...last.files.filter((f) => !fresh.has(f.path))] });
+    } else next.unshift(e);
   }
   return next.slice(0, ACTIVITY_LIMIT);
 }
@@ -93,14 +86,11 @@ export function addActivity(feed: readonly ActivityEvent[], events: readonly Act
  * leave no entry. In worktree order.
  */
 export function editsOf(seen: ReadonlyMap<string, ReadonlySet<string>>, worktrees: readonly WorktreeSummary[], at: number): ActivityEvent[] {
-  const events: ActivityEvent[] = [];
-  for (const w of worktrees) {
+  return worktrees.flatMap((w): ActivityEvent[] => {
     const paths = seen.get(w.path);
-    if (!paths) continue;
-    const files = w.uncommitted.filter((f) => paths.has(f.path) || (f.origPath !== null && paths.has(f.origPath)));
-    if (files.length) events.push({ at, path: w.path, kind: "editing", text: `changed ${list(files.map((f) => f.path))}`, files });
-  }
-  return events;
+    const files = paths ? w.uncommitted.filter((f) => namesOf(f).some((n) => paths.has(n))) : [];
+    return files.length ? [{ at, path: w.path, kind: "editing", files }] : [];
+  });
 }
 
 /** A file several worktrees change, and whether each one's change is still uncommitted. */
@@ -120,11 +110,11 @@ export function sharedFiles(overlaps: readonly Overlap[], worktrees: readonly Wo
       by.set(f, set);
     }
   }
-  const dirty = new Map(worktrees.map((w) => [w.path, new Set(w.uncommitted.flatMap((f) => (f.origPath ? [f.path, f.origPath] : [f.path])))]));
+  const dirty = new Map(worktrees.map((w) => [w.path, new Set(w.uncommitted.flatMap(namesOf))]));
   return [...by.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([path, set]) => ({
       path,
-      worktrees: worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, uncommitted: dirty.get(w.path)!.has(path) })),
+      worktrees: worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, uncommitted: dirty.get(w.path)?.has(path) ?? false })),
     }));
 }

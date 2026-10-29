@@ -15,9 +15,9 @@ use std::time::{Duration, Instant};
 
 const SKIP_NAMES: &[&str] = &["node_modules", "dist", ".turbo"];
 const QUIET: Duration = Duration::from_millis(250);
+const MAX_DELAY: Duration = Duration::from_millis(1500);
 /// A burst reports at most this many changed paths (a checkout or build can touch thousands).
 const MAX_PATHS: usize = 200;
-const MAX_DELAY: Duration = Duration::from_millis(1500);
 
 pub struct WorktreeWatcher {
     stop: Arc<AtomicBool>,
@@ -113,15 +113,10 @@ impl WorktreeWatcher {
                                 add_tree(&mut w, p, &filter);
                             }
                         }
-                        let relevant: Vec<_> = event.paths.iter().filter(|p| filter.relevant(p)).collect();
-                        if !relevant.is_empty() {
-                            for p in relevant.iter().filter(|p| !filter.in_git_dir(p)) {
-                                change.files = true;
-                                if let Some(rel) = relative(&root, p).filter(|_| change.paths.len() < MAX_PATHS) {
-                                    if !change.paths.contains(&rel) {
-                                        change.paths.push(rel);
-                                    }
-                                }
+                        let mut relevant = event.paths.iter().filter(|p| filter.relevant(p)).peekable();
+                        if relevant.peek().is_some() {
+                            for p in relevant.filter(|p| !filter.in_git_dir(p)) {
+                                note_file(&mut change, &root, p);
                             }
                             first.get_or_insert_with(Instant::now);
                             last = Instant::now();
@@ -140,6 +135,17 @@ impl WorktreeWatcher {
             drop(watcher);
         });
         Ok(Self { stop })
+    }
+}
+
+/// Adds a changed file of the worktree to the burst: once, relative to `root`, at most [`MAX_PATHS`].
+fn note_file(change: &mut Change, root: &Path, path: &Path) {
+    change.files = true;
+    if change.paths.len() >= MAX_PATHS {
+        return;
+    }
+    if let Some(rel) = relative(root, path).filter(|r| !change.paths.contains(r)) {
+        change.paths.push(rel);
     }
 }
 
@@ -190,6 +196,19 @@ mod tests {
         assert_eq!(relative(Path::new("/r"), Path::new("/r/src/a.ts")).as_deref(), Some("src/a.ts"));
         assert_eq!(relative(Path::new("/r"), Path::new("/other/a.ts")), None);
         assert_eq!(relative(Path::new("/r"), Path::new("/r")), None);
+    }
+
+    #[test]
+    fn a_burst_lists_each_file_once_up_to_the_cap() {
+        let mut change = Change::default();
+        let root = Path::new("/r");
+        note_file(&mut change, root, Path::new("/r/a.ts"));
+        note_file(&mut change, root, Path::new("/r/a.ts"));
+        assert_eq!(change, Change { files: true, paths: vec!["a.ts".into()] });
+        for i in 0..MAX_PATHS + 5 {
+            note_file(&mut change, root, &root.join(format!("f{i}")));
+        }
+        assert_eq!(change.paths.len(), MAX_PATHS);
     }
 
     #[test]

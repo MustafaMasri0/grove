@@ -52,8 +52,9 @@ pub struct WatchSpec {
     pub exclude: Vec<String>,
 }
 
-/// What a debounced burst of watcher events touched.
+/// What a debounced burst of watcher events touched. Missing fields (an older helper) read as nothing.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Change {
     /// Files of the worktree itself, not only git's own state (refs, index, HEAD), which
     /// worktrees share: a commit in one also moves refs every other worktree watches.
