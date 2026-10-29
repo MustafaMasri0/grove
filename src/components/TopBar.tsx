@@ -273,7 +273,7 @@ function OverviewButton() {
   const title = `Worktrees overview (Ctrl+Shift+O)${shared ? ` · ${shared} file${shared === 1 ? "" : "s"} changed in more than one worktree` : ""}`;
   return (
     <button className="tb-button tb-settings tb-overview" title={title} aria-label={title} onClick={openWorktrees} disabled={!repo}>
-      <Icon name="dashboard" />
+      <Icon name="extensions" />
       {shared > 0 && <span className="tb-warn">{shared}</span>}
     </button>
   );
