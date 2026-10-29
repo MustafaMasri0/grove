@@ -20,19 +20,19 @@ const BINARY_SNIFF: usize = 8000;
 const EMPTY_TREE_SHA1: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 const EMPTY_TREE_SHA256: &str = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321";
 
-fn args(a: &[&str]) -> Vec<String> {
+pub(crate) fn args(a: &[&str]) -> Vec<String> {
     a.iter().map(|s| s.to_string()).collect()
 }
 
-fn run(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn run(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<Vec<u8>, String> {
     h.git(cwd, &args(a), None)?.ok()
 }
 
-fn run_text(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<String, String> {
+pub(crate) fn run_text(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&run(h, cwd, a)?).trim().to_string())
 }
 
-fn succeeds(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<bool, String> {
+pub(crate) fn succeeds(h: &dyn GitHost, cwd: &str, a: &[&str]) -> Result<bool, String> {
     Ok(h.git(cwd, &args(a), None)?.code == 0)
 }
 
@@ -56,11 +56,6 @@ pub fn worktrees(h: &dyn GitHost, cwd: &str) -> Result<Vec<Worktree>, String> {
 
 pub fn status(h: &dyn GitHost, cwd: &str) -> Result<Status, String> {
     parse_status_v2(&run(h, cwd, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"])?)
-}
-
-/// How many files have uncommitted changes (what the Changes list shows): status entries minus ignored.
-pub fn change_count(h: &dyn GitHost, cwd: &str) -> Result<u32, String> {
-    Ok(status(h, cwd)?.entries.iter().filter(|e| e.kind != crate::porcelain::ChangeKind::Ignored).count() as u32)
 }
 
 pub fn branches(h: &dyn GitHost, cwd: &str) -> Result<Vec<BranchRef>, String> {

@@ -52,8 +52,16 @@ pub struct WatchSpec {
     pub exclude: Vec<String>,
 }
 
+/// What a debounced burst of watcher events touched.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Change {
+    /// Files of the worktree itself, not only git's own state (refs, index, HEAD), which
+    /// worktrees share: a commit in one also moves refs every other worktree watches.
+    pub files: bool,
+}
+
 pub type Progress<'a> = &'a (dyn Fn(&str) + Sync);
-pub type OnChange = Arc<dyn Fn() + Send + Sync>;
+pub type OnChange = Arc<dyn Fn(Change) + Send + Sync>;
 
 pub trait GitHost: Send + Sync {
     /// Runs an allowlisted git command in `cwd`. A non-zero exit is not an `Err`;

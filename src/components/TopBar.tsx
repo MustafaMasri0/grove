@@ -5,11 +5,12 @@ import { changeCountTitle } from "../lib/changes";
 import { branchItems, repoItems, worktreeItems } from "../lib/contextMenus";
 import { relativeTime, shortSha } from "../lib/format";
 import { windowsPath } from "../lib/hostPaths";
+import { isActive, worktreeName } from "../lib/worktrees";
 import { useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
 import { Dropdown, type DropdownItem } from "./Dropdown";
 import { WindowControls } from "./WindowControls";
-import { BranchIcon, GearIcon, PublishIcon, RepoIcon, SyncIcon, UpIcon, WorktreeIcon } from "./icons";
+import { BranchIcon, GearIcon, OverviewIcon, PublishIcon, RepoIcon, SyncIcon, UpIcon, WorktreeIcon } from "./icons";
 
 function RepoSwitcher() {
   const settings = useStore((s) => s.settings);
@@ -106,23 +107,29 @@ function ChangeBadge({ n }: { n: number | undefined }) {
 function WorktreeSwitcher() {
   const worktrees = useStore((s) => s.worktrees);
   const counts = useStore((s) => s.changeCounts);
+  const lastChange = useStore((s) => s.lastChange);
   const cwd = useStore((s) => s.cwd);
   const viewBranch = useStore((s) => s.viewBranch);
   const selectWorktree = useStore((s) => s.selectWorktree);
   const current = worktrees.find((w) => w.path === cwd);
   const label = (w: (typeof worktrees)[number]) => (w.branch ? w.branch : w.head ? `detached @ ${shortSha(w.head)}` : "bare");
-  const name = (w: (typeof worktrees)[number]) => (w.isMain ? "main worktree" : w.path.split(/[\\/]/).pop() ?? w.path);
+  const now = useNow(5_000) * 1000;
 
   const items: DropdownItem[] = worktrees.map((w) => ({
     key: w.path,
     label: (
       <>
-        <span className="wt-name">{name(w)}</span> <span className="wt-branch">{label(w)}</span>
+        <span className="wt-name">{worktreeName(w)}</span> <span className="wt-branch">{label(w)}</span>
       </>
     ),
     detail: w.displayPath,
-    trailing: <ChangeBadge n={counts[w.path]} />,
-    search: `${name(w)} ${label(w)} ${w.path}`,
+    trailing: (
+      <>
+        {isActive(lastChange[w.path], now) && <span className="ov-dot live" title="Files changing now" />}
+        <ChangeBadge n={counts[w.path]} />
+      </>
+    ),
+    search: `${worktreeName(w)} ${label(w)} ${w.path}`,
     current: w.path === cwd && !viewBranch,
     disabled: w.missing || w.bare,
     disabledReason: w.missing ? `Missing or prunable${w.prunable ? `: ${w.prunable}` : ""}` : w.bare ? "Bare repository" : undefined,
@@ -132,7 +139,7 @@ function WorktreeSwitcher() {
   return (
     <Dropdown
       caption={`Worktree${worktrees.length > 1 ? ` (${worktrees.length})` : ""}`}
-      value={current ? name(current) : "—"}
+      value={current ? worktreeName(current) : "—"}
       icon={<WorktreeIcon />}
       items={items}
       searchable={worktrees.length > 6}
@@ -166,7 +173,7 @@ function BranchSwitcher() {
       current: isCurrent,
       menu: () => branchItems(menuEnv, { name: b.name }),
       trailing: wt ? <ChangeBadge n={counts[wt.path]} /> : undefined,
-      detail: wt ? `checked out in ${wt.isMain ? "main worktree" : wt.path.split(/[\\/]/).pop()}` : `${relativeTime(b.committerUnix)} · view only`,
+      detail: wt ? `checked out in ${worktreeName(wt)}` : `${relativeTime(b.committerUnix)} · view only`,
     };
   });
   items.sort((a, b) => (a.section === b.section ? 0 : a.section === "Local branches" ? -1 : 1));
@@ -266,6 +273,20 @@ function ActionButton() {
   );
 }
 
+/** Opens the Worktrees overview; shows how many pairs of worktrees change the same files. */
+function OverviewButton() {
+  const openWorktrees = useStore((s) => s.openWorktrees);
+  const overlaps = useStore((s) => s.overview?.overlaps.length ?? 0);
+  const repo = useStore((s) => s.repo);
+  const title = `Worktrees overview (Ctrl+Shift+O)${overlaps ? ` · ${overlaps} possible conflict${overlaps === 1 ? "" : "s"}` : ""}`;
+  return (
+    <button className="tb-button tb-settings tb-overview" title={title} aria-label={title} onClick={openWorktrees} disabled={!repo}>
+      <OverviewIcon />
+      {overlaps > 0 && <span className="tb-warn">{overlaps}</span>}
+    </button>
+  );
+}
+
 export function TopBar() {
   const actionError = useStore((s) => s.action.error);
   const clear = useStore((s) => s.clearActionError);
@@ -276,6 +297,7 @@ export function TopBar() {
       <header className="topbar" data-tauri-drag-region>
         <RepoSwitcher />
         <WorktreeSwitcher />
+        <OverviewButton />
         <BranchSwitcher />
         <ActionButton />
         <span className="spacer" data-tauri-drag-region />

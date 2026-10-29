@@ -28,7 +28,7 @@ fn main() {
             commands::worktrees,
             commands::branches,
             commands::status,
-            commands::change_counts,
+            commands::worktrees_overview,
             commands::resolve_base,
             commands::branch_changes,
             commands::log,

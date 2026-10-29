@@ -13,6 +13,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: "Ctrl+1", action: "Show Changes", where: "App" },
   { keys: "Ctrl+2", action: "Show History", where: "App" },
   { keys: "Ctrl+3", action: "Show Explorer", where: "App" },
+  { keys: "Ctrl+Shift+O", action: "Open the Worktrees overview", where: "App" },
   { keys: "Ctrl+,", action: "Open Settings", where: "App" },
   { keys: "F5 / Ctrl+R", action: "Refresh", where: "App" },
   { keys: "Ctrl+= / Ctrl+-", action: "Zoom in / out", where: "App" },

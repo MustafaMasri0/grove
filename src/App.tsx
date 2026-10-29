@@ -8,7 +8,7 @@ import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
 import { TopBar } from "./components/TopBar";
-import { api } from "./api";
+import { api, type WorktreeChanged } from "./api";
 import { ZOOM_STEPS } from "./lib/settingsSchema";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
@@ -34,6 +34,7 @@ function onKeyDown(e: KeyboardEvent) {
   const tabs: Record<string, LeftTab> = { "1": "changes", "2": "history", "3": "explorer" };
 
   if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
+  else if (ctrl && e.shiftKey && key === "o") s.openWorktrees();
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
@@ -99,9 +100,7 @@ export function App() {
     window.addEventListener("focus", onFocus);
 
     const unlisten = [
-      listen<{ cwd: string }>("worktree-changed", (e) => {
-        if (e.payload.cwd === useStore.getState().cwd) void useStore.getState().refresh();
-      }),
+      listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload.cwd, e.payload.files)),
       listen<{ line: string }>("action-progress", (e) => setActionProgress(e.payload.line)),
     ];
     return () => {
@@ -247,6 +246,7 @@ async function runAutomation() {
   if (auto.imageZoom) await zoomImageForTest(auto.imageZoom);
   if (auto.previewLink !== null) await followPreviewLinkForTest(auto.previewLink);
   if (auto.reveal) useStore.getState().revealInExplorer(auto.reveal);
+  if (auto.worktrees) useStore.getState().openWorktrees();
   if (auto.listKeys) await pressListKeysForTest(auto.listKeys.split(","));
   if (auto.contextMenu) await openMenuForTest(auto.contextMenu);
 }

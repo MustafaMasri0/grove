@@ -1748,3 +1748,312 @@ kbd {
   background: #ffffff;
   color-scheme: light;
 }
+
+/* Worktrees overview (a page in the editor area, like Settings). */
+.ov-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.ov-head {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 24px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ov-head h1 {
+  margin: 0 0 2px;
+  font-size: calc(var(--ui-font-size) + 7px);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.ov-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ov-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 24px 40px;
+}
+
+.ov-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ov-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ov-card:hover {
+  background: var(--bg-hover);
+}
+
+.ov-card:focus-visible {
+  outline: 1px solid var(--focus);
+}
+
+.ov-card.current {
+  border-color: var(--accent);
+}
+
+.ov-card-error {
+  cursor: default;
+}
+
+.ov-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ov-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.ov-chip {
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: calc(var(--ui-font-size) - 2px);
+  color: var(--accent-fg);
+  background: var(--accent);
+}
+
+.ov-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--k-ignored);
+  opacity: 0.6;
+}
+
+.ov-dot.live {
+  background: var(--k-added);
+  opacity: 1;
+  animation: ov-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ov-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--k-added) 60%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--k-added) 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ov-dot.live {
+    animation: none;
+  }
+}
+
+.ov-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+
+.ov-branch svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+.ov-stats,
+.ov-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: calc(var(--ui-font-size) - 1px);
+}
+
+.ov-stats b {
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.ov-foot {
+  justify-content: space-between;
+}
+
+.ov-commit {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: calc(var(--ui-font-size) - 1px);
+}
+
+.ov-live-text {
+  color: var(--k-added);
+}
+
+.ov-warn-text {
+  color: var(--k-conflicted);
+}
+
+.ov-section {
+  margin-top: 8px;
+}
+
+.ov-section h2 {
+  margin: 22px 0 4px;
+  font-size: calc(var(--ui-font-size) + 3px);
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.ov-hint {
+  margin: 0 0 8px;
+  max-width: 760px;
+}
+
+.ov-none {
+  padding: 6px 0;
+}
+
+.ov-overlap {
+  border-bottom: 1px solid var(--border);
+}
+
+.ov-overlap-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 0;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.ov-chevron {
+  width: 12px;
+  color: var(--muted);
+}
+
+.ov-overlap-files {
+  margin: 0 0 8px;
+  padding: 0 0 0 18px;
+  list-style: none;
+}
+
+.ov-overlap-files li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  padding: 2px 0;
+}
+
+.ov-file {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  color: var(--fg-strong);
+}
+
+.ov-sides {
+  font-size: calc(var(--ui-font-size) - 1px);
+  color: var(--muted);
+}
+
+.ov-feed {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ov-event {
+  display: grid;
+  grid-template-columns: 16px minmax(80px, 160px) 1fr auto;
+  gap: 8px;
+  padding: 3px 0;
+  align-items: baseline;
+}
+
+.ov-event-mark {
+  text-align: center;
+  color: var(--muted);
+}
+
+.ev-commit .ov-event-mark {
+  color: var(--accent);
+}
+
+.ev-editing .ov-event-mark {
+  color: var(--k-modified);
+}
+
+.ov-event-who {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.ov-event-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The pulse on a worktree whose files are changing, in the top bar's worktree list. */
+.dd-item .ov-dot {
+  margin-left: 8px;
+  align-self: center;
+}
+
+.tb-overview {
+  position: relative;
+}
+
+.tb-overview .tb-warn {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  font-size: 10px;
+  line-height: 14px;
+  color: #fff;
+  background: var(--k-conflicted);
+}

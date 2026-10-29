@@ -136,7 +136,7 @@ fn watch_events_arrive_and_stop_after_unwatch() {
     let hits = Arc::new(AtomicUsize::new(0));
     let c = hits.clone();
     let spec = WatchSpec { root: repo.clone(), git_dirs: vec![format!("{repo}/.git")], exclude: vec![] };
-    let id = h.watch(spec, Arc::new(move || { c.fetch_add(1, Ordering::SeqCst); })).unwrap();
+    let id = h.watch(spec, Arc::new(move |_| { c.fetch_add(1, Ordering::SeqCst); })).unwrap();
     std::thread::sleep(Duration::from_millis(200));
     std::fs::write(format!("{repo}/a.txt"), "changed\n").unwrap();
     let start = Instant::now();

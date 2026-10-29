@@ -30,5 +30,10 @@ pub enum Message {
     Done { id: u64, result: serde_json::Value },
     Failed { id: u64, error: String },
     Progress { id: u64, line: String },
-    Changed { watch_id: u64 },
+    Changed {
+        watch_id: u64,
+        /// See [`crate::host::Change`]; an older helper does not say.
+        #[serde(default)]
+        files: bool,
+    },
 }

@@ -5,7 +5,7 @@
 //! folders never get a watch. On Windows one recursive watch is cheap, so
 //! events are filtered instead.
 
-use crate::host::{OnChange, WatchSpec};
+use crate::host::{Change, OnChange, WatchSpec};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,9 +29,15 @@ impl Drop for WorktreeWatcher {
 
 struct Filter {
     exclude: Vec<PathBuf>,
+    git_dirs: Vec<PathBuf>,
 }
 
 impl Filter {
+    /// Git's own state rather than a file of the worktree.
+    fn in_git_dir(&self, path: &Path) -> bool {
+        self.git_dirs.iter().any(|g| path.starts_with(g)) || path.components().any(|c| c.as_os_str() == ".git")
+    }
+
     fn skip_dir(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         SKIP_NAMES.contains(&name) || name == ".git" || self.exclude.iter().any(|e| path.starts_with(e))
@@ -58,7 +64,10 @@ impl WorktreeWatcher {
         })
         .map_err(|e| format!("cannot watch {}: {e}", spec.root))?;
         let watcher = Arc::new(Mutex::new(watcher));
-        let filter = Arc::new(Filter { exclude: spec.exclude.iter().map(PathBuf::from).collect() });
+        let filter = Arc::new(Filter {
+            exclude: spec.exclude.iter().map(PathBuf::from).collect(),
+            git_dirs: spec.git_dirs.iter().map(PathBuf::from).collect(),
+        });
         let manual = cfg!(target_os = "linux");
 
         {
@@ -75,7 +84,7 @@ impl WorktreeWatcher {
                 let refs = g.join("refs");
                 if refs.is_dir() {
                     if manual {
-                        add_tree(&mut w, &refs, &Filter { exclude: vec![] });
+                        add_tree(&mut w, &refs, &Filter { exclude: vec![], git_dirs: vec![] });
                     } else {
                         let _ = w.watch(&refs, RecursiveMode::Recursive);
                     }
@@ -88,6 +97,7 @@ impl WorktreeWatcher {
         std::thread::spawn(move || {
             let mut first: Option<Instant> = None;
             let mut last = Instant::now();
+            let mut change = Change::default();
             while !stop_thread.load(Ordering::SeqCst) {
                 match rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(Ok(event)) => {
@@ -100,7 +110,9 @@ impl WorktreeWatcher {
                                 add_tree(&mut w, p, &filter);
                             }
                         }
-                        if event.paths.iter().any(|p| filter.relevant(p)) {
+                        let relevant: Vec<_> = event.paths.iter().filter(|p| filter.relevant(p)).collect();
+                        if !relevant.is_empty() {
+                            change.files |= relevant.iter().any(|p| !filter.in_git_dir(p));
                             first.get_or_insert_with(Instant::now);
                             last = Instant::now();
                         }
@@ -111,7 +123,7 @@ impl WorktreeWatcher {
                 if let Some(f) = first {
                     if last.elapsed() >= QUIET || f.elapsed() >= MAX_DELAY {
                         first = None;
-                        on_change();
+                        on_change(std::mem::take(&mut change));
                     }
                 }
             }
@@ -141,7 +153,7 @@ mod tests {
 
     #[test]
     fn relevance() {
-        let f = Filter { exclude: vec![PathBuf::from("/r/.claude/worktrees")] };
+        let f = Filter { exclude: vec![PathBuf::from("/r/.claude/worktrees")], git_dirs: vec![] };
         assert!(f.relevant(Path::new("/r/src/a.ts")));
         assert!(f.relevant(Path::new("/r/.git/index")));
         assert!(f.relevant(Path::new("/r/.git/refs/heads/main")));
@@ -154,5 +166,16 @@ mod tests {
         assert!(!f.relevant(Path::new("/r/.claude/worktrees/wt-1/a.ts")));
         // A file merely named like a skipped folder is still relevant.
         assert!(f.relevant(Path::new("/r/src/objects/a.ts")));
+    }
+
+    #[test]
+    fn git_state_is_told_apart_from_worktree_files() {
+        let f = Filter { exclude: vec![], git_dirs: vec![PathBuf::from("/r/.git/worktrees/wt"), PathBuf::from("/r/.git")] };
+        assert!(f.in_git_dir(Path::new("/r/.git/refs/heads/main")));
+        assert!(f.in_git_dir(Path::new("/r/.git/worktrees/wt/index")));
+        // The main worktree's .git sits inside its root.
+        assert!(f.in_git_dir(Path::new("/wt/.git")));
+        assert!(!f.in_git_dir(Path::new("/r/src/a.ts")));
+        assert!(!f.in_git_dir(Path::new("/r/src/.gitignore")));
     }
 }

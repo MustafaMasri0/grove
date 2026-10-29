@@ -9,14 +9,15 @@ import { joinPath, windowsPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { languageFor, monaco } from "../monaco";
 import { effectiveDark, useStore, type Tab } from "../store";
-import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
+import { isLive, isPage, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
-import { GearIcon } from "./icons";
+import { GearIcon, WorktreeIcon } from "./icons";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SettingsPage } from "./SettingsPage";
+import { WorktreesPage } from "./WorktreesPage";
 
 type Editor = monaco.editor.IStandaloneCodeEditor;
 type DiffEditor = monaco.editor.IStandaloneDiffEditor;
@@ -60,9 +61,9 @@ function showsImage(t: Tab, preview: boolean): boolean {
   return viewKind(s.path) === "image" && (preview || !/\.svg$/i.test(s.path));
 }
 
-/** The file a tab shows, as a Windows path; null for the Settings page. */
+/** The file a tab shows, as a Windows path; null for pages (Settings, Worktrees). */
 function tabPath(t: Tab): string | null {
-  if (t.spec.type === "settings") return null;
+  if (isPage(t.spec)) return null;
   if (t.spec.type === "settingsJson") return t.spec.path;
   const info = useStore.getState().repos[t.repo];
   return info && "kind" in info ? windowsPath(info, joinPath(t.cwd, t.spec.path)) : null;
@@ -256,7 +257,7 @@ export function EditorArea() {
       if (model.getValue() !== text) model.setValue(text);
       return model;
     };
-    if (spec.type === "settings") return;
+    if (isPage(spec)) return;
     if (spec.type === "settingsJson") {
       try {
         const file = await api.settingsFile();
@@ -326,7 +327,7 @@ export function EditorArea() {
   // Load the active tab, and reload it when the worktree changed and it shows files from disk
   // (or, for settings.json, when the settings were saved again).
   useEffect(() => {
-    if (!active || active.spec.type === "settings") return;
+    if (!active || isPage(active.spec)) return;
     const doc = docs.current.get(active.id);
     const json = active.spec.type === "settingsJson";
     const now = json ? settingsSaved : tick;
@@ -376,7 +377,7 @@ export function EditorArea() {
   }, [active?.spec.type === "file" ? active.spec.line : undefined]);
 
   const isDiff = active?.spec.type === "diff";
-  const isSettings = active?.spec.type === "settings";
+  const page = active && isPage(active.spec) ? active.spec.type : null;
   const ready = activeDoc?.state === "ready";
   const isMarkdown = active?.spec.type === "file" && languageFor(active.spec.path) === "markdown";
   const showPreview = isMarkdown && mdPreview && ready;
@@ -412,9 +413,9 @@ export function EditorArea() {
   });
 
   // The Settings page has no editor; its hidden code editor must not take focus.
-  editorCommands.focus = () => !isSettings && (isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current)?.focus();
+  editorCommands.focus = () => !page && (isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current)?.focus();
   editorCommands.run = (id) => {
-    if (isSettings) return;
+    if (page) return;
     const ed = isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current;
     ed?.focus();
     ed?.getAction(id)?.run();
@@ -454,6 +455,10 @@ export function EditorArea() {
               <span className="ficon tab-gear">
                 <GearIcon />
               </span>
+            ) : t.spec.type === "worktrees" ? (
+              <span className="ficon tab-gear">
+                <WorktreeIcon />
+              </span>
             ) : (
               <FileTypeIcon name={t.title} />
             )}
@@ -472,7 +477,7 @@ export function EditorArea() {
           </div>
         ))}
       </div>
-      {spec && !isSettings && (
+      {spec && !page && (
         <div className="editor-toolbar">
           <span className="crumb" title={spec.path}>
             {spec.type === "diff" && spec.origPath && spec.origPath !== spec.path ? `${spec.origPath} → ` : ""}
@@ -558,8 +563,9 @@ export function EditorArea() {
       )}
       <div className="editor-stack">
         <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "visible" : "hidden" }} />
-        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !isSettings && ready && !rendered ? "visible" : "hidden" }} />
-        {isSettings && <SettingsPage />}
+        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !page && ready && !rendered ? "visible" : "hidden" }} />
+        {page === "settings" && <SettingsPage />}
+        {page === "worktrees" && <WorktreesPage />}
         {showPreview && active && activeDoc?.modified && <MarkdownPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showHtml && active && activeDoc?.modified && <HtmlPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showImage && spec && activeDoc?.images && (
@@ -576,7 +582,7 @@ export function EditorArea() {
           </div>
         )}
         {active && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
-        {active && !isSettings && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
+        {active && !page && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
       </div>
     </section>
   );

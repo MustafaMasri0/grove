@@ -55,6 +55,17 @@ paste a path.
   branch is shown read-only (the files and history of its tip). Worktrees, local
   branches checked out in one, and the Changes tab show how many files have
   uncommitted changes.
+- **Worktrees overview** (the grid button next to the worktree switcher, or
+  Ctrl+Shift+O): every worktree of the repository side by side, with its
+  branch, uncommitted files, commits ahead of and behind the base branch and
+  origin, and its last commit. Grove watches all worktrees while it is open: a
+  worktree whose files are changing pulses green (also in the worktree list),
+  and an activity feed lists commits, branch switches and newly changed files
+  in any of them. **Possible conflicts** lists files that two worktrees both
+  change, committed since the base or not committed yet. A file committed on
+  both sides only counts when the two versions differ and neither branch
+  already contains the other. The count shows on the grid button. This uses
+  only read commands (`status`, `diff`, `rev-list`, `merge-base`, `log`).
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base),
   History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens
   Quick Open.
@@ -88,7 +99,8 @@ paste a path.
   options, the repository list and each repository's base branch, and a list of
   shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
 
-Shortcuts: Ctrl+, settings, Ctrl+P quick open, Ctrl+Shift+F search, Ctrl+F find,
+Shortcuts: Ctrl+, settings, Ctrl+P quick open, Ctrl+Shift+F search,
+Ctrl+Shift+O worktrees overview, Ctrl+F find,
 Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0
 zoom.
@@ -166,10 +178,13 @@ own settings: `WV_CONFIG_DIR` (settings folder), `WV_TITLE` (window title),
 `WV_HISTORY_SEARCH=text`, `WV_OPEN_REV_FILE=<rev>:<path>`,
 `WV_OPEN_COMMIT_FILE=path` (a file of the commit `WV_SHOW_HISTORY` selected),
 `WV_IMAGE_ZOOM=in|out|fit|<scale>`, `WV_PREVIEW_LINK=n` (follows an HTML
-preview's n-th link), `WV_REVEAL=path` (Reveal in Explorer) and
-`WV_LIST_KEYS=ArrowDown,ArrowLeft,…` (keys pressed in the left pane's list). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
+preview's n-th link), `WV_REVEAL=path` (Reveal in Explorer),
+`WV_LIST_KEYS=ArrowDown,ArrowLeft,…` (keys pressed in the left pane's list) and
+`WV_WORKTREES=1` (opens the Worktrees overview). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
 its own WebView2 processes. `scripts/test-run.ps1 -Repo <path>` starts such an
 instance, and `scripts/measure-memory.ps1 -Proc <name>` sums its memory use.
+`scripts/make-worktrees-demo.sh <folder>` builds a throwaway repository with
+three worktrees that overlap, to try the Worktrees overview on.
 
 ## Contributing
 

@@ -4,6 +4,7 @@ mod common;
 
 use common::{git, temp_repo, TempRepo};
 use wv_core::local::LocalHost;
+use wv_core::overview;
 use wv_core::porcelain::ChangeKind;
 use wv_core::repo_ops::{self as ops, Action, Content, GrepQuery, Source};
 
@@ -367,27 +368,84 @@ fn history_search_stays_on_the_revision_and_reports_truncation() {
 }
 
 #[test]
-fn change_count_counts_what_the_changes_list_shows_per_worktree() {
+fn summary_counts_what_the_changes_list_shows() {
     let r = temp_repo();
-    assert_eq!(ops::change_count(&h(), r.path_str()).unwrap(), 0);
-    std::fs::write(r.path.join("a.txt"), "edited\n").unwrap();
-    std::fs::write(r.path.join("staged.txt"), "s\n").unwrap();
+    assert!(overview::summary(&h(), r.path_str(), None).unwrap().uncommitted.is_empty());
+    std::fs::write(r.path.join("a.txt"), "edited
+").unwrap();
+    std::fs::write(r.path.join("staged.txt"), "s
+").unwrap();
     git(&r.path, &["add", "staged.txt"]);
     std::fs::create_dir(r.path.join("new")).unwrap();
-    std::fs::write(r.path.join("new/u1.txt"), "u\n").unwrap();
-    std::fs::write(r.path.join("new/u2.txt"), "u\n").unwrap();
+    std::fs::write(r.path.join("new/u1.txt"), "u
+").unwrap();
+    std::fs::write(r.path.join("new/u2.txt"), "u
+").unwrap();
     // Ignored files are not changes.
-    std::fs::write(r.path.join(".git/info/exclude"), "*.log\n").unwrap();
-    std::fs::write(r.path.join("x.log"), "l\n").unwrap();
-    assert_eq!(ops::change_count(&h(), r.path_str()).unwrap(), 4);
+    std::fs::write(r.path.join(".git/info/exclude"), "*.log
+").unwrap();
+    std::fs::write(r.path.join("x.log"), "l
+").unwrap();
+    let s = overview::summary(&h(), r.path_str(), None).unwrap();
+    let paths: Vec<_> = s.uncommitted.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths.len(), 4, "{paths:?}");
+    assert_eq!(s.branch.as_deref(), Some("main"));
+    assert_eq!(s.last_commit.unwrap().subject, "first");
+    assert!(s.committed.is_empty());
+}
 
-    // A linked worktree has its own count.
-    let wt = r.dir.path().join("wt");
-    git(&r.path, &["worktree", "add", "-q", "-b", "side", wt.to_str().unwrap()]);
-    assert_eq!(ops::change_count(&h(), wt.to_str().unwrap()).unwrap(), 0);
-    std::fs::write(wt.join("a.txt"), "side\n").unwrap();
-    assert_eq!(ops::change_count(&h(), wt.to_str().unwrap()).unwrap(), 1);
-    assert_eq!(ops::change_count(&h(), r.path_str()).unwrap(), 4);
+#[test]
+fn summary_compares_with_the_base_and_the_upstream() {
+    let r = branched_repo();
+    let wt = r.dir.path().join("feature-wt");
+    git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
+    let s = overview::summary(&h(), wt.to_str().unwrap(), Some("main")).unwrap();
+    assert_eq!(s.branch.as_deref(), Some("feature"));
+    assert_eq!(s.committed, vec!["a.txt", "f.txt"]);
+    assert_eq!((s.base_ahead, s.base_behind), (1, 1));
+    assert_eq!(s.last_commit.unwrap().subject, "feature work");
 
-    assert!(ops::change_count(&h(), r.dir.path().join("gone").to_str().unwrap()).is_err());
+    git(&wt, &["branch", "-q", "--set-upstream-to=main"]);
+    let s = overview::summary(&h(), wt.to_str().unwrap(), None).unwrap();
+    assert_eq!(s.upstream.as_deref(), Some("main"));
+    assert_eq!((s.upstream_ahead, s.upstream_behind), (1, 1));
+    assert!(s.committed.is_empty(), "no base, nothing compared");
+
+    assert!(overview::summary(&h(), r.dir.path().join("gone").to_str().unwrap(), None).is_err());
+}
+
+#[test]
+fn overview_finds_files_two_worktrees_both_change() {
+    let r = temp_repo();
+    let add = |name: &str, from: &str| {
+        let p = r.dir.path().join(name);
+        git(&r.path, &["worktree", "add", "-q", "-b", name, p.to_str().unwrap(), from]);
+        p
+    };
+    let commit = |wt: &std::path::Path, file: &str, text: &str| {
+        std::fs::write(wt.join(file), text).unwrap();
+        git(wt, &["add", "."]);
+        git(wt, &["commit", "-q", "-m", file]);
+    };
+    let a = add("agent-a", "main");
+    commit(&a, "a.txt", "from a
+");
+    let b = add("agent-b", "main");
+    commit(&b, "a.txt", "from b
+");
+    // Stacked on agent-a: a fast-forward of it, so their shared a.txt cannot conflict.
+    let c = add("agent-c", "agent-a");
+    commit(&c, "c.txt", "c
+");
+    // Uncommitted work in the main worktree touches the file agent-c added.
+    std::fs::write(r.path.join("c.txt"), "main
+").unwrap();
+
+    let cwds: Vec<String> = [&r.path, &a, &b, &c, &r.dir.path().join("gone")].iter().map(|p| p.to_str().unwrap().to_string()).collect();
+    let o = overview::overview(&h(), &cwds, Some("main"));
+    assert_eq!(o.worktrees.len(), 4);
+    assert!(o.errors.contains_key(&cwds[4]));
+    let name = |p: &str| std::path::Path::new(p).file_name().unwrap().to_str().unwrap().to_string();
+    let pairs: Vec<_> = o.overlaps.iter().map(|x| (name(&x.a), name(&x.b), x.files.join(","))).collect();
+    assert_eq!(pairs, vec![("repo".into(), "agent-c".into(), "c.txt".into()), ("agent-a".into(), "agent-b".into(), "a.txt".into()), ("agent-b".into(), "agent-c".into(), "a.txt".into())] as Vec<(String, String, String)>);
 }
