@@ -18,6 +18,18 @@ const v1 = {
 };
 
 describe("normalizeSettings", () => {
+  it("remembers whether changed files show as a list or a tree, falling back to a list", () => {
+    expect(defaultSettings.changesView).toBe("list");
+    expect(normalizeSettings({ changesView: "tree" }).changesView).toBe("tree");
+    expect(normalizeSettings({ changesView: "grid" }).changesView).toBe("list");
+  });
+
+  it("reveals the active file in Explorer unless turned off", () => {
+    expect(defaultSettings.explorerAutoReveal).toBe(true);
+    expect(normalizeSettings({ explorerAutoReveal: false }).explorerAutoReveal).toBe(false);
+    expect(normalizeSettings({ explorerAutoReveal: "no" }).explorerAutoReveal).toBe(true);
+  });
+
   it("remembers how image diffs are compared, falling back to side by side", () => {
     expect(defaultSettings.imageDiff).toBe("sideBySide");
     expect(normalizeSettings({ imageDiff: "swipe" }).imageDiff).toBe("swipe");

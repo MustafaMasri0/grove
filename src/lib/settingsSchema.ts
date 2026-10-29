@@ -239,6 +239,28 @@ export const SETTINGS: readonly SettingDef[] = [
     control: { kind: "toggle" },
   },
   {
+    path: "explorerAutoReveal",
+    section: "explorer",
+    label: "Explorer: Reveal the active file",
+    description: "When a tab becomes active, Explorer expands the file's folders, selects it and scrolls to it.",
+    keywords: "auto reveal follow editor select sync",
+    control: { kind: "toggle" },
+  },
+  {
+    path: "changesView",
+    section: "explorer",
+    label: "Changed files",
+    description: "Whether Changes and the commit pane list changed files flat or in their folders; the toggle next to the filter switches it too.",
+    keywords: "tree list view folders",
+    control: {
+      kind: "select",
+      options: [
+        { value: "list", label: "As a list" },
+        { value: "tree", label: "As a tree" },
+      ],
+    },
+  },
+  {
     path: "showFolderPath",
     section: "explorer",
     label: "Show folder next to file names",

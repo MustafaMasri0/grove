@@ -246,7 +246,24 @@ async function runAutomation() {
   if (auto.blame?.startsWith("click:")) await clickBlameForTest(Number(auto.blame.slice(6)));
   if (auto.imageZoom) await zoomImageForTest(auto.imageZoom);
   if (auto.previewLink !== null) await followPreviewLinkForTest(auto.previewLink);
+  if (auto.reveal) useStore.getState().revealInExplorer(auto.reveal);
+  if (auto.listKeys) await pressListKeysForTest(auto.listKeys.split(","));
   if (auto.contextMenu) await openMenuForTest(auto.contextMenu);
+}
+
+/** WV_LIST_KEYS=ArrowDown,ArrowLeft,Ctrl+3,…: presses the keys in the left pane's list, as typing them there would. */
+async function pressListKeysForTest(keys: string[]) {
+  const list = await waitFor<HTMLElement>(".left .list");
+  if (!list) return console.error("WV_LIST_KEYS: no list in the left pane");
+  await new Promise((r) => setTimeout(r, 1000));
+  list.focus();
+  for (const k of keys) {
+    const mods = k.split("+");
+    const key = mods.pop()!;
+    const code = /^[0-9]$/.test(key) ? `Digit${key}` : key;
+    list.dispatchEvent(new KeyboardEvent("keydown", { key, code, ctrlKey: mods.includes("Ctrl"), shiftKey: mods.includes("Shift"), bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 300));
+  }
 }
 
 /** WV_BLAME=click:<line>: once the blame margin shows, presses the mouse on that line's margin. */

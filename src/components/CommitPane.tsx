@@ -6,8 +6,7 @@ import { useStore } from "../store";
 import { commitFileTab, fileTab } from "../tabs";
 import { currentWhere, menuAtPointer, menuEnv } from "./ContextMenu";
 import { Avatar } from "./Avatar";
-import { FileRow } from "./FileRow";
-import { ListView } from "./ListView";
+import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 
 // The filter resets when a different commit is selected.
 function useFilter(): [string, (v: string) => void] {
@@ -42,18 +41,20 @@ export function CommitPane() {
         <span className="pane-title ellipsis" title={detail.message}>
           {selected.files.length} changed file{selected.files.length === 1 ? "" : "s"}
         </span>
-        <button className="icon-button" title="Close" onClick={close}>
-          ×
-        </button>
+        <span className="pane-actions">
+          <ChangesViewToggle />
+          <button className="icon-button" title="Close" onClick={close}>
+            ×
+          </button>
+        </span>
       </div>
       <input className="filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <ListView<ChangedFile>
+      <ChangedFilesView<ChangedFile>
         label="Files in commit"
         items={files}
-        getKey={(f) => f.path}
-        selectedKey={selectedFile}
-        render={(f) => <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />}
-        onSelect={(f, pin) => openFile(f, pin)}
+        selectedPath={selectedFile}
+        open={openFile}
+        onDisk={!useStore.getState().viewBranch}
         menu={(f) => {
           const where = currentWhere();
           const { cwd, viewBranch } = useStore.getState();
@@ -64,6 +65,7 @@ export function CommitPane() {
             openFile: f.kind === "deleted" ? null : () => openTab(fileTab(cwd, f.path, viewBranch?.fullRef ?? null), true),
             // Walked from this commit, so a file renamed or deleted later still has its history.
             history: () => void useStore.getState().openFileHistory(f.path, detail.sha),
+            revealInExplorer: f.kind === "deleted" ? null : () => useStore.getState().revealInExplorer(f.path),
             onDisk: !viewBranch && f.kind !== "deleted",
           });
         }}

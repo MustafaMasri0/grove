@@ -9,7 +9,7 @@ import { joinPath, windowsPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { languageFor, monaco } from "../monaco";
 import { effectiveDark, useStore, type Tab } from "../store";
-import { isLive, tabsToClose, type CloseWhich } from "../tabs";
+import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
@@ -80,6 +80,7 @@ function tabMenu(t: Tab): MenuItem[] {
   const { tabs, closeTab, closeTabs, pinTab } = useStore.getState();
   const close = (which: CloseWhich) => closeTabs(tabsToClose(useStore.getState().tabs, t.id, which), t.id);
   const hist = tabHistory(t);
+  const reveal = revealPathOf(t, useStore.getState().cwd);
   return tabItems(menuEnv, {
     index: tabs.findIndex((x) => x.id === t.id),
     count: tabs.length,
@@ -92,6 +93,7 @@ function tabMenu(t: Tab): MenuItem[] {
     closeAll: () => close("all"),
     keepOpen: () => pinTab(t.id),
     history: hist ? () => void useStore.getState().openFileHistory(hist.path, hist.rev) : undefined,
+    revealInExplorer: reveal ? () => useStore.getState().revealInExplorer(reveal) : undefined,
   });
 }
 

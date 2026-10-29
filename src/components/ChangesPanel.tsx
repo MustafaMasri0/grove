@@ -5,9 +5,8 @@ import { fileItems } from "../lib/contextMenus";
 import { shortSha } from "../lib/format";
 import { useStore } from "../store";
 import { fileTab, revisionTab, uncommittedTab } from "../tabs";
+import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 import { currentWhere, menuEnv } from "./ContextMenu";
-import { FileRow } from "./FileRow";
-import { ListView } from "./ListView";
 
 interface Row {
   path: string;
@@ -125,18 +124,30 @@ export function ChangesPanel() {
           {baseDiff && <span className="muted">{baseDiff.files.length} files · since {shortSha(baseDiff.mergeBase)}</span>}
         </div>
       )}
-      <input className="filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
-      <ListView
+      <div className="filter-row">
+        <input className="filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <ChangesViewToggle />
+      </div>
+      <ChangedFilesView
         label="Changed files"
         items={visible}
-        getKey={(r) => r.path}
-        selectedKey={selectedKey}
-        render={(r) => <FileRow path={r.path} origPath={r.origPath} kind={r.kind} />}
-        onSelect={(r, pin) => r.open(pin)}
+        selectedPath={selectedKey}
+        open={(r, pin) => r.open(pin)}
         menu={(r) => {
           const where = currentWhere();
-          return where && fileItems(menuEnv, where, { path: r.path, open: () => r.open(true), openFile: r.openFile, history: () => void useStore.getState().openFileHistory(r.path), onDisk: r.onDisk });
+          return (
+            where &&
+            fileItems(menuEnv, where, {
+              path: r.path,
+              open: () => r.open(true),
+              openFile: r.openFile,
+              history: () => void useStore.getState().openFileHistory(r.path),
+              revealInExplorer: r.kind === "deleted" ? null : () => useStore.getState().revealInExplorer(r.path),
+              onDisk: r.onDisk,
+            })
+          );
         }}
+        onDisk={!viewBranch}
         empty={filter && rows.length ? "No files match the filter." : empty}
       />
     </div>

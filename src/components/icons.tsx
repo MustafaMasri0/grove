@@ -64,3 +64,17 @@ export const GearIcon = () => (
     <circle cx="8" cy="8" r="4.6" />
   </svg>
 );
+
+export const TreeViewIcon = () => (
+  <svg {...base} strokeWidth={1.2}>
+    <path d="M2.5 3h4M5 7.5h4M5 12h4M3.5 3v9h1.5M3.5 7.5h1.5" />
+    <path d="M10.5 7.5h3M10.5 12h3" />
+  </svg>
+);
+
+export const ListViewIcon = () => (
+  <svg {...base} strokeWidth={1.2}>
+    <path d="M5.5 4h8M5.5 8h8M5.5 12h8" />
+    <path d="M2.5 4h.5M2.5 8h.5M2.5 12h.5" />
+  </svg>
+);

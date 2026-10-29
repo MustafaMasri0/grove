@@ -58,6 +58,12 @@ paste a path.
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base),
   History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens
   Quick Open.
+- **Changed files** in Changes and in a commit show as a flat list or as a
+  folder tree (the toggle next to the filter). The tree counts the files in
+  each folder and joins single-child folders (`src/main/java`), like VS Code.
+- **Explorer follows the editor**: the active tab's file is selected, its
+  folders expanded and scrolled into view (a Settings option turns this off).
+  "Reveal in Explorer" on tabs and file rows does the same on demand.
 - **Diffs** show the whole file, side by side or inline. Unchanged regions can
   be collapsed and whitespace ignored.
 - **History**: commit list with author avatars. Selecting a commit opens its
@@ -159,8 +165,9 @@ own settings: `WV_CONFIG_DIR` (settings folder), `WV_TITLE` (window title),
 `WV_FILE_HISTORY=path`, `WV_BLAME=1|click:<line>` and
 `WV_HISTORY_SEARCH=text`, `WV_OPEN_REV_FILE=<rev>:<path>`,
 `WV_OPEN_COMMIT_FILE=path` (a file of the commit `WV_SHOW_HISTORY` selected),
-`WV_IMAGE_ZOOM=in|out|fit|<scale>` and `WV_PREVIEW_LINK=n` (follows an HTML
-preview's n-th link). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
+`WV_IMAGE_ZOOM=in|out|fit|<scale>`, `WV_PREVIEW_LINK=n` (follows an HTML
+preview's n-th link), `WV_REVEAL=path` (Reveal in Explorer) and
+`WV_LIST_KEYS=ArrowDown,ArrowLeft,…` (keys pressed in the left pane's list). Set `WEBVIEW2_USER_DATA_FOLDER` to give the instance
 its own WebView2 processes. `scripts/test-run.ps1 -Repo <path>` starts such an
 instance, and `scripts/measure-memory.ps1 -Proc <name>` sums its memory use.
 

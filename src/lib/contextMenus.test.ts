@@ -72,6 +72,18 @@ describe("fileItems", () => {
     expect(labels(fileItems(e, wsl, { path: "a.ts", onDisk: true }))).not.toContain("View file history");
   });
 
+  it("offers Reveal in Explorer before Reveal in File Explorer when the row can be revealed", async () => {
+    const { e } = env();
+    const revealInExplorer = vi.fn();
+    const items = fileItems(e, wsl, { path: "src/a.ts", open: () => {}, revealInExplorer, onDisk: true });
+    expect(labels(items).slice(-3)).toEqual(["-", "Reveal in Explorer", "Reveal in File Explorer"]);
+    await run(items, "Reveal in Explorer");
+    expect(revealInExplorer).toHaveBeenCalled();
+    // Disabled for a file Explorer does not list (deleted); not offered in Explorer itself.
+    expect(labels(fileItems(e, wsl, { path: "x", revealInExplorer: null, onDisk: false }))).toContain("Reveal in Explorer (off)");
+    expect(labels(fileItems(e, wsl, { path: "x", onDisk: true }))).not.toContain("Reveal in Explorer");
+  });
+
   it("disables Open file when the file has no current version", () => {
     const { e } = env();
     expect(labels(fileItems(e, wsl, { path: "x", open: () => {}, openFile: null, onDisk: false }))[1]).toBe("Open file (off)");
@@ -98,6 +110,15 @@ describe("tabItems", () => {
     const { e } = env();
     const items = tabItems(e, { ...base, index: 0, count: 3, preview: true, path: "C:\\x\\a.ts" });
     expect(labels(items)).toEqual(["Close", "Close others", "Close to the right", "Close all", "-", "Keep open", "-", "Copy path"]);
+  });
+
+  it("offers Reveal in Explorer for a repository file's tab", async () => {
+    const { e } = env();
+    const revealInExplorer = vi.fn();
+    const items = tabItems(e, { ...base, index: 0, count: 1, preview: false, path: "C:\\x\\a.ts", revealInExplorer });
+    expect(labels(items).slice(-2)).toEqual(["Copy path", "Reveal in Explorer"]);
+    await run(items, "Reveal in Explorer");
+    expect(revealInExplorer).toHaveBeenCalled();
   });
 
   it("disables what does not apply to a lone, kept, path-less tab", () => {

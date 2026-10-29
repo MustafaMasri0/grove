@@ -223,6 +223,8 @@ export const api = {
       openCommitFile: string | null;
       imageZoom: string | null;
       previewLink: number | null;
+      reveal: string | null;
+      listKeys: string | null;
     }>("automation"),
 };
 

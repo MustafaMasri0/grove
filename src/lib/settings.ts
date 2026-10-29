@@ -7,6 +7,7 @@ export type WordWrap = "off" | "on";
 export type RenderWhitespace = "none" | "boundary" | "selection" | "trailing" | "all";
 export type LineNumbers = "on" | "off" | "relative";
 export type ImageDiff = "sideBySide" | "swipe" | "onion";
+export type ChangesView = "list" | "tree";
 
 export interface EditorSettings {
   fontFamily: string;
@@ -37,7 +38,11 @@ export interface Settings {
   uiFontSize: number;
   leftWidth: number;
   changesMode: ChangesMode;
+  /** Changed files (Changes and the commit pane) as a flat list or a folder tree. */
+  changesView: ChangesView;
   showIgnored: boolean;
+  /** Explorer selects the active tab's file, expanding its folders. */
+  explorerAutoReveal: boolean;
   /** Markdown, HTML and SVG files open rendered rather than as source. */
   mdPreview: boolean;
   /** How a changed image's before and after are compared. */
@@ -60,7 +65,9 @@ export const defaultSettings: Settings = {
   uiFontSize: 13,
   leftWidth: 340,
   changesMode: "uncommitted",
+  changesView: "list",
   showIgnored: false,
+  explorerAutoReveal: true,
   mdPreview: true,
   imageDiff: "sideBySide",
   commitPaneWidth: 340,
@@ -92,6 +99,7 @@ export type SettingPath = Paths<Settings>;
 export const CHOICES: Partial<Record<SettingPath, readonly string[]>> = {
   theme: ["system", "dark", "light"],
   changesMode: ["uncommitted", "base"],
+  changesView: ["list", "tree"],
   imageDiff: ["sideBySide", "swipe", "onion"],
   "editor.wordWrap": ["off", "on"],
   "editor.renderWhitespace": ["none", "boundary", "selection", "trailing", "all"],

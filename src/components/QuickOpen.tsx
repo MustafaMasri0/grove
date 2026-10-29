@@ -55,6 +55,10 @@ export function QuickOpen() {
             setOpen(false);
             void useStore.getState().openFileHistory(r.path);
           },
+          revealInExplorer: () => {
+            setOpen(false);
+            useStore.getState().revealInExplorer(r.path);
+          },
           onDisk: !viewBranch,
         }) : null;
   };

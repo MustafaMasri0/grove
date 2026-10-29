@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { childrenOf, dirsWithChanges, sortPaths } from "./tree";
+import { ancestorFolders, childrenOf, containsPath, dirsWithChanges, sortPaths } from "./tree";
 
 const files = sortPaths([
   "src/main.ts",
@@ -47,5 +47,27 @@ describe("dirsWithChanges", () => {
   it("marks every ancestor folder of a changed file", () => {
     const d = dirsWithChanges(["src/lib/a.ts", "top.txt"]);
     expect([...d].sort()).toEqual(["src", "src/lib"]);
+  });
+});
+
+describe("ancestorFolders", () => {
+  it("lists the folders to expand to show a path, outermost first", () => {
+    expect(ancestorFolders("src/lib/a.ts")).toEqual(["src", "src/lib"]);
+    expect(ancestorFolders("docs/x/y/z.md")).toEqual(["docs", "docs/x", "docs/x/y"]);
+  });
+
+  it("is empty for a file at the top", () => {
+    expect(ancestorFolders("README.md")).toEqual([]);
+  });
+});
+
+describe("containsPath", () => {
+  it("finds a file in the sorted list, and not a folder or a prefix", () => {
+    expect(containsPath(files, "src/lib/a.ts")).toBe(true);
+    expect(containsPath(files, ".gitignore")).toBe(true);
+    expect(containsPath(files, "src/lib")).toBe(false);
+    expect(containsPath(files, "src/lib/a")).toBe(false);
+    expect(containsPath(files, "zzz")).toBe(false);
+    expect(containsPath([], "a")).toBe(false);
   });
 });

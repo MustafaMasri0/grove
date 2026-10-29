@@ -21,6 +21,7 @@ export interface Where {
 
 const SEP: MenuItem = { separator: true };
 const REVEAL = "Reveal in File Explorer";
+const REVEAL_IN_APP = "Reveal in Explorer";
 
 function pathItems(env: MenuEnv, where: Where, rel: string): MenuItem[] {
   return [
@@ -41,6 +42,8 @@ export interface FileTarget {
   openFile?: (() => void) | null;
   /** Shows the commits that touched the file. Left out where there is no history to show. */
   history?: () => void;
+  /** Shows the file in the Explorer pane; null when Explorer does not list it (deleted). Left out in Explorer itself. */
+  revealInExplorer?: (() => void) | null;
   /** Whether the file is in the worktree folder, so File Explorer can show it. */
   onDisk: boolean;
 }
@@ -58,6 +61,7 @@ export function fileItems(env: MenuEnv, where: Where, f: FileTarget): MenuItem[]
     ...pathItems(env, where, f.path),
     { label: "Copy file name", run: () => env.copy(splitPath(f.path).name) },
     SEP,
+    ...(f.revealInExplorer !== undefined ? [{ label: REVEAL_IN_APP, disabled: !f.revealInExplorer, run: () => f.revealInExplorer?.() }] : []),
     revealItem(env, where, f.path, f.onDisk),
   ];
 }
@@ -74,6 +78,8 @@ export interface TabTarget {
   path: string | null;
   /** Shows the file's history; left out for tabs that are not a repository file. */
   history?: () => void;
+  /** Shows the file in the Explorer pane; left out for tabs that are not a repository file. */
+  revealInExplorer?: () => void;
   close(): void;
   closeOthers(): void;
   closeRight(): void;
@@ -93,6 +99,7 @@ export function tabItems(env: MenuEnv, t: TabTarget): MenuItem[] {
     SEP,
     ...(t.history ? [{ label: HISTORY, run: t.history }] : []),
     { label: "Copy path", disabled: !path, run: () => (path ? env.copy(path) : undefined) },
+    ...(t.revealInExplorer ? [{ label: REVEAL_IN_APP, run: t.revealInExplorer }] : []),
   ];
 }
 

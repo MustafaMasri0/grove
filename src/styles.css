@@ -465,6 +465,7 @@ button.primary {
 }
 
 .panel > .filter,
+.panel > .filter-row,
 .panel > .segmented,
 .panel > .base-row,
 .panel > .panel-toolbar,
@@ -692,6 +693,41 @@ button.primary {
   text-overflow: ellipsis;
 }
 
+/* Changed files as a tree */
+.tree-row > .file-row {
+  min-width: 0;
+  padding-right: 8px;
+}
+
+/* Lines up with the status letters of the file rows. */
+.folder-count {
+  margin: 0 8px 0 auto;
+  padding-left: 8px;
+  min-width: 14px;
+  text-align: center;
+  flex: none;
+  color: var(--muted);
+  font-size: calc(var(--ui-font-size) - 1px);
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-row > .filter {
+  flex: 1;
+  min-width: 0;
+}
+
+.view-toggle {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  flex: none;
+}
+
 /* History */
 .history {
   padding-top: 0;
@@ -795,6 +831,13 @@ button.primary {
   height: 36px;
   padding: 0 6px 0 10px;
   border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   flex: none;
 }
 

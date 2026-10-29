@@ -95,6 +95,7 @@ export function SearchPanel() {
           const line = r.type === "hit" ? r.hit.line : undefined;
           return fileItems(menuEnv, where, { path, open: () => openTab(fileTab(at.cwd, path, viewBranch?.fullRef ?? null, line), true),
             history: () => void useStore.getState().openFileHistory(path),
+            revealInExplorer: () => useStore.getState().revealInExplorer(path),
             onDisk: !viewBranch,
           });
         }}

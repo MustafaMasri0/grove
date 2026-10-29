@@ -75,3 +75,9 @@ export function tabsToClose(tabs: readonly { id: string }[], id: string, which: 
   if (which === "others") return tabs.filter((t) => t.id !== id).map((t) => t.id);
   return tabs.slice(idx + 1).map((t) => t.id);
 }
+
+/** The file Explorer reveals for a tab of worktree `cwd`; null for app tabs and other worktrees' tabs. */
+export function revealPathOf(t: Tab | null | undefined, cwd: string | null): string | null {
+  if (!t || isAppTab(t) || t.cwd !== cwd) return null;
+  return t.spec.type === "file" || t.spec.type === "diff" ? t.spec.path : null;
+}

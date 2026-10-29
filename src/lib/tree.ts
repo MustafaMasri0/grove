@@ -25,7 +25,7 @@ function lowerBound(sorted: readonly string[], x: string): number {
   return lo;
 }
 
-const byName = (a: TreeEntry, b: TreeEntry) =>
+export const byName = (a: { name: string }, b: { name: string }) =>
   a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }) || cmp(a.name, b.name);
 
 /**
@@ -67,5 +67,17 @@ export function dirsWithChanges(paths: Iterable<string>): Set<string> {
       i = d.lastIndexOf("/");
     }
   }
+  return out;
+}
+
+/** Whether a sorted path list holds exactly this path. */
+export function containsPath(sorted: readonly string[], path: string): boolean {
+  return sorted[lowerBound(sorted, path)] === path;
+}
+
+/** The folders to expand to show a path, outermost first. */
+export function ancestorFolders(path: string): string[] {
+  const out: string[] = [];
+  for (let i = path.indexOf("/"); i > 0; i = path.indexOf("/", i + 1)) out.push(path.slice(0, i));
   return out;
 }

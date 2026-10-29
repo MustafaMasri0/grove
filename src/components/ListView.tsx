@@ -19,6 +19,8 @@ interface Props<T> {
   empty?: ReactNode;
   className?: string;
   label: string;
+  /** Bumped to bring the selected row into view, centred, unless it is already in view. */
+  reveal?: number;
 }
 
 /** A virtualised, keyboard-driven list: Up/Down move and preview, Enter pins. */
@@ -39,14 +41,18 @@ export function ListView<T>(p: Props<T>) {
 
   const index = p.selectedKey === null ? -1 : p.items.findIndex((i) => p.getKey(i) === p.selectedKey);
 
-  // Keep the selected row visible.
+  // Keep the selected row visible: at the nearest edge when moving, centred when revealed.
+  const revealed = useRef(p.reveal);
   useEffect(() => {
     const el = ref.current;
     if (!el || index < 0) return;
     const top = index * ROW_HEIGHT;
-    if (top < el.scrollTop) el.scrollTop = top;
+    if (p.reveal !== revealed.current) {
+      revealed.current = p.reveal;
+      if (top < el.scrollTop || top + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = top - (el.clientHeight - ROW_HEIGHT) / 2;
+    } else if (top < el.scrollTop) el.scrollTop = top;
     else if (top + ROW_HEIGHT > el.scrollTop + el.clientHeight) el.scrollTop = top + ROW_HEIGHT - el.clientHeight;
-  }, [index]);
+  }, [index, p.reveal]);
 
   const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 5);
   const last = Math.min(p.items.length, Math.ceil((scrollTop + height) / ROW_HEIGHT) + 5);

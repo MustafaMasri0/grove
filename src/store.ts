@@ -108,6 +108,8 @@ interface State {
   blame: boolean;
   fileList: FileList | null;
   fileListKey: string;
+  /** A file Explorer is asked to reveal ("Reveal in Explorer"); Explorer clears it once done. */
+  explorerReveal: { path: string } | null;
   branchStatus: BranchStatus | null;
   action: ActionState;
   /** Bumped on every refresh so views reload what they show. */
@@ -131,6 +133,8 @@ interface State {
   selectBranch(b: BranchRef): Promise<void>;
   refresh(): Promise<void>;
   setLeftTab(t: LeftTab): void;
+  /** Shows Explorer with `path` selected and its folders expanded. */
+  revealInExplorer(path: string): void;
   setChangesMode(m: ChangesMode): void;
   setBase(b: string): void;
   /** Sets (or with null clears) the remembered base branch of any added repository. */
@@ -258,6 +262,7 @@ export const useStore = create<State>()((set, get) => {
     blame: false,
     fileList: null,
     fileListKey: "",
+    explorerReveal: null,
     branchStatus: null,
     action: { running: false, label: "", progress: "", error: null },
     tick: 0,
@@ -404,6 +409,11 @@ export const useStore = create<State>()((set, get) => {
     setLeftTab(t) {
       set({ leftTab: t });
       loadForLeftTab();
+    },
+
+    revealInExplorer(path) {
+      set({ explorerReveal: { path } });
+      if (get().leftTab !== "explorer") get().setLeftTab("explorer");
     },
 
     setChangesMode(m) {
