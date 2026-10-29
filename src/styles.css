@@ -232,6 +232,13 @@ button:disabled {
   display: inline-flex;
 }
 
+/* Codicons are filled shapes at a fixed ~1px weight; a hairline outline brings them to the 1.4px of the old line icons. */
+.icon svg {
+  stroke: currentColor;
+  stroke-width: 0.4px;
+  stroke-linejoin: round;
+}
+
 .spin {
   animation: spin 1s linear infinite;
 }
