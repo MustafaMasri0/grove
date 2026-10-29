@@ -4,16 +4,19 @@
 //! The UI asks for a root (a repository, worktree and revision) and gets a random
 //! token; URLs under `/<token>/` name files of that root, so relative images and
 //! stylesheets in an HTML file resolve at the same revision. Only images,
-//! stylesheets and fonts are served, never documents or scripts, and nothing
-//! outside a root. `/~link?…` is where links in an HTML preview point: the app
-//! answers it with no content (the preview stays put) and tells the UI.
+//! stylesheets, fonts and scripts are served, never documents, and nothing
+//! outside a root. An HTML preview itself is a page the UI prepared, served at
+//! `/~page/<id>` under its own policy: scripts only from the repository and only
+//! when the user allowed them, nothing from the network. `/~link?…` is where
+//! links in it point: the app answers with no content (the preview stays put)
+//! and tells the UI.
 
 use crate::repo_ops::Source;
 use std::collections::hash_map::RandomState;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{BuildHasher, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub const SCHEME: &str = "wvfile";
 pub const ORIGIN: &str = "http://wvfile.localhost";
@@ -49,6 +52,47 @@ impl Roots {
     pub fn get(&self, token: &str) -> Option<Root> {
         self.by_token.lock().unwrap().get(token).cloned()
     }
+}
+
+/// An HTML preview as the UI prepared it.
+#[derive(Debug, Clone)]
+pub struct Page {
+    pub html: Arc<str>,
+    /// Whether the page's scripts may run.
+    pub scripts: bool,
+}
+
+/// Prepared pages, kept while a preview shows them. Only the latest few are
+/// kept, so a page whose preview never said it was done does not pile up.
+#[derive(Default)]
+pub struct Pages {
+    pages: Mutex<VecDeque<(String, Page)>>,
+}
+
+const MAX_PAGES: usize = 8;
+
+impl Pages {
+    pub fn put(&self, html: String, scripts: bool) -> String {
+        let id = random_token();
+        let mut pages = self.pages.lock().unwrap();
+        pages.push_back((id.clone(), Page { html: html.into(), scripts }));
+        while pages.len() > MAX_PAGES {
+            pages.pop_front();
+        }
+        id
+    }
+
+    pub fn get(&self, id: &str) -> Option<Page> {
+        self.pages.lock().unwrap().iter().find(|(k, _)| k == id).map(|(_, p)| p.clone())
+    }
+
+    pub fn remove(&self, id: &str) {
+        self.pages.lock().unwrap().retain(|(k, _)| k != id);
+    }
+}
+
+pub fn page_url(id: &str) -> String {
+    format!("{ORIGIN}/~page/{id}")
 }
 
 /// 128 random bits as hex, from the standard library's per-process random hash keys.
@@ -105,6 +149,8 @@ fn decode_segment(s: &str) -> Option<String> {
 #[derive(Debug)]
 pub enum Request {
     File { root: Root, source: Source },
+    /// A prepared HTML preview.
+    Page { id: String },
     /// A link clicked in an HTML preview; the query says where it goes.
     Link { query: String },
     NotFound,
@@ -114,6 +160,9 @@ pub enum Request {
 pub fn route(roots: &Roots, path: &str, query: Option<&str>) -> Request {
     if path == "/~link" {
         return Request::Link { query: query.unwrap_or("").to_string() };
+    }
+    if let Some(id) = path.strip_prefix("/~page/") {
+        return if !id.is_empty() && id.bytes().all(|b| b.is_ascii_hexdigit()) { Request::Page { id: id.to_string() } } else { Request::NotFound };
     }
     let Some(rest) = path.strip_prefix('/') else { return Request::NotFound };
     let Some((token, file)) = rest.split_once('/') else { return Request::NotFound };
@@ -155,7 +204,7 @@ pub fn image_mime(path: &str) -> Option<&'static str> {
     })
 }
 
-/// What `wvfile:` serves: images, and the stylesheets and fonts an HTML preview uses.
+/// What `wvfile:` serves: images, and the stylesheets, fonts and scripts an HTML preview uses.
 pub fn served_mime(path: &str) -> Option<&'static str> {
     image_mime(path).or_else(|| match ext(path).as_str() {
         "css" => Some("text/css"),
@@ -163,6 +212,7 @@ pub fn served_mime(path: &str) -> Option<&'static str> {
         "woff2" => Some("font/woff2"),
         "ttf" => Some("font/ttf"),
         "otf" => Some("font/otf"),
+        "js" | "mjs" => Some("text/javascript"),
         _ => None,
     })
 }
@@ -176,5 +226,27 @@ pub fn response_headers(mime: &str) -> Vec<(&'static str, String)> {
         ("X-Content-Type-Options", "nosniff".into()),
         ("Content-Security-Policy", format!("default-src 'none'; img-src {ORIGIN} data:; style-src {ORIGIN} 'unsafe-inline'; font-src {ORIGIN} data:; sandbox")),
         ("Access-Control-Allow-Origin", "*".into()),
+    ]
+}
+
+/// The policy of an HTML preview (the UI puts the same one first in the page):
+/// nothing from the network, and scripts only from the repository or inline, when allowed.
+pub fn page_csp(scripts: bool) -> String {
+    let script = if scripts { format!("{ORIGIN} 'unsafe-inline' 'unsafe-eval'") } else { "'none'".into() };
+    format!(
+        "default-src 'none'; img-src {ORIGIN} data:; style-src {ORIGIN} 'unsafe-inline'; font-src {ORIGIN} data:; media-src 'none'; \
+         script-src {script}; object-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; connect-src 'none'; \
+         form-action 'none'; base-uri 'none'; sandbox{}",
+        if scripts { " allow-scripts" } else { "" }
+    )
+}
+
+/// Headers of a prepared page: never cached, and sandboxed by its policy too, whatever frame shows it.
+pub fn page_headers(scripts: bool) -> Vec<(&'static str, String)> {
+    vec![
+        ("Content-Type", "text/html; charset=utf-8".into()),
+        ("Cache-Control", "no-store".into()),
+        ("X-Content-Type-Options", "nosniff".into()),
+        ("Content-Security-Policy", page_csp(scripts)),
     ]
 }

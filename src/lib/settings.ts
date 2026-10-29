@@ -47,6 +47,8 @@ export interface Settings {
   mdPreview: boolean;
   /** How a changed image's before and after are compared. */
   imageDiff: ImageDiff;
+  /** Repositories whose HTML previews may run the page's own scripts. */
+  runScripts: string[];
   commitPaneWidth: number;
   editor: EditorSettings;
   /** File lists show the folder next to each file name. */
@@ -70,6 +72,7 @@ export const defaultSettings: Settings = {
   explorerAutoReveal: true,
   mdPreview: true,
   imageDiff: "sideBySide",
+  runScripts: [],
   commitPaneWidth: 340,
   editor: {
     fontFamily: "Consolas",
@@ -189,4 +192,13 @@ export function resetAll(s: Settings, paths: readonly SettingPath[]): Partial<Se
     patch = { ...patch, ...step };
   }
   return patch;
+}
+
+/** Whether HTML previews of a repository run the page's scripts. */
+export const scriptsAllowed = (s: Settings, repo: string) => s.runScripts.includes(repo);
+
+/** The `updateSettings` patch that turns scripts in a repository's HTML previews on or off. */
+export function withRunScripts(s: Settings, repo: string, on: boolean): Pick<Settings, "runScripts"> {
+  const rest = s.runScripts.filter((r) => r !== repo);
+  return { runScripts: on ? [...rest, repo] : rest };
 }

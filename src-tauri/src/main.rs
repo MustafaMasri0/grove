@@ -50,6 +50,8 @@ fn main() {
             commands::read_image,
             commands::image_sources,
             commands::preview_base,
+            commands::preview_page,
+            commands::drop_preview_page,
             commands::avatar,
             commands::github_repo,
             commands::copy_text,

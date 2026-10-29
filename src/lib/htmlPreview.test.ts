@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from "vitest";
-import { linkTarget, PREVIEW_CSP, prepareHtml } from "./htmlPreview";
+import { linkTarget, PREVIEW_CSP, prepareHtml, previewCsp } from "./htmlPreview";
 
 const BASE = "http://wvfile.localhost/tok123/";
 const prep = (html: string, path = "site/pages/index.html") => {
@@ -123,5 +123,41 @@ describe("linkTarget", () => {
     expect(linkTarget(`url=${encodeURIComponent("https://evil.example")}`, "n1")).toBeNull();
     expect(linkTarget(`n=n2&open=a.html`, "n1")).toBeNull();
     expect(linkTarget(`n=&open=a.html`, "")).toBeNull();
+  });
+});
+
+describe("prepareHtml with scripts on", () => {
+  const run = (html: string, path = "site/pages/index.html") => {
+    const out = prepareHtml(html, path, BASE, "n1", true);
+    return { out, doc: new DOMParser().parseFromString(out, "text/html") };
+  };
+
+  it("lets the page's own scripts run: inline, and from the repository at the same revision", () => {
+    const { doc } = run(`<head><script>window.x = 1</script><script src="../app.js"></script>
+      <script type="module" src="/lib/m.js"></script></head><body onload="init()"><button onclick="go()">b</button></body>`);
+    const s = [...doc.querySelectorAll("script")];
+    expect(s.map((e) => e.getAttribute("src"))).toEqual([null, `${BASE}site/app.js`, `${BASE}lib/m.js`]);
+    expect(s[0].textContent).toBe("window.x = 1");
+    expect(doc.body.getAttribute("onload")).toBe("init()");
+    expect(doc.querySelector("button")!.getAttribute("onclick")).toBe("go()");
+  });
+
+  it("still loads nothing from the web, and keeps frames, base and refresh out", () => {
+    const { doc } = run(`<head><script src="https://cdn.example/react.js"></script><script src="//cdn.example/x.js"></script>
+      <base href="https://evil.example/"><meta http-equiv="refresh" content="0;url=https://evil.example"></head>
+      <body><iframe src="x.html"></iframe><a href="javascript:steal()">j</a></body>`);
+    expect(doc.querySelectorAll("script, iframe, base").length).toBe(0);
+    expect(doc.querySelectorAll("meta[http-equiv]").length).toBe(1);
+    expect(doc.querySelector("a")!.hasAttribute("href")).toBe(false);
+  });
+
+  it("allows scripts from the repository and inline, and still no network", () => {
+    const csp = previewCsp(true);
+    expect(csp).toContain(`script-src http://wvfile.localhost 'unsafe-inline' 'unsafe-eval'`);
+    for (const d of ["default-src 'none'", "connect-src 'none'", "frame-src 'none'", "form-action 'none'", "worker-src 'none'"]) expect(csp).toContain(d);
+    expect(csp).not.toMatch(/https?:\/\/(?!wvfile\.localhost)/);
+    expect(previewCsp(false)).toBe(PREVIEW_CSP);
+    const { doc } = run("<p>x</p>");
+    expect(doc.head.firstElementChild!.getAttribute("content")).toBe(csp);
   });
 });

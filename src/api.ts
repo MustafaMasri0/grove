@@ -246,6 +246,9 @@ export const api = {
   imageSources: (a: At, sources: Source[]) => invoke<ImageSource[]>("image_sources", { ...a, sources }),
   /** The wvfile: URL of the repository root at `rev` (null: the worktree), for HTML previews. */
   previewBase: (a: At, rev: string | null) => invoke<string>("preview_base", { ...a, rev }),
+  /** Hands the backend a prepared HTML preview; returns the URL its frame loads. */
+  previewPage: (html: string, scripts: boolean) => invoke<string>("preview_page", { html, scripts }),
+  dropPreviewPage: (url: string) => invoke<void>("drop_preview_page", { url }),
   automation: () =>
     invoke<{
       openDiffs: number | null;

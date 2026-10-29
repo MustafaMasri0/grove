@@ -27,6 +27,8 @@ pub struct App {
     github_repos: Mutex<std::collections::HashMap<String, Option<String>>>,
     /// The repository roots `wvfile:` URLs may read from.
     pub previews: wv_core::preview::Roots,
+    /// HTML previews the UI prepared, served at `wvfile:` `/~page/<id>`.
+    pub pages: wv_core::preview::Pages,
 }
 
 pub type AppState = Arc<App>;
@@ -410,7 +412,22 @@ pub fn preview_base(state: State<'_, AppState>, repo: String, cwd: String, rev: 
     preview::base_url(&state.previews.token(&repo, &cwd, rev.as_deref()))
 }
 
-/// Answers a `wvfile:` request: a repository file under a root, or a link clicked in an
+/// Keeps a prepared HTML preview for the preview frame to load; returns its URL.
+/// With `scripts`, the page may run its own scripts (still without network access).
+#[tauri::command]
+pub fn preview_page(state: State<'_, AppState>, html: String, scripts: bool) -> String {
+    preview::page_url(&state.pages.put(html, scripts))
+}
+
+/// Forgets a prepared preview once the frame no longer shows it.
+#[tauri::command]
+pub fn drop_preview_page(state: State<'_, AppState>, url: String) {
+    if let Some(id) = url.rsplit('/').next() {
+        state.pages.remove(id);
+    }
+}
+
+/// Answers a `wvfile:` request: a prepared page, a repository file under a root, or a link clicked in an
 /// HTML preview (told to the UI as `preview-link`; no content, so the preview stays).
 pub fn serve_preview(app_handle: &AppHandle, req: &tauri::http::Request<Vec<u8>>) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::{Response, StatusCode};
@@ -421,6 +438,16 @@ pub fn serve_preview(app_handle: &AppHandle, req: &tauri::http::Request<Vec<u8>>
     let app = app_handle.state::<AppState>().inner().clone();
     match preview::route(&app.previews, req.uri().path(), req.uri().query()) {
         preview::Request::NotFound => status(StatusCode::NOT_FOUND),
+        preview::Request::Page { id } => match app.pages.get(&id) {
+            Some(page) => {
+                let mut r = Response::builder().status(StatusCode::OK);
+                for (k, v) in preview::page_headers(page.scripts) {
+                    r = r.header(k, v);
+                }
+                r.body(page.html.as_bytes().to_vec()).unwrap()
+            }
+            None => status(StatusCode::NOT_FOUND),
+        },
         preview::Request::Link { query } => {
             // Only a navigation of the preview frame (a click) counts, not an image or stylesheet naming the URL.
             let dest = req.headers().get("sec-fetch-dest").and_then(|v| v.to_str().ok());

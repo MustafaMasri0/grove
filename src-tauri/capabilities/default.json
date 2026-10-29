@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The main window: app commands, events, folder picker, zoom, its own title bar (move, minimize, maximize, close), and opening web links from Markdown in the browser.",
+  "description": "The main window: app commands, events, folder picker, zoom, its own title bar (move, minimize, maximize, close), opening web links from previews in the browser, and asking first when a preview runs scripts.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -11,6 +11,7 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "dialog:allow-open",
+    "dialog:allow-ask",
     "opener:default"
   ]
 }
