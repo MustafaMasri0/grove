@@ -1,4 +1,4 @@
-//! JSON lines between the app and the WSL helper: one message per line on
+//! JSON lines between the app and the helper: one message per line on
 //! stdin/stdout. Requests carry an id; replies and progress echo it.
 
 use crate::host::{Change, WatchSpec};

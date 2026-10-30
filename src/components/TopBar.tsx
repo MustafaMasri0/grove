@@ -4,7 +4,7 @@ import { errorText } from "../api";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems, repoItems, worktreeItems } from "../lib/contextMenus";
 import { relativeTime, shortSha } from "../lib/format";
-import { windowsPath } from "../lib/hostPaths";
+import { canReveal, displayPath, sshAddress } from "../lib/hostPaths";
 import { useNow } from "../lib/useNow";
 import { isActive, sharedFiles, worktreeName } from "../lib/worktrees";
 import { useStore } from "../store";
@@ -22,15 +22,21 @@ function RepoSwitcher() {
   const removeRepo = useStore((s) => s.removeRepo);
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [ssh, setSsh] = useState<{ host: string; path: string } | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   const add = async (path: string, close: () => void) => {
     setError(null);
+    setConnecting(true);
     try {
       await addRepo(path);
       setTyped("");
+      setSsh(null);
       close();
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setConnecting(false);
     }
   };
 
@@ -43,7 +49,7 @@ function RepoSwitcher() {
       detail: info && "error" in info ? `⚠ ${info.error}` : r,
       search: `${name} ${r}`,
       current: repo?.id === r,
-      menu: () => repoItems(menuEnv, { name, path: info && "root" in info ? windowsPath(info, info.root) : null, remove: () => removeRepo(r) }),
+      menu: () => repoItems(menuEnv, { name, path: info && "root" in info ? displayPath(info, info.root) : null, reveal: !!info && "root" in info && canReveal(info), remove: () => removeRepo(r) }),
       trailing: (
         <button
           className="icon-button dd-remove"
@@ -81,13 +87,28 @@ function RepoSwitcher() {
           >
             Add repository folder…
           </button>
+          <button onClick={() => setSsh(ssh ? null : { host: "", path: "" })}>Connect over SSH…</button>
+          {ssh && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (ssh.host.trim() && ssh.path.trim()) void add(sshAddress(ssh.host, ssh.path), close);
+              }}
+            >
+              <input autoFocus placeholder="user@host, or a name from ssh config" value={ssh.host} onChange={(e) => setSsh({ ...ssh, host: e.target.value })} />
+              <input placeholder="path, e.g. /home/user/src/example or ~/example" value={ssh.path} onChange={(e) => setSsh({ ...ssh, path: e.target.value })} />
+              <button className="primary" type="submit" disabled={connecting}>
+                {connecting ? "Connecting…" : "Connect"}
+              </button>
+            </form>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               void add(typed, close);
             }}
           >
-            <input placeholder="or paste a path, e.g. \\wsl.localhost\Ubuntu\home\…" value={typed} onChange={(e) => setTyped(e.target.value)} />
+            <input placeholder="or paste a path, or ssh://user@host/path" value={typed} onChange={(e) => setTyped(e.target.value)} />
           </form>
           {error && <div className="error-text">{error}</div>}
         </div>
@@ -106,6 +127,7 @@ function ChangeBadge({ n }: { n: number | undefined }) {
 }
 
 function WorktreeSwitcher() {
+  const repo = useStore((s) => s.repo);
   const worktrees = useStore((s) => s.worktrees);
   const counts = useStore((s) => s.changeCounts);
   const lastChange = useStore((s) => s.lastChange);
@@ -134,7 +156,7 @@ function WorktreeSwitcher() {
     current: w.path === cwd && !viewBranch,
     disabled: w.missing || w.bare,
     disabledReason: w.missing ? `Missing or prunable${w.prunable ? `: ${w.prunable}` : ""}` : w.bare ? "Bare repository" : undefined,
-    menu: () => worktreeItems(menuEnv, { path: w.displayPath, branch: w.branch, missing: w.missing }),
+    menu: () => worktreeItems(menuEnv, { path: w.displayPath, branch: w.branch, missing: w.missing, reveal: !!repo && canReveal(repo) }),
   }));
 
   return (

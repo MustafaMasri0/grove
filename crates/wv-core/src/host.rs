@@ -1,5 +1,5 @@
 //! One interface over "run git / read files / watch" so the UI never knows
-//! whether a repository lives on Windows or inside a WSL distro.
+//! whether a repository lives here, in a WSL distro or on an SSH host.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -78,7 +78,7 @@ pub trait GitHost: Send + Sync {
     fn unwatch(&self, id: u64);
 }
 
-/// Joins a host path and a repository-relative path. Both Windows and Linux accept `/`.
+/// Joins a host path and a repository-relative path. Every OS accepts `/`.
 pub fn join(base: &str, rel: &str) -> String {
     if rel.is_empty() {
         return base.to_string();

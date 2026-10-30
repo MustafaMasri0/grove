@@ -103,6 +103,7 @@ export function App() {
     const unlisten = [
       listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
       listen<{ line: string }>("action-progress", (e) => setActionProgress(e.payload.line)),
+      listen("connection-lost", () => void useStore.getState().connectionLost()),
     ];
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);

@@ -4,7 +4,7 @@ mod avatar;
 mod commands;
 mod hosts;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn main() {
     tauri::Builder::default()
@@ -17,6 +17,10 @@ fn main() {
             tauri::async_runtime::spawn_blocking(move || responder.respond(commands::serve_preview(&app, &req)));
         })
         .setup(|app| {
+            let handle = app.handle().clone();
+            app.state::<commands::AppState>().hosts.on_lost(move || {
+                let _ = handle.emit("connection-lost", ());
+            });
             // Lets test and measurement instances be told apart from the real one.
             if let (Ok(title), Some(w)) = (std::env::var("WV_TITLE"), app.get_webview_window("main")) {
                 let _ = w.set_title(&title);

@@ -1,5 +1,5 @@
-//! Git and files on the machine this process runs on: Windows for the app,
-//! Linux for the WSL helper.
+//! Git and files on the machine this process runs on: the user's for the app,
+//! the one holding the repository for the helper.
 
 use crate::exec::run_git;
 use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};

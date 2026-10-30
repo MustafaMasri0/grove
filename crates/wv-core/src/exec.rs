@@ -1,5 +1,5 @@
-//! Runs the git command-line tool. Shared by the Windows app (git.exe) and the
-//! WSL helper (git), so both enforce the same allowlist and environment.
+//! Runs the git command-line tool. Shared by the app and the
+//! helper, so both enforce the same allowlist and environment.
 
 use crate::allowlist;
 use crate::host::{GitOutput, Progress};

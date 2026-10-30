@@ -1,4 +1,4 @@
-//! The app is read-only. Every git invocation, in the app and in the WSL
+//! The app is read-only. Every git invocation, in the app and in the
 //! helper, passes through [`check`] first. Only fetch, plain push and
 //! `push -u origin <branch>` may change anything, and nothing may force or delete.
 

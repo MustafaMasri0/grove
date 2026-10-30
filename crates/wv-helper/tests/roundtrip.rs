@@ -1,5 +1,5 @@
 //! Spawns the real helper binary and drives it through `HelperClient`, the same
-//! client the app uses behind `wsl.exe`.
+//! client the app uses behind `wsl.exe` and `ssh`.
 
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -11,7 +11,7 @@ use wv_core::host::{GitHost, WatchSpec};
 fn helper() -> HelperClient {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_wv-helper"));
     cmd.stderr(Stdio::null());
-    HelperClient::spawn(cmd).expect("helper starts and says hello")
+    HelperClient::spawn(cmd, Box::new(|| {})).expect("helper starts and says hello")
 }
 
 fn repo() -> (tempfile::TempDir, String) {
@@ -156,7 +156,7 @@ fn watch_events_arrive_and_stop_after_unwatch() {
 fn a_dead_helper_fails_calls_instead_of_hanging() {
     let mut cmd = Command::new("sh");
     cmd.args(["-c", r#"echo '{"type":"hello","version":"x"}'; read line; exit 0"#]);
-    let h = HelperClient::spawn(cmd).unwrap();
+    let h = HelperClient::spawn(cmd, Box::new(|| {})).unwrap();
     let start = Instant::now();
     assert!(h.list_dir("/").is_err());
     assert!(start.elapsed() < Duration::from_secs(5));

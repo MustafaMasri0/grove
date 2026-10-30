@@ -3,7 +3,7 @@ name = "wv-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Git porcelain parsing, command allowlist, path routing and host plumbing shared by the app and the WSL helper"
+description = "Git porcelain parsing, command allowlist, path routing and host plumbing shared by the app and its helper"
 
 [dependencies]
 serde.workspace = true

@@ -1,5 +1,5 @@
 //! The app's side of the helper protocol. Owns one long-running helper process
-//! (normally `wsl.exe -d <distro> -- helper`) and multiplexes concurrent calls over it.
+//! (behind `wsl.exe` or `ssh`, see `remote`) and multiplexes concurrent calls over it.
 
 use crate::allowlist;
 use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
@@ -16,6 +16,8 @@ use std::time::Duration;
 type Pending = Arc<Mutex<HashMap<u64, Sender<Message>>>>;
 type Watches = Arc<Mutex<HashMap<u64, OnChange>>>;
 
+const LOST: &str = "the connection to the helper was lost";
+
 pub struct HelperClient {
     stdin: Mutex<ChildStdin>,
     child: Mutex<Child>,
@@ -27,8 +29,9 @@ pub struct HelperClient {
 }
 
 impl HelperClient {
-    /// Starts the helper and waits for its hello line.
-    pub fn spawn(mut cmd: Command) -> Result<Self, String> {
+    /// Starts the helper and waits for its hello line. `on_lost` runs if a helper that
+    /// said hello goes away, which ends its watches.
+    pub fn spawn(mut cmd: Command, on_lost: Box<dyn FnOnce() + Send>) -> Result<Self, String> {
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
         crate::exec::hide_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| format!("could not start helper: {e}"))?;
@@ -42,11 +45,13 @@ impl HelperClient {
         {
             let (pending, watches, alive) = (pending.clone(), watches.clone(), alive.clone());
             std::thread::spawn(move || {
+                let mut said_hello = false;
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
                     let Ok(msg) = serde_json::from_str::<Message>(&line) else { continue };
                     match &msg {
                         Message::Hello { version } => {
+                            said_hello = true;
                             let _ = hello_tx.send(version.clone());
                         }
                         Message::Changed { watch_id, change } => {
@@ -70,6 +75,9 @@ impl HelperClient {
                 alive.store(false, Ordering::SeqCst);
                 // Dropping the senders wakes every waiting caller with an error.
                 pending.lock().unwrap().clear();
+                if said_hello {
+                    on_lost();
+                }
             });
         }
 
@@ -102,7 +110,7 @@ impl HelperClient {
 
     fn call<T: DeserializeOwned>(&self, op: Op, progress: Option<Progress>) -> Result<T, String> {
         if !self.is_alive() {
-            return Err("the WSL helper has stopped".into());
+            return Err(LOST.into());
         }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = channel();
@@ -113,7 +121,7 @@ impl HelperClient {
             let sent = writeln!(stdin, "{line}").and_then(|_| stdin.flush());
             if let Err(e) = sent {
                 self.pending.lock().unwrap().remove(&id);
-                return Err(format!("the WSL helper has stopped ({e})"));
+                return Err(format!("{LOST} ({e})"));
             }
         }
         loop {
@@ -126,7 +134,7 @@ impl HelperClient {
                 Ok(Message::Done { result, .. }) => return serde_json::from_value(result).map_err(|e| e.to_string()),
                 Ok(Message::Failed { error, .. }) => return Err(error),
                 Ok(_) => {}
-                Err(_) => return Err("the WSL helper has stopped".into()),
+                Err(_) => return Err(LOST.into()),
             }
         }
     }

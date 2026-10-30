@@ -2,7 +2,7 @@
 // options open tabs, copy text, show File Explorer or a web page, or change
 // the app's own list of repositories.
 import { shortSha, splitPath } from "./format";
-import { githubCommitUrl, joinPath, relativeForCopy, windowsPath, type HostKind } from "./hostPaths";
+import { canReveal, displayPath, githubCommitUrl, joinPath, relativeForCopy, type HostKind } from "./hostPaths";
 import type { MenuItem } from "./menu";
 
 /** What the options do outside the app's own state. */
@@ -25,13 +25,13 @@ const REVEAL_IN_APP = "Reveal in Explorer";
 
 function pathItems(env: MenuEnv, where: Where, rel: string): MenuItem[] {
   return [
-    { label: "Copy path", run: () => env.copy(windowsPath(where.host, joinPath(where.cwd, rel))) },
+    { label: "Copy path", run: () => env.copy(displayPath(where.host, joinPath(where.cwd, rel))) },
     { label: "Copy relative path", run: () => env.copy(relativeForCopy(where.host, rel)) },
   ];
 }
 
 function revealItem(env: MenuEnv, where: Where, rel: string, onDisk: boolean): MenuItem {
-  return { label: REVEAL, disabled: !onDisk, run: () => env.reveal(windowsPath(where.host, joinPath(where.cwd, rel))) };
+  return { label: REVEAL, disabled: !onDisk || !canReveal(where.host), run: () => env.reveal(displayPath(where.host, joinPath(where.cwd, rel))) };
 }
 
 export interface FileTarget {
@@ -125,26 +125,26 @@ export function commitItems(env: MenuEnv, c: CommitTarget): MenuItem[] {
 }
 
 /** A repository in the top bar list; `path` is null when it could not be opened. */
-export function repoItems(env: MenuEnv, r: { name: string; path: string | null; remove: () => void }): MenuItem[] {
+export function repoItems(env: MenuEnv, r: { name: string; path: string | null; reveal: boolean; remove: () => void }): MenuItem[] {
   const path = r.path;
   return [
     { label: "Copy path", disabled: !path, run: () => (path ? env.copy(path) : undefined) },
     { label: "Copy name", run: () => env.copy(r.name) },
     SEP,
-    { label: REVEAL, disabled: !path, run: () => (path ? env.reveal(path) : undefined) },
+    { label: REVEAL, disabled: !path || !r.reveal, run: () => (path ? env.reveal(path) : undefined) },
     SEP,
     { label: "Remove from list", run: r.remove },
   ];
 }
 
-/** A worktree in the top bar list; `path` is its Windows path. */
-export function worktreeItems(env: MenuEnv, w: { path: string; branch: string | null; missing: boolean }): MenuItem[] {
+/** A worktree in the top bar list; `path` is as its machine shows it. */
+export function worktreeItems(env: MenuEnv, w: { path: string; branch: string | null; missing: boolean; reveal: boolean }): MenuItem[] {
   const branch = w.branch;
   return [
     { label: "Copy path", run: () => env.copy(w.path) },
     { label: "Copy branch name", disabled: !branch, run: () => (branch ? env.copy(branch) : undefined) },
     SEP,
-    { label: REVEAL, disabled: w.missing, run: () => env.reveal(w.path) },
+    { label: REVEAL, disabled: w.missing || !w.reveal, run: () => env.reveal(w.path) },
   ];
 }
 

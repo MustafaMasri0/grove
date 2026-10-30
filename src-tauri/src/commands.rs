@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use wv_core::host::{Change, DirEntry, GitHost};
 use wv_core::overview::{self, Overview};
-use wv_core::paths::{wsl_unc, Route};
+use wv_core::paths::{display_path, local_separator, Route};
 use wv_core::preview;
 use wv_core::porcelain::blame::Blame;
 use wv_core::porcelain::grep::GrepResult;
@@ -57,9 +57,11 @@ pub struct RepoInfo {
     /// The path as the user added it; the key for everything else.
     pub id: String,
     pub name: String,
-    /// "windows" or "wsl".
+    /// "local", "wsl" or "ssh".
     pub kind: &'static str,
     pub distro: Option<String>,
+    /// The separator of paths shown for this repository.
+    pub separator: char,
     /// Top-level folder on the host (a Linux path for WSL repos).
     pub root: String,
 }
@@ -69,13 +71,14 @@ pub async fn open_repo(state: State<'_, AppState>, path: String) -> Res<RepoInfo
     let app = state.inner().clone();
     blocking(move || {
         let (host, route) = app.hosts.resolve(&path)?;
-        let (host_path, kind, distro) = match route {
-            Route::Local { path } => (path, "windows", None),
-            Route::Wsl { distro, linux_path } => (linux_path, "wsl", Some(distro)),
+        let (host_path, kind, distro, separator) = match route {
+            Route::Local { path } => (path, "local", None, local_separator()),
+            Route::Wsl { distro, linux_path } => (linux_path, "wsl", Some(distro), '/'),
+            Route::Ssh { path, .. } => (path, "ssh", None, '/'),
         };
         let root = ops::toplevel(&*host, &host_path).map_err(|e| format!("{path} is not a git repository ({e})"))?;
         let name = root.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or(&root).to_string();
-        Ok(RepoInfo { id: path, name, kind, distro, root })
+        Ok(RepoInfo { id: path, name, kind, distro, separator, root })
     })
     .await
 }
@@ -85,7 +88,7 @@ pub async fn open_repo(state: State<'_, AppState>, path: String) -> Res<RepoInfo
 pub struct WorktreeInfo {
     #[serde(flatten)]
     pub worktree: Worktree,
-    /// The path as Windows shows it.
+    /// The path as its machine shows it.
     pub display_path: String,
     /// Prunable, or its folder is gone.
     pub missing: bool,
@@ -101,10 +104,7 @@ pub async fn worktrees(state: State<'_, AppState>, repo: String, cwd: String) ->
             .into_iter()
             .map(|w| {
                 let missing = w.prunable.is_some() || host.mtime(&w.path).ok().flatten().is_none();
-                let display_path = match &route {
-                    Route::Wsl { distro, .. } => wsl_unc(distro, &w.path),
-                    Route::Local { .. } => w.path.replace('/', "\\"),
-                };
+                let display_path = display_path(&route, &w.path);
                 WorktreeInfo { worktree: w, display_path, missing }
             })
             .collect())
@@ -166,7 +166,7 @@ pub async fn commit(state: State<'_, AppState>, repo: String, cwd: String, sha: 
 #[tauri::command]
 pub async fn read_sources(state: State<'_, AppState>, repo: String, cwd: String, sources: Vec<Source>) -> Res<Vec<Content>> {
     with_host!(state, repo, |h| {
-        // Both sides of a diff load in parallel; through the WSL helper that halves the wait.
+        // Both sides of a diff load in parallel; through the helper that halves the wait.
         std::thread::scope(|s| {
             let handles: Vec<_> = sources.iter().map(|src| s.spawn(|| ops::read_source(h, &cwd, src))).collect();
             handles.into_iter().map(|t| t.join().map_err(|_| "reader panicked".to_string())?).collect()
@@ -233,7 +233,8 @@ pub async fn watch(app_handle: AppHandle, state: State<'_, AppState>, repo: Stri
     let app = state.inner().clone();
     blocking(move || {
         if let Some((old_repo, ids)) = app.watches.lock().unwrap().take() {
-            if let Ok(h) = app.hosts.host(&old_repo) {
+            // Only if connected: a lost host took its watches along, and must not hold up the next repository.
+            if let Some(h) = app.hosts.connected(&old_repo) {
                 ids.into_iter().for_each(|id| h.unwatch(id));
             }
         }
@@ -536,7 +537,7 @@ fn github_repo_of(app: &App, repo: String, cwd: &str) -> Res<Option<String>> {
     if let Some(r) = app.github_repos.lock().unwrap().get(&repo).cloned() {
         return Ok(r);
     }
-    // `git remote -v` is a read on the allowlist, on Windows or through the WSL helper.
+    // `git remote -v` is a read on the allowlist, here or through the helper.
     let h = app.hosts.host(&repo)?;
     let out = h.git(cwd, &["remote".to_string(), "-v".to_string()], None)?.ok()?;
     let r = crate::avatar::github_repo(&String::from_utf8_lossy(&out));

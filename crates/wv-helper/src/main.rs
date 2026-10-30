@@ -1,4 +1,4 @@
-//! Runs inside a WSL distro, started by the app as `wsl.exe -d <distro> -- <this>`.
+//! Runs where a repository lives, on a machine the app reaches through `wsl.exe` or `ssh`.
 //! Reads JSON requests from stdin, answers on stdout, one message per line.
 //! Exits when stdin closes, i.e. when the app goes away.
 
