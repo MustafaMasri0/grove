@@ -1,24 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { githubCommitUrl, joinPath, relativeForCopy, windowsPath } from "./hostPaths";
+import { canReveal, displayPath, githubCommitUrl, joinPath, relativeForCopy, sshAddress } from "./hostPaths";
 
-const wsl = { kind: "wsl" as const, distro: "Ubuntu" };
-const win = { kind: "windows" as const, distro: null };
+const wsl = { kind: "wsl" as const, distro: "Ubuntu", separator: "/" };
+const win = { kind: "local" as const, distro: null, separator: "\\" };
+const mac = { kind: "local" as const, distro: null, separator: "/" };
+const ssh = { kind: "ssh" as const, distro: null, separator: "/" };
 
-describe("windowsPath", () => {
+describe("displayPath", () => {
   it("turns a WSL path into a \\\\wsl.localhost path", () => {
-    expect(windowsPath(wsl, "/home/user/src/example/src/app.ts")).toBe("\\\\wsl.localhost\\Ubuntu\\home\\user\\src\\example\\src\\app.ts");
+    expect(displayPath(wsl, "/home/user/src/example/src/app.ts")).toBe("\\\\wsl.localhost\\Ubuntu\\home\\user\\src\\example\\src\\app.ts");
   });
 
   it("maps the distro root", () => {
-    expect(windowsPath(wsl, "/")).toBe("\\\\wsl.localhost\\Ubuntu\\");
+    expect(displayPath(wsl, "/")).toBe("\\\\wsl.localhost\\Ubuntu\\");
   });
 
   it("uses backslashes for Windows paths", () => {
-    expect(windowsPath(win, "C:/src/example/src/App.tsx")).toBe("C:\\src\\example\\src\\App.tsx");
+    expect(displayPath(win, "C:/src/example/src/App.tsx")).toBe("C:\\src\\example\\src\\App.tsx");
+  });
+
+  it("leaves paths on Linux, macOS and SSH hosts as they are", () => {
+    expect(displayPath(mac, "/Users/user/src/a.ts")).toBe("/Users/user/src/a.ts");
+    expect(displayPath(ssh, "/home/user/src/a.ts")).toBe("/home/user/src/a.ts");
+    expect(displayPath(ssh, "C:/src/a.ts")).toBe("C:/src/a.ts");
   });
 
   it("keeps spaces and unicode", () => {
-    expect(windowsPath(wsl, "/home/a b/ü.md")).toBe("\\\\wsl.localhost\\Ubuntu\\home\\a b\\ü.md");
+    expect(displayPath(wsl, "/home/a b/ü.md")).toBe("\\\\wsl.localhost\\Ubuntu\\home\\a b\\ü.md");
+  });
+});
+
+describe("sshAddress", () => {
+  it("joins a host and a path", () => {
+    expect(sshAddress("dev@build:2222", "/home/user/src/example")).toBe("ssh://dev@build:2222/home/user/src/example");
+    expect(sshAddress(" build ", " ~/src/example ")).toBe("ssh://build/~/src/example");
+  });
+
+  it("takes a Windows path and a pasted ssh:// host", () => {
+    expect(sshAddress("ssh://build/", "C:\\src\\example")).toBe("ssh://build/C:/src/example");
+  });
+});
+
+describe("canReveal", () => {
+  it("is for files this machine can see", () => {
+    expect([win, wsl, mac, ssh].map(canReveal)).toEqual([true, true, true, false]);
   });
 });
 

@@ -1,6 +1,6 @@
 //! Debounced change notifications for one worktree.
 //!
-//! On Linux (inside the WSL helper) a recursive inotify watch would descend
+//! On Linux (inside the helper) a recursive inotify watch would descend
 //! into node_modules and friends, so folders are walked by hand and skipped
 //! folders never get a watch. On Windows one recursive watch is cheap, so
 //! events are filtered instead.

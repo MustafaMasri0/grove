@@ -1,8 +1,9 @@
-//! Git and files on the machine this process runs on: Windows for the app,
-//! Linux for the WSL helper.
+//! Git and files on the machine this process runs on: the user's for the app,
+//! the one holding the repository for the helper.
 
 use crate::exec::run_git;
 use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
+use crate::overview::{self, Overview};
 use crate::watch::WorktreeWatcher;
 use std::collections::HashMap;
 use std::io::Read;
@@ -70,5 +71,9 @@ impl GitHost for LocalHost {
 
     fn unwatch(&self, id: u64) {
         self.watches.lock().unwrap().remove(&id);
+    }
+
+    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String> {
+        Ok(overview::overview(self, cwds, base))
     }
 }

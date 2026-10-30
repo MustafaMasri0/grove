@@ -7,10 +7,10 @@ use crate::porcelain::misc::{parse_left_right, parse_path_list};
 use crate::porcelain::name_status::ChangedFile;
 use crate::porcelain::ChangeKind;
 use crate::repo_ops::{run, run_text, status, succeeds};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorktreeSummary {
     pub path: String,
@@ -21,6 +21,9 @@ pub struct WorktreeSummary {
     /// What the Changes list shows: every status entry but ignored files.
     pub uncommitted: Vec<ChangedFile>,
     /// Files HEAD changed since it split from the base (renames as delete + add); empty without a base.
+    /// Only for working out overlaps, and long on branches far from their base, so it stays where
+    /// the overview is computed: see `GitHost::overview`.
+    #[serde(skip)]
     pub committed: Vec<String>,
     /// Commits on HEAD that the base does not have, and the other way round.
     pub base_ahead: u32,
@@ -43,7 +46,7 @@ impl WorktreeSummary {
 }
 
 /// Files that two worktrees both change.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Overlap {
     pub a: String,
@@ -52,7 +55,7 @@ pub struct Overlap {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Overview {
     /// In the order the worktrees were asked for, minus those that could not be read.

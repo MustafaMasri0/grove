@@ -3,7 +3,7 @@ name = "wv-helper"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Long-running helper inside a WSL distro: runs allowlisted git, reads files, watches worktrees"
+description = "Long-running helper on a WSL distro or SSH host: runs allowlisted git, reads files, watches worktrees"
 
 [dependencies]
 wv-core.workspace = true

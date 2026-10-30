@@ -12,7 +12,7 @@ Grove is free and open source under the [MIT licence](LICENSE).
 - **Safe by default.** Today Grove does not change your working tree, index,
   branches or stashes. The only git commands that write anything are `fetch`,
   `push` (never forced) and `push -u origin <branch>`, each started by an
-  explicit button. Every git command Grove may run, in the app and in the WSL
+  explicit button. Every git command Grove may run, in the app and in its
   helper, is on an allowlist, and reads are limited to known commands and
   options. Editing files and more git actions are planned. They will go
   through the same allowlist.
@@ -22,6 +22,11 @@ Grove is free and open source under the [MIT licence](LICENSE).
   any WSL distro (`\\wsl.localhost\Ubuntu\home\user\src\example`). For WSL
   repositories, a small helper runs git natively inside the distro instead of
   going through the slow `\\wsl$` file share.
+- **SSH support.** Repositories can also live on another machine
+  (`ssh://user@host/home/user/src/example`) running Linux or Windows, on x86-64 or
+  Arm64. The same helper runs next to the repository there, so git, search and
+  the live worktree watcher work as they do locally. macOS hosts are designed in
+  and need their helper built on a Mac: see [docs/ssh.md](docs/ssh.md).
 
 ## Install
 
@@ -43,9 +48,14 @@ You need:
 - `git` inside each WSL distro you open repositories from. The app installs its
   helper into `~/.local/share/grove/` in that distro on first use and
   replaces it when the app is updated.
+- For SSH repositories: `ssh` on your `PATH` (Windows 10 and 11 include it) and
+  `git` on the host. Grove installs the same helper there. It signs in with your
+  ssh config, keys and agent and cannot ask for a password or passphrase, so
+  load keys into `ssh-agent`, and connect once from a terminal to accept a new
+  host key. Fetch and push run on the host, with its credentials.
 
-Add a repository from the **Repository** menu at the top left. Pick a folder or
-paste a path.
+Add a repository from the **Repository** menu at the top left. Pick a folder,
+paste a path, or use **Connect over SSH…**.
 
 ## Features
 
@@ -102,7 +112,7 @@ paste a path.
   before opening.
 - **Context menus** on files, folders, tabs, commits and the top-bar lists:
   copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in
-  File Explorer, open a commit on GitHub, and more.
+  File Explorer (not for SSH repositories), open a commit on GitHub, and more.
 - **Settings** (gear in the top bar, or Ctrl+,): theme, zoom, editor and diff
   options, the repository list and each repository's base branch, and a list of
   shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
@@ -133,40 +143,40 @@ You need, on Windows:
 - A current LTS release of [Node.js](https://nodejs.org), and pnpm
   (`corepack enable`).
 
-You also need, in WSL, Rust (`rustup`) to build the Linux helper.
-
 ```powershell
-# 1. In WSL, from the repository folder: build the helper the app embeds.
+# 1. Build the helpers the app embeds (Git Bash is fine; WSL is not needed).
 #    Repeat whenever crates/wv-helper or crates/wv-core changes.
-bash scripts/build-helper.sh
+bash scripts/build-helpers.sh
 
-# 2. On Windows:
+# 2. Build the app:
 pnpm install
 pnpm tauri dev      # run in development mode
 pnpm tauri build    # installer in target\release\bundle\nsis\
 ```
 
-If you skip step 1, the app still builds, with a warning, but WSL repositories
-won't open.
+If you skip step 1, the app still builds, with a warning, but WSL and SSH
+repositories won't open.
 
 ### Tests
 
 ```sh
-cargo test           # in WSL: core parsers, path routing, helper protocol
+cargo test           # core parsers, path routing, helper protocol and install
 pnpm test            # UI logic (Vitest)
 ```
 
-On Windows, `cargo test -p wv-core` runs the core tests against Windows git.
-`cargo test -p grove` covers the Tauri side.
+`cargo test` covers the shared crates on any OS, against that OS's git.
+`cargo test -p grove` covers the Tauri side. `bash scripts/test-ssh-host.sh` runs the
+helper against a stock OpenSSH server in a throwaway Docker container.
 
 ## How it works
 
-- `crates/wv-core`: git output parsers, the command allowlist, Windows/WSL path
+- `crates/wv-core`: git output parsers, the command allowlist, local/WSL/SSH path
   routing, the `GitHost` trait with a local implementation, the helper protocol
-  client, the file watcher, and every repository operation the UI uses.
-- `crates/wv-helper`: a small Linux binary started once per distro with
-  `wsl.exe -d <distro>`. It runs git, reads files and watches worktrees inside
-  WSL, and talks JSON lines over stdin/stdout.
+  client, helper installation (`remote`), the file watcher, and every repository operation the UI uses.
+- `crates/wv-helper`: a small binary started once per WSL distro or SSH host, on
+  the machine holding the repository. It runs git, reads files and watches
+  worktrees there, and talks JSON lines over stdin/stdout. See
+  [docs/ssh.md](docs/ssh.md).
 - `src-tauri`: the Tauri 2 shell and commands, and the `wvfile:` URL scheme
   (`http://wvfile.localhost/`) that image views and HTML previews read
   repository files from: images, stylesheets, fonts and scripts only,

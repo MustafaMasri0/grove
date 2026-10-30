@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/wv-core", "crates/wv-helper", "src-tauri"]
-# The Tauri app only builds on Windows; plain `cargo test` in WSL covers the shared crates.
+# The Tauri app needs each OS's webview libraries; plain `cargo test` covers the shared crates anywhere.
 default-members = ["crates/wv-core", "crates/wv-helper"]
 
 [workspace.package]

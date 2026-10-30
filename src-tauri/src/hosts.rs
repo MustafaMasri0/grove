@@ -1,34 +1,36 @@
-//! Picks the GitHost for a repository from its path: Windows paths use git.exe
-//! directly, `\\wsl.localhost\<distro>\...` paths go through one long-running
-//! helper per distro.
+//! Picks the GitHost for a repository from its path: local paths use git directly,
+//! WSL and `ssh://` paths go through one long-running helper per distro or host.
 
-use std::collections::HashMap;
-use std::io::Write;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, OnceLock};
 use wv_core::helper_client::HelperClient;
 use wv_core::host::GitHost;
 use wv_core::local::LocalHost;
 use wv_core::paths::{route, Route};
+use wv_core::remote::{connect, Connections, HelperBinary, OnLost, Shell, WslDistro};
 
-static HELPER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/wv-helper"));
-const HELPER_HASH: &str = env!("WV_HELPER_HASH");
-/// Exit code of the launcher script when the helper is not installed yet.
-const NOT_INSTALLED: &str = "87";
+include!(concat!(env!("OUT_DIR"), "/helpers.rs"));
 
 #[derive(Default)]
 pub struct Hosts {
     local: Arc<LocalHost>,
-    wsl: Mutex<HashMap<String, Arc<HelperClient>>>,
+    remote: Connections,
+    on_lost: OnceLock<Arc<dyn Fn(String) + Send + Sync>>,
 }
 
 impl Hosts {
+    /// `f` runs with the connection's name whenever one goes away, which also ends its watches.
+    pub fn on_lost(&self, f: impl Fn(String) + Send + Sync + 'static) {
+        let _ = self.on_lost.set(Arc::new(f));
+    }
+
     /// The host for a repository and the path to use on that host.
     pub fn resolve(&self, repo_path: &str) -> Result<(Arc<dyn GitHost>, Route), String> {
-        let r = route(repo_path);
+        let r = route(repo_path)?;
         let host: Arc<dyn GitHost> = match &r {
             Route::Local { .. } => self.local.clone(),
-            Route::Wsl { distro, .. } => self.helper(distro)?,
+            Route::Wsl { distro, .. } if cfg!(windows) => self.helper(&WslDistro(distro.clone()))?,
+            Route::Wsl { .. } => return Err("WSL repositories can only be opened on Windows".into()),
+            Route::Ssh { target, .. } => self.helper(target)?,
         };
         Ok((host, r))
     }
@@ -38,63 +40,24 @@ impl Hosts {
         self.resolve(repo_path).map(|(h, _)| h)
     }
 
-    fn helper(&self, distro: &str) -> Result<Arc<HelperClient>, String> {
-        let mut map = self.wsl.lock().unwrap();
-        if let Some(h) = map.get(distro).filter(|h| h.is_alive()) {
-            return Ok(h.clone());
+    /// The host if it can be used right now, without connecting.
+    pub fn connected(&self, repo_path: &str) -> Option<Arc<dyn GitHost>> {
+        match route(repo_path).ok()? {
+            Route::Local { .. } => Some(self.local.clone()),
+            Route::Wsl { distro, .. } => Some(self.remote.current(&WslDistro(distro))?),
+            Route::Ssh { target, .. } => Some(self.remote.current(&target)?),
         }
-        let client = match HelperClient::spawn(launch(distro)) {
-            Ok(c) => c,
-            Err(_) => {
-                install(distro)?;
-                HelperClient::spawn(launch(distro)).map_err(|e| format!("WSL helper in {distro}: {e}"))?
-            }
-        };
-        let client = Arc::new(client);
-        map.insert(distro.to_string(), client.clone());
-        Ok(client)
     }
-}
 
-fn helper_dir() -> &'static str {
-    "$HOME/.local/share/grove"
-}
-
-fn wsl(distro: &str, script: &str) -> Command {
-    let mut c = Command::new("wsl.exe");
-    c.args(["-d", distro, "--exec", "/bin/sh", "-c", script]);
-    c.stderr(Stdio::null());
-    c
-}
-
-fn launch(distro: &str) -> Command {
-    let script = format!(
-        r#"f="{dir}/helper-{HELPER_HASH}"; [ -x "$f" ] || exit {NOT_INSTALLED}; exec "$f""#,
-        dir = helper_dir()
-    );
-    wsl(distro, &script)
-}
-
-/// Copies the embedded helper into the distro, replacing older versions.
-fn install(distro: &str) -> Result<(), String> {
-    if HELPER.is_empty() {
-        return Err("this build has no WSL helper (scripts/build-helper.sh was not run)".into());
+    fn helper(&self, shell: &dyn Shell) -> Result<Arc<HelperClient>, String> {
+        self.remote.get(shell, || {
+            let (name, listener) = (shell.name(), self.on_lost.get().cloned());
+            let on_lost: OnLost = Arc::new(move || {
+                if let Some(f) = &listener {
+                    f(name.clone());
+                }
+            });
+            connect(shell, HELPERS, on_lost)
+        })
     }
-    let script = format!(
-        r#"set -e; d="{dir}"; mkdir -p "$d"; rm -f "$d"/helper-*; cat > "$d/helper-{HELPER_HASH}.tmp"; chmod 755 "$d/helper-{HELPER_HASH}.tmp"; mv "$d/helper-{HELPER_HASH}.tmp" "$d/helper-{HELPER_HASH}""#,
-        dir = helper_dir()
-    );
-    let mut cmd = wsl(distro, &script);
-    cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
-    wv_core::exec::hide_console(&mut cmd);
-    let mut child = cmd.spawn().map_err(|e| format!("could not start wsl.exe: {e}"))?;
-    child.stdin.take().unwrap().write_all(HELPER).map_err(|e| format!("installing WSL helper: {e}"))?;
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err(format!(
-            "installing the WSL helper into {distro} failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    Ok(())
 }

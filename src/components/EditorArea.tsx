@@ -6,7 +6,7 @@ import { editorOptions } from "../lib/editorOptions";
 import { viewKind } from "../lib/fileKinds";
 import { scriptsAllowed, withRunScripts } from "../lib/settings";
 import { formatBytes, shortSha } from "../lib/format";
-import { joinPath, windowsPath } from "../lib/hostPaths";
+import { displayPath, joinPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { languageFor, monaco } from "../monaco";
 import { effectiveDark, useStore, type Tab } from "../store";
@@ -67,7 +67,7 @@ function tabPath(t: Tab): string | null {
   if (isPage(t.spec)) return null;
   if (t.spec.type === "settingsJson") return t.spec.path;
   const info = useStore.getState().repos[t.repo];
-  return info && "kind" in info ? windowsPath(info, joinPath(t.cwd, t.spec.path)) : null;
+  return info && "kind" in info ? displayPath(info, joinPath(t.cwd, t.spec.path)) : null;
 }
 
 /** The file and revision a tab's "View file history" walks from; null for app tabs. */

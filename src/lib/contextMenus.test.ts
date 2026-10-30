@@ -20,8 +20,9 @@ const run = async (items: MenuItem[], label: string) => {
   await it.run();
 };
 
-const wsl = { host: { kind: "wsl" as const, distro: "Ubuntu" }, cwd: "/home/user/repo" };
-const win = { host: { kind: "windows" as const, distro: null }, cwd: "D:/src/wv" };
+const wsl = { host: { kind: "wsl" as const, distro: "Ubuntu", separator: "/" }, cwd: "/home/user/repo" };
+const win = { host: { kind: "local" as const, distro: null, separator: "\\" }, cwd: "D:/src/wv" };
+const ssh = { host: { kind: "ssh" as const, distro: null, separator: "/" }, cwd: "/home/user/repo" };
 
 describe("fileItems", () => {
   it("offers Open, Open file and the copy and reveal options for a diff row", () => {
@@ -34,6 +35,14 @@ describe("fileItems", () => {
     const { e } = env();
     expect(labels(fileItems(e, wsl, { path: "a.ts", open: () => {}, onDisk: true }))[1]).toBe("-");
     expect(labels(fileItems(e, wsl, { path: "a.ts", onDisk: true }))[0]).toBe("Copy path");
+  });
+
+  it("can't reveal a file on an SSH host, but copies its path there", async () => {
+    const { e, copied } = env();
+    const items = fileItems(e, ssh, { path: "src/a.ts", onDisk: true });
+    expect(labels(items)).toContain("Reveal in File Explorer (off)");
+    await run(items, "Copy path");
+    expect(copied).toEqual(["/home/user/repo/src/a.ts"]);
   });
 
   it("copies WSL paths as \\\\wsl.localhost paths and relative paths with slashes", async () => {
@@ -169,7 +178,7 @@ describe("top bar items", () => {
   it("repository: copy path and name, reveal, remove", async () => {
     const { e, copied } = env();
     const remove = vi.fn();
-    const items = repoItems(e, { name: "example", path: "\\\\wsl.localhost\\Ubuntu\\home\\user\\example", remove });
+    const items = repoItems(e, { name: "example", path: "\\\\wsl.localhost\\Ubuntu\\home\\user\\example", reveal: true, remove });
     expect(labels(items)).toEqual(["Copy path", "Copy name", "-", "Reveal in File Explorer", "-", "Remove from list"]);
     await run(items, "Copy path");
     await run(items, "Copy name");
@@ -180,16 +189,17 @@ describe("top bar items", () => {
 
   it("repository that failed to open: path from the list, no reveal", () => {
     const { e } = env();
-    expect(labels(repoItems(e, { name: "x", path: null, remove: () => {} }))).toEqual(["Copy path (off)", "Copy name", "-", "Reveal in File Explorer (off)", "-", "Remove from list"]);
+    expect(labels(repoItems(e, { name: "x", path: null, reveal: true, remove: () => {} }))).toEqual(["Copy path (off)", "Copy name", "-", "Reveal in File Explorer (off)", "-", "Remove from list"]);
   });
 
   it("worktree: copy path and branch, reveal unless missing", async () => {
     const { e, copied } = env();
-    const items = worktreeItems(e, { path: "D:\\wt\\a", branch: "feat/x", missing: false });
+    const items = worktreeItems(e, { path: "D:\\wt\\a", branch: "feat/x", missing: false, reveal: true });
     expect(labels(items)).toEqual(["Copy path", "Copy branch name", "-", "Reveal in File Explorer"]);
     await run(items, "Copy branch name");
     expect(copied).toEqual(["feat/x"]);
-    expect(labels(worktreeItems(e, { path: "D:\\wt\\b", branch: null, missing: true }))).toEqual(["Copy path", "Copy branch name (off)", "-", "Reveal in File Explorer (off)"]);
+    expect(labels(worktreeItems(e, { path: "D:\\wt\\b", branch: null, missing: true, reveal: true }))).toEqual(["Copy path", "Copy branch name (off)", "-", "Reveal in File Explorer (off)"]);
+    expect(labels(worktreeItems(e, { path: "/home/user/wt", branch: "x", missing: false, reveal: false }))).toEqual(["Copy path", "Copy branch name", "-", "Reveal in File Explorer (off)"]);
   });
 
   it("branch: copy name", async () => {

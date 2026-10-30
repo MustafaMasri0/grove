@@ -182,6 +182,8 @@ interface State {
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
+  /** A helper went away (`name` says which): its watches are gone, so reconnect and watch again. */
+  connectionLost: (name: string) => Promise<void>;
   openWorktrees(): void;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
@@ -196,12 +198,15 @@ interface State {
   openWorktreeCommit(cwd: string, sha: string): Promise<void>;
 }
 
+/** Pause between attempts to reach a lost host. */
+const RECONNECT_MS = 5_000;
 let saveTimer: number | undefined;
 let overviewTimer: number | undefined;
 /** Worktree path → files the watcher saw change since the last overview load, for Activity. */
 let edited = new Map<string, Set<string>>();
 /** The repository and worktrees being watched, so an unchanged list is not watched again. */
 let watched = "";
+let reconnecting = false;
 
 export const useStore = create<State>()((set, get) => {
   const at = () => {
@@ -756,6 +761,31 @@ export const useStore = create<State>()((set, get) => {
 
     setNotice(n) {
       set({ notice: n });
+    },
+
+    async connectionLost(name) {
+      watched = "";
+      const { repo } = get();
+      if (!repo || repo.kind === "local" || reconnecting) return;
+      reconnecting = true;
+      // Named by the connection: it may not be the current repository's.
+      set({ notice: `Connection to ${name} lost. Reconnecting…` });
+      try {
+        while (get().repo?.id === repo.id) {
+          await new Promise((done) => window.setTimeout(done, RECONNECT_MS));
+          try {
+            await api.openRepo(repo.id);
+            set({ notice: null });
+            await get().refresh();
+            return;
+          } catch {
+            // Still gone: try again.
+          }
+        }
+        set({ notice: null });
+      } finally {
+        reconnecting = false;
+      }
     },
 
     openWorktrees() {

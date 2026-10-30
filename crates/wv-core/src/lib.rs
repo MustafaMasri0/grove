@@ -8,5 +8,6 @@ pub mod paths;
 pub mod porcelain;
 pub mod preview;
 pub mod protocol;
+pub mod remote;
 pub mod repo_ops;
 pub mod watch;

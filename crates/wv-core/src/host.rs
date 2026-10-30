@@ -1,6 +1,7 @@
 //! One interface over "run git / read files / watch" so the UI never knows
-//! whether a repository lives on Windows or inside a WSL distro.
+//! whether a repository lives here, in a WSL distro or on an SSH host.
 
+use crate::overview::Overview;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -76,9 +77,12 @@ pub trait GitHost: Send + Sync {
     fn mtime(&self, path: &str) -> Result<Option<i64>, String>;
     fn watch(&self, spec: WatchSpec, on_change: OnChange) -> Result<u64, String>;
     fn unwatch(&self, id: u64);
+    /// Every worktree in `cwds` side by side, computed on the machine holding the repository:
+    /// it takes many git commands and long file lists, of which the result keeps little.
+    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String>;
 }
 
-/// Joins a host path and a repository-relative path. Both Windows and Linux accept `/`.
+/// Joins a host path and a repository-relative path. Every OS accepts `/`.
 pub fn join(base: &str, rel: &str) -> String {
     if rel.is_empty() {
         return base.to_string();

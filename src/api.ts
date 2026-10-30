@@ -6,8 +6,9 @@ export type ChangeKind = "modified" | "added" | "deleted" | "renamed" | "copied"
 export interface RepoInfo {
   id: string;
   name: string;
-  kind: "windows" | "wsl";
+  kind: "local" | "wsl" | "ssh";
   distro: string | null;
+  separator: string;
   root: string;
 }
 
@@ -173,8 +174,6 @@ export interface WorktreeSummary {
   head: string | null;
   /** What the Changes list shows. */
   uncommitted: ChangedFile[];
-  /** Files HEAD changed since it split from the base. */
-  committed: string[];
   baseAhead: number;
   baseBehind: number;
   upstream: string | null;
@@ -202,7 +201,7 @@ export interface WorktreeChanged {
   cwd: string;
   /** Files of the worktree changed, not only git state that worktrees share (refs, index). */
   files: boolean;
-  /** Those files (and folders), relative to the worktree with `/`; capped. An older WSL helper sends none. */
+  /** Those files (and folders), relative to the worktree with `/`; capped. An older helper sends none. */
   paths: string[];
 }
 

@@ -353,6 +353,12 @@ button:disabled {
   gap: 6px;
 }
 
+.repo-add form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .repo-add input {
   width: 100%;
 }
