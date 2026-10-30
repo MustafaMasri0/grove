@@ -54,6 +54,8 @@ export interface Settings {
   /** File lists show the folder next to each file name. */
   showFolderPath: boolean;
   historyPageSize: number;
+  /** The Worktrees overview works out which files more than one worktree changes. */
+  possibleConflicts: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -88,6 +90,7 @@ export const defaultSettings: Settings = {
   },
   showFolderPath: true,
   historyPageSize: 100,
+  possibleConflicts: true,
 };
 
 type Leaf = string | number | boolean | null;

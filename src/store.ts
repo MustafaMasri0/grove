@@ -283,8 +283,10 @@ export const useStore = create<State>()((set, get) => {
       if (get().repo?.id !== repo.id) return;
       set({ worktrees });
       watchWorktrees();
-      const overview = await api.worktreesOverview(repo.id, readablePaths(worktrees), get().base);
-      if (get().repo?.id !== repo.id) return;
+      const findOverlaps = get().settings.possibleConflicts;
+      const overview = await api.worktreesOverview(repo.id, readablePaths(worktrees), get().base, findOverlaps);
+      // After turning the setting over, the load it asked for is the one to show.
+      if (get().repo?.id !== repo.id || get().settings.possibleConflicts !== findOverlaps) return;
       const prev = get().overview;
       const now = Date.now() / 1000;
       const events = [...(prev ? activityBetween(prev.worktrees, overview.worktrees, now) : []), ...editsOf(seen, overview.worktrees, now)];
@@ -377,7 +379,10 @@ export const useStore = create<State>()((set, get) => {
 
     updateSettings(patch) {
       const settings = { ...get().settings, ...patch };
-      set({ settings });
+      const conflictsChanged = settings.possibleConflicts !== get().settings.possibleConflicts;
+      // The overview in hand answers the old setting: dropped, so "no conflicts" never shows before they were looked for.
+      set(conflictsChanged ? { settings, overview: null } : { settings });
+      if (conflictsChanged) void get().loadOverview();
       window.clearTimeout(saveTimer);
       saveTimer = window.setTimeout(() => {
         api.saveSettings(settings).then(

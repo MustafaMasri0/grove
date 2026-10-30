@@ -30,6 +30,8 @@ export function WorktreesPage() {
   const base = useStore((s) => s.base);
   const lastChange = useStore((s) => s.lastChange);
   const activity = useStore((s) => s.activity);
+  const possibleConflicts = useStore((s) => s.settings.possibleConflicts);
+  const updateSettings = useStore((s) => s.updateSettings);
   const loadOverview = useStore((s) => s.loadOverview);
   const now = useNow(1000);
   const [loading, setLoading] = useState(false);
@@ -67,6 +69,10 @@ export function WorktreesPage() {
           </div>
         </div>
         <div className="ov-tools">
+          <label className="setting-check" title="Look for files more than one worktree changes. When off, Grove runs none of the git commands this takes.">
+            <input type="checkbox" checked={possibleConflicts} onChange={(e) => updateSettings({ possibleConflicts: e.target.checked })} />
+            Possible conflicts
+          </label>
           <span title="The branch every worktree is compared with (ahead/behind, shared files); remembered for this repository">
             <BaseSelect />
           </span>
@@ -100,30 +106,32 @@ export function WorktreesPage() {
               ))}
             </section>
 
-            <section className="ov-section">
-              <h2>Possible conflicts</h2>
-              <p className="muted ov-hint">
-                Files that more than one worktree changes; click a worktree to open its change to the file. Each worktree's change is not committed yet, unless it is marked{" "}
-                <span className="ov-who-state">committed</span> (on its branch, since {base ?? "the base"}). Committed files count only when the
-                versions differ and neither branch already contains the other.
-              </p>
-              {shared.length === 0 ? (
-                <div className="muted ov-none">No two worktrees change the same file.</div>
-              ) : (
-                <>
-                  <ul className="ov-shared-list">
-                    {(allShared ? shared : shared.slice(0, SHOWN_FILES)).map((f) => (
-                      <SharedFileRow key={f.path} f={f} name={name} />
-                    ))}
-                  </ul>
-                  {shared.length > SHOWN_FILES && (
-                    <button className="link ov-more" onClick={() => setAllShared(!allShared)}>
-                      {allShared ? "Show fewer" : `Show all ${shared.length} files`}
-                    </button>
-                  )}
-                </>
-              )}
-            </section>
+            {possibleConflicts && (
+              <section className="ov-section">
+                <h2>Possible conflicts</h2>
+                <p className="muted ov-hint">
+                  Files that more than one worktree changes; click a worktree to open its change to the file. Each worktree's change is not committed yet, unless it is marked{" "}
+                  <span className="ov-who-state">committed</span> (on its branch, since {base ?? "the base"}). Committed files count only when the
+                  versions differ and neither branch already contains the other.
+                </p>
+                {shared.length === 0 ? (
+                  <div className="muted ov-none">No two worktrees change the same file.</div>
+                ) : (
+                  <>
+                    <ul className="ov-shared-list">
+                      {(allShared ? shared : shared.slice(0, SHOWN_FILES)).map((f) => (
+                        <SharedFileRow key={f.path} f={f} name={name} />
+                      ))}
+                    </ul>
+                    {shared.length > SHOWN_FILES && (
+                      <button className="link ov-more" onClick={() => setAllShared(!allShared)}>
+                        {allShared ? "Show fewer" : `Show all ${shared.length} files`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </section>
+            )}
 
             <section className="ov-section">
               <h2>Activity</h2>

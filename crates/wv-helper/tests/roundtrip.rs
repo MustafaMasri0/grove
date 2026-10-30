@@ -156,13 +156,17 @@ fn the_overview_runs_in_the_helper_and_only_its_result_travels() {
     git(&repo, &["branch", "base", "HEAD~1"]);
     let cwds = [repo.clone(), other.clone()];
 
-    let o = helper().overview(&cwds, Some("base")).unwrap();
+    let o = helper().overview(&cwds, Some("base"), true).unwrap();
     assert!(o.errors.is_empty(), "{:?}", o.errors);
     assert_eq!(o.overlaps.len(), 1);
     assert_eq!(o.overlaps[0].files, ["shared.txt"]);
     assert_eq!(o.worktrees[1].base_ahead, 1);
     assert!(o.worktrees[0].committed.is_empty(), "file lists stay on the host");
-    assert_eq!(o.overlaps, LocalHost::new().overview(&cwds, Some("base")).unwrap().overlaps);
+    assert_eq!(o.overlaps, LocalHost::new().overview(&cwds, Some("base"), true).unwrap().overlaps);
+
+    let o = helper().overview(&cwds, Some("base"), false).unwrap();
+    assert!(o.overlaps.is_empty());
+    assert_eq!(o.worktrees[1].base_ahead, 1);
 }
 
 /// A helper that answers the first request with a large reply, and `after_go` for the first part.

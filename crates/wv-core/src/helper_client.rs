@@ -327,8 +327,8 @@ impl GitHost for HelperClient {
         let _ = self.call::<()>(Op::Unwatch { watch_id: id }, None);
     }
 
-    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String> {
-        self.call(Op::Overview { cwds: cwds.to_vec(), base: base.map(str::to_string) }, None)
+    fn overview(&self, cwds: &[String], base: Option<&str>, find_overlaps: bool) -> Result<Overview, String> {
+        self.call(Op::Overview { cwds: cwds.to_vec(), base: base.map(str::to_string), find_overlaps }, None)
     }
 }
 

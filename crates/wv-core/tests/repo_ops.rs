@@ -3,13 +3,56 @@
 mod common;
 
 use common::{git, temp_repo, TempRepo};
+use std::sync::Mutex;
+use wv_core::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
 use wv_core::local::LocalHost;
-use wv_core::overview;
+use wv_core::overview::{self, Overview};
 use wv_core::porcelain::ChangeKind;
 use wv_core::repo_ops::{self as ops, Action, Content, GrepQuery, Source};
 
 fn h() -> LocalHost {
     LocalHost::new()
+}
+
+/// A LocalHost that remembers the git commands it ran.
+struct RecordingHost {
+    inner: LocalHost,
+    commands: Mutex<Vec<Vec<String>>>,
+}
+
+impl RecordingHost {
+    fn new() -> Self {
+        Self { inner: h(), commands: Mutex::default() }
+    }
+
+    fn ran(&self, subcommand: &str) -> bool {
+        self.commands.lock().unwrap().iter().any(|c| c.iter().any(|a| a == subcommand))
+    }
+}
+
+impl GitHost for RecordingHost {
+    fn git(&self, cwd: &str, args: &[String], progress: Option<Progress>) -> Result<GitOutput, String> {
+        self.commands.lock().unwrap().push(args.to_vec());
+        self.inner.git(cwd, args, progress)
+    }
+    fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String> {
+        self.inner.read_file(path, max)
+    }
+    fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String> {
+        self.inner.list_dir(path)
+    }
+    fn mtime(&self, path: &str) -> Result<Option<i64>, String> {
+        self.inner.mtime(path)
+    }
+    fn watch(&self, spec: WatchSpec, on_change: OnChange) -> Result<u64, String> {
+        self.inner.watch(spec, on_change)
+    }
+    fn unwatch(&self, id: u64) {
+        self.inner.unwatch(id)
+    }
+    fn overview(&self, cwds: &[String], base: Option<&str>, find_overlaps: bool) -> Result<Overview, String> {
+        Ok(overview::overview(self, cwds, base, find_overlaps))
+    }
 }
 
 /// main: a.txt; feature (from main): edits a.txt, adds f.txt, renames nothing; main moves on with m.txt.
@@ -388,7 +431,7 @@ fn history_search_stays_on_the_revision_and_reports_truncation() {
 #[test]
 fn summary_counts_what_the_changes_list_shows() {
     let r = temp_repo();
-    assert!(overview::summary(&h(), r.path_str(), None).unwrap().uncommitted.is_empty());
+    assert!(overview::summary(&h(), r.path_str(), None, true).unwrap().uncommitted.is_empty());
     std::fs::write(r.path.join("a.txt"), "edited\n").unwrap();
     std::fs::write(r.path.join("staged.txt"), "s\n").unwrap();
     git(&r.path, &["add", "staged.txt"]);
@@ -398,7 +441,7 @@ fn summary_counts_what_the_changes_list_shows() {
     // Ignored files are not changes.
     std::fs::write(r.path.join(".git/info/exclude"), "*.log\n").unwrap();
     std::fs::write(r.path.join("x.log"), "l\n").unwrap();
-    let s = overview::summary(&h(), r.path_str(), None).unwrap();
+    let s = overview::summary(&h(), r.path_str(), None, true).unwrap();
     let paths: Vec<_> = s.uncommitted.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(paths.len(), 4, "{paths:?}");
     assert_eq!(s.branch.as_deref(), Some("main"));
@@ -411,19 +454,19 @@ fn summary_compares_with_the_base_and_the_upstream() {
     let r = branched_repo();
     let wt = r.dir.path().join("feature-wt");
     git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
-    let s = overview::summary(&h(), wt.to_str().unwrap(), Some("main")).unwrap();
+    let s = overview::summary(&h(), wt.to_str().unwrap(), Some("main"), true).unwrap();
     assert_eq!(s.branch.as_deref(), Some("feature"));
     assert_eq!(s.committed, vec!["a.txt", "f.txt"]);
     assert_eq!((s.base_ahead, s.base_behind), (1, 1));
     assert_eq!(s.last_commit.unwrap().subject, "feature work");
 
     git(&wt, &["branch", "-q", "--set-upstream-to=main"]);
-    let s = overview::summary(&h(), wt.to_str().unwrap(), None).unwrap();
+    let s = overview::summary(&h(), wt.to_str().unwrap(), None, true).unwrap();
     assert_eq!(s.upstream.as_deref(), Some("main"));
     assert_eq!((s.upstream_ahead, s.upstream_behind), (1, 1));
     assert!(s.committed.is_empty(), "no base, nothing compared");
 
-    assert!(overview::summary(&h(), r.dir.path().join("gone").to_str().unwrap(), None).is_err());
+    assert!(overview::summary(&h(), r.dir.path().join("gone").to_str().unwrap(), None, true).is_err());
 }
 
 #[test]
@@ -450,10 +493,31 @@ fn overview_finds_files_two_worktrees_both_change() {
     std::fs::write(r.path.join("c.txt"), "main\n").unwrap();
 
     let cwds: Vec<String> = [&r.path, &a, &b, &c, &r.dir.path().join("gone")].iter().map(|p| p.to_str().unwrap().to_string()).collect();
-    let o = overview::overview(&h(), &cwds, Some("main"));
+    let o = overview::overview(&h(), &cwds, Some("main"), true);
     assert_eq!(o.worktrees.len(), 4);
     assert!(o.errors.contains_key(&cwds[4]));
     let name = |p: &str| std::path::Path::new(p).file_name().unwrap().to_str().unwrap().to_string();
     let pairs: Vec<_> = o.overlaps.iter().map(|x| format!("{} {} {}", name(&x.a), name(&x.b), x.files.join(","))).collect();
     assert_eq!(pairs, ["repo agent-c c.txt", "agent-a agent-b a.txt", "agent-b agent-c a.txt"]);
+}
+
+#[test]
+fn overview_runs_no_overlap_commands_unless_asked() {
+    let r = branched_repo();
+    let wt = r.dir.path().join("feature-wt");
+    git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
+    std::fs::write(r.path.join("f.txt"), "uncommitted\n").unwrap();
+    let cwds = [r.path_str().to_string(), wt.to_str().unwrap().to_string()];
+
+    let off = RecordingHost::new();
+    let o = off.overview(&cwds, Some("main"), false).unwrap();
+    assert!(o.overlaps.is_empty());
+    assert!(!off.ran("diff"));
+    assert!(o.worktrees.iter().all(|w| w.committed.is_empty()));
+    assert_eq!((o.worktrees[1].base_ahead, o.worktrees[1].base_behind), (1, 1), "the cards keep their numbers");
+
+    let on = RecordingHost::new();
+    let o = on.overview(&cwds, Some("main"), true).unwrap();
+    assert_eq!(o.overlaps[0].files, ["f.txt"]);
+    assert!(on.ran("diff"));
 }
