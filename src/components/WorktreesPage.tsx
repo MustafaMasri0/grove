@@ -31,6 +31,7 @@ export function WorktreesPage() {
   const lastChange = useStore((s) => s.lastChange);
   const activity = useStore((s) => s.activity);
   const possibleConflicts = useStore((s) => s.settings.possibleConflicts);
+  const updateSettings = useStore((s) => s.updateSettings);
   const loadOverview = useStore((s) => s.loadOverview);
   const now = useNow(1000);
   const [loading, setLoading] = useState(false);
@@ -68,6 +69,10 @@ export function WorktreesPage() {
           </div>
         </div>
         <div className="ov-tools">
+          <label className="setting-check" title="Look for files more than one worktree changes. When off, Grove runs none of the git commands this takes.">
+            <input type="checkbox" checked={possibleConflicts} onChange={(e) => updateSettings({ possibleConflicts: e.target.checked })} />
+            Possible conflicts
+          </label>
           <span title="The branch every worktree is compared with (ahead/behind, shared files); remembered for this repository">
             <BaseSelect />
           </span>

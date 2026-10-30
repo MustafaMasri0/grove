@@ -283,7 +283,7 @@ export const SETTINGS: readonly SettingDef[] = [
     path: "possibleConflicts",
     section: "worktrees",
     label: "Possible conflicts",
-    description: "Finds the files more than one worktree changes, for the Worktrees overview and the count on its button. When off, Grove runs none of the git commands this takes.",
+    description: "Finds the files more than one worktree changes, for the Worktrees overview and the count on its button. When off, Grove runs none of the git commands this takes. The checkbox on the overview switches it too.",
     keywords: "overlap shared files overview merge",
     control: { kind: "toggle" },
   },

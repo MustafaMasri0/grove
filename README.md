@@ -74,10 +74,10 @@ paste a path, or use **Connect over SSH…**.
   them. **Possible conflicts** lists files that two worktrees both
   change, committed since the base or not committed yet. A file committed on
   both sides only counts when the two versions differ and neither branch
-  already contains the other. The count shows on the grid button. A Settings
-  option turns this off, and Grove then skips the git commands behind it. The
-  overview uses only read commands (`status`, `diff`, `rev-list`, `merge-base`,
-  `log`).
+  already contains the other. The count shows on the grid button. A checkbox on
+  the overview (also in Settings) turns this off, and Grove then skips the git
+  commands behind it. The overview uses only read commands (`status`, `diff`,
+  `rev-list`, `merge-base`, `log`).
 - **Base branch**: what "Branch vs base" and the Worktrees overview compare
   with. Pick it with **Base** on either, or in Settings; it is remembered per
   repository. Until then Grove uses development, main or master (local first,
