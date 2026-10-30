@@ -165,7 +165,8 @@ pnpm test            # UI logic (Vitest)
 ```
 
 `cargo test` covers the shared crates on any OS, against that OS's git.
-`cargo test -p grove` covers the Tauri side.
+`cargo test -p grove` covers the Tauri side. `bash scripts/test-ssh-host.sh` runs the
+helper against a stock OpenSSH server in a throwaway Docker container.
 
 ## How it works
 

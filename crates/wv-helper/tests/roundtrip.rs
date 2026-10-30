@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use wv_core::helper_client::HelperClient;
 use wv_core::host::{GitHost, WatchSpec};
+use wv_core::local::LocalHost;
 
 fn helper() -> HelperClient {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_wv-helper"));
@@ -136,6 +137,58 @@ fn large_replies_arrive_whole_among_small_ones() {
     for t in threads {
         t.join().unwrap();
     }
+}
+
+#[test]
+fn the_overview_runs_in_the_helper_and_only_its_result_travels() {
+    let (d, repo) = repo();
+    let git = |dir: &str, args: &[&str]| {
+        let ok = Command::new("git").current_dir(dir).args(["-c", "user.name=T", "-c", "user.email=t@e", "-c", "commit.gpgsign=false"]).args(args).status().unwrap().success();
+        assert!(ok, "{args:?}");
+    };
+    let other = d.path().join("other").to_str().unwrap().to_string();
+    git(&repo, &["worktree", "add", "-q", "-b", "other", &other]);
+    for (dir, text) in [(&repo, "here"), (&other, "there")] {
+        std::fs::write(format!("{dir}/shared.txt"), text).unwrap();
+        git(dir, &["add", "."]);
+        git(dir, &["commit", "-q", "-m", "change"]);
+    }
+    git(&repo, &["branch", "base", "HEAD~1"]);
+    let cwds = [repo.clone(), other.clone()];
+
+    let o = helper().overview(&cwds, Some("base")).unwrap();
+    assert!(o.errors.is_empty(), "{:?}", o.errors);
+    assert_eq!(o.overlaps.len(), 1);
+    assert_eq!(o.overlaps[0].files, ["shared.txt"]);
+    assert_eq!(o.worktrees[1].base_ahead, 1);
+    assert!(o.worktrees[0].committed.is_empty(), "file lists stay on the host");
+    assert_eq!(o.overlaps, LocalHost::new().overview(&cwds, Some("base")).unwrap().overlaps);
+}
+
+/// A helper that answers the first request with a large reply, and `after_go` for the first part.
+fn large_reply_helper(after_go: &str, part_timeout: Duration) -> HelperClient {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", &format!(r#"echo '{{"type":"hello","version":"x"}}'; read line; echo '{{"type":"large","id":1}}'; read go; {after_go}; read end"#)]);
+    HelperClient::spawn_with_part_timeout(cmd, Box::new(|| {}), part_timeout).unwrap()
+}
+
+#[test]
+fn a_large_reply_that_cannot_be_read_ends_the_connection_instead_of_blocking_requests() {
+    let h = large_reply_helper(r#"echo '{"type":"part","id":1,"text":"not json","last":true}'"#, Duration::from_secs(60));
+    let start = Instant::now();
+    assert!(h.list_dir("/").is_err());
+    assert!(start.elapsed() < Duration::from_secs(10));
+    assert!(!h.is_alive());
+}
+
+#[test]
+fn a_large_reply_that_stalls_ends_the_connection() {
+    // Blocks in the shell itself: a `sleep` child would keep stdout open after the kill, as ssh has none.
+    let h = large_reply_helper("read stall", Duration::from_millis(300));
+    let start = Instant::now();
+    assert!(h.list_dir("/").is_err());
+    assert!(start.elapsed() < Duration::from_secs(10), "{:?}", start.elapsed());
+    assert!(!h.is_alive());
 }
 
 #[test]

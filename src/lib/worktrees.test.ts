@@ -16,7 +16,6 @@ const wt = (path: string, over: Partial<WorktreeSummary> = {}): WorktreeSummary 
   branch: path,
   head: "h1",
   uncommitted: [],
-  committed: [],
   baseAhead: 0,
   baseBehind: 0,
   upstream: null,
@@ -78,7 +77,7 @@ describe("readablePaths", () => {
 
 describe("sharedFiles", () => {
   it("lists each file once with every worktree it overlaps in, in worktree order", () => {
-    const worktrees = [wt("main", { uncommitted: dirty("gen.cc") }), wt("ios", { uncommitted: dirty("gen.cc") }), wt("fire", { committed: ["gen.cc", "api.ts"] }), wt("other")];
+    const worktrees = [wt("main", { uncommitted: dirty("gen.cc") }), wt("ios", { uncommitted: dirty("gen.cc") }), wt("fire"), wt("other")];
     const files = sharedFiles(
       [
         { a: "main", b: "ios", files: ["gen.cc"] },

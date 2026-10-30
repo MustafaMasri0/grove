@@ -3,7 +3,7 @@
 
 use super::name_status::{parse_name_status, ChangedFile};
 use super::ChangeKind;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub const LOG_FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e";
 /// For `git log --follow --name-status -z`: each record starts with RS, and the
@@ -11,7 +11,7 @@ pub const LOG_FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e";
 pub const FILE_LOG_FORMAT: &str = "--format=%x1e%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s";
 pub const COMMIT_FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%cn%x1f%cI%x1f%B";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitSummary {
     pub sha: String,

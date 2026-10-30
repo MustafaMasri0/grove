@@ -14,12 +14,12 @@ include!(concat!(env!("OUT_DIR"), "/helpers.rs"));
 pub struct Hosts {
     local: Arc<LocalHost>,
     remote: Connections,
-    on_lost: OnceLock<OnLost>,
+    on_lost: OnceLock<Arc<dyn Fn(String) + Send + Sync>>,
 }
 
 impl Hosts {
-    /// `f` runs whenever a connection goes away, which also ends its watches.
-    pub fn on_lost(&self, f: impl Fn() + Send + Sync + 'static) {
+    /// `f` runs with the connection's name whenever one goes away, which also ends its watches.
+    pub fn on_lost(&self, f: impl Fn(String) + Send + Sync + 'static) {
         let _ = self.on_lost.set(Arc::new(f));
     }
 
@@ -51,7 +51,12 @@ impl Hosts {
 
     fn helper(&self, shell: &dyn Shell) -> Result<Arc<HelperClient>, String> {
         self.remote.get(shell, || {
-            let on_lost = self.on_lost.get().cloned().unwrap_or_else(|| Arc::new(|| {}));
+            let (name, listener) = (shell.name(), self.on_lost.get().cloned());
+            let on_lost: OnLost = Arc::new(move || {
+                if let Some(f) = &listener {
+                    f(name.clone());
+                }
+            });
             connect(shell, HELPERS, on_lost)
         })
     }

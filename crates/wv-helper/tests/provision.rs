@@ -5,6 +5,7 @@
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use wv_core::helper_client::HelperClient;
 use wv_core::host::GitHost;
 use wv_core::paths::{route, Route};
 use wv_core::remote::{connect, provision, Arch, HelperBinary, Os, Platform, Shell};
@@ -93,47 +94,54 @@ fn losing_a_connection_that_was_up_is_reported_once() {
     assert_eq!(lost.load(Ordering::SeqCst), 1);
 }
 
-/// `WV_TEST_SSH=ssh://user@host/path/to/repo cargo test -p wv-helper --test provision -- --ignored`,
-/// with `WV_TEST_HELPER=<path>` the helper built for that host and `WV_TEST_TARGET` its target.
 #[test]
-#[ignore = "needs a real SSH server"]
-fn a_real_ssh_host_serves_a_repository() {
+fn a_helper_that_fails_to_start_says_why() {
+    let dir = tempfile::tempdir().unwrap();
+    let shell = Sh { home: dir.path().into() };
+    let fails = HelperBinary { target: "x86_64-unknown-linux-musl", hash: "fff", bytes: b"#!/bin/sh\necho no git here >&2\nexit 3\n" };
+    let err = provision(&shell, LINUX, &[fails], Arc::new(|| {})).err().unwrap();
+    assert!(err.contains("no git here"), "{err}");
+}
+
+/// The connection to a real host. `scripts/test-ssh-host.sh` runs these against a stock sshd in a
+/// container; for another host, `WV_TEST_SSH=ssh://user@host/path/to/repo cargo test -p wv-helper
+/// --test provision -- --ignored`, with `WV_TEST_HELPER=<path>` the helper built for that host,
+/// `WV_TEST_TARGET` its target and `WV_TEST_BASE` the overview's base branch if any.
+fn real_host() -> (HelperClient, String) {
     let address = std::env::var("WV_TEST_SSH").expect("WV_TEST_SSH");
     let Route::Ssh { target, path } = route(&address).unwrap() else { panic!("not an ssh address") };
     let bytes = std::fs::read(std::env::var("WV_TEST_HELPER").expect("WV_TEST_HELPER")).unwrap();
-    let hash = format!("test{}", bytes.len());
     let helper = HelperBinary {
         target: std::env::var("WV_TEST_TARGET").expect("WV_TEST_TARGET").leak(),
-        hash: hash.leak(),
+        // By content, like the app, so that running these twice does not reinstall.
+        hash: format!("test{:x}", bytes.iter().fold(0u64, |h, &b| h.wrapping_mul(31).wrapping_add(b as u64))).leak(),
         bytes: bytes.leak(),
     };
-    let h = connect(&target, &[helper], Arc::new(|| {})).unwrap();
+    (connect(&target, &[helper], Arc::new(|| {})).unwrap(), path)
+}
+
+#[test]
+#[ignore = "needs a real SSH server"]
+fn a_real_ssh_host_serves_a_repository() {
+    let (h, path) = real_host();
     let out = h.git(&path, &["rev-parse".to_string(), "--show-toplevel".to_string()], None).unwrap();
     assert_eq!(out.code, 0, "{}", out.stderr);
     let root = String::from_utf8(out.stdout).unwrap();
     assert!(h.list_dir(root.trim()).unwrap().iter().any(|e| e.name == ".git"));
 }
 
-/// As above, with `WV_TEST_HASH` the hash of a helper already on the host: runs the real
-/// overview of every worktree, as the app does on opening a repository.
+/// The real overview of every worktree, as the app does on opening a repository.
 #[test]
 #[ignore = "needs a real SSH server"]
 fn a_real_ssh_host_serves_the_overview() {
-    let address = std::env::var("WV_TEST_SSH").expect("WV_TEST_SSH");
-    let Route::Ssh { target, path } = route(&address).unwrap() else { panic!("not an ssh address") };
-    let bytes = std::fs::read(std::env::var("WV_TEST_HELPER").expect("WV_TEST_HELPER")).unwrap();
-    let helper = HelperBinary {
-        target: std::env::var("WV_TEST_TARGET").expect("WV_TEST_TARGET").leak(),
-        hash: std::env::var("WV_TEST_HASH").expect("WV_TEST_HASH").leak(),
-        bytes: bytes.leak(),
-    };
-    let h = connect(&target, &[helper], Arc::new(|| {})).unwrap();
-    let cwds: Vec<String> = wv_core::repo_ops::worktrees(&h, &path).unwrap().into_iter().map(|w| w.path).collect();
+    let (h, path) = real_host();
+    // Like the app, which leaves out worktrees whose folder is gone.
+    let cwds: Vec<String> = wv_core::repo_ops::worktrees(&h, &path).unwrap().into_iter().filter(|w| w.prunable.is_none()).map(|w| w.path).collect();
     let base = std::env::var("WV_TEST_BASE").ok();
     for round in 0..3 {
         let started = std::time::Instant::now();
-        let o = wv_core::overview::overview(&h, &cwds, base.as_deref());
-        eprintln!("round {round}: {} worktrees in {:?}", o.worktrees.len(), started.elapsed());
+        let o = h.overview(&cwds, base.as_deref()).unwrap();
+        eprintln!("round {round}: {} worktrees, {} overlaps in {:?}", o.worktrees.len(), o.overlaps.len(), started.elapsed());
         assert!(o.errors.is_empty(), "{:?}", o.errors);
     }
 }

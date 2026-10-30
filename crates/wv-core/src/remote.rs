@@ -110,6 +110,9 @@ fn common_ssh_options(c: &mut Command) {
         // A long-lived connection must not fight the user's own sessions over ports.
         "ClearAllForwardings=yes",
         "RemoteCommand=none",
+        // May use a master the user has open, but must not become one: a background
+        // master would keep the pipes open that tell Grove this command has ended.
+        "ControlMaster=no",
     ] {
         c.arg("-o").arg(option);
     }
@@ -192,7 +195,7 @@ impl Platform {
     /// The line that replaces the shell with the helper, or fails with no hello if it is not installed.
     fn launch_line(self, hash: &str) -> String {
         match self.os {
-            Os::Windows => format!(r#"cmd /c "{}\helper-{hash}.exe""#, windows_helper_dir()),
+            Os::Windows => format!(r"cmd /c {}\helper-{hash}.exe", windows_helper_dir()),
             _ => posix(&format!(
                 r#"f="$HOME/{HELPER_DIR}/helper-{hash}"; [ -x "$f" ] || exit 1; export PATH="$PATH:{EXTRA_PATH}"; exec "$f""#
             )),
@@ -208,8 +211,10 @@ impl Platform {
     }
 }
 
+/// Relative, since commands start in the home folder. `%USERPROFILE%` would be expanded after
+/// PowerShell, as a login shell, has dropped the quotes that a space in it needs.
 fn windows_helper_dir() -> String {
-    format!(r"%USERPROFILE%\{}", HELPER_DIR.replace('/', r"\"))
+    HELPER_DIR.replace('/', r"\")
 }
 
 /// Runs a POSIX script from whatever the login shell is (fish, zsh, ...). The script has no single quotes.
@@ -218,12 +223,19 @@ fn posix(script: &str) -> String {
     format!("/bin/sh -c '{script}'")
 }
 
-/// `cmd.output()` with a time limit, since a jump host or proxy can hang past ssh's connect timeout.
-fn output_within(mut cmd: Command, limit: Duration) -> Result<Output, String> {
+/// `cmd.output()` with a time limit, since a jump host or proxy can hang past ssh's connect
+/// timeout. `input` is sent to its stdin.
+fn output_within(mut cmd: Command, limit: Duration, input: Option<&'static [u8]>) -> Result<Output, String> {
     let program = cmd.get_program().to_string_lossy().into_owned();
-    cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
     crate::exec::hide_console(&mut cmd);
     let mut child = cmd.spawn().map_err(|e| could_not_start(&program, &e))?;
+    if let (Some(bytes), Some(mut stdin)) = (input, child.stdin.take()) {
+        // A failing command stops reading; its stderr says why, not this write.
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(bytes);
+        });
+    }
     let (mut out, mut err) = (child.stdout.take().expect("piped stdout"), child.stderr.take().expect("piped stderr"));
     let out = std::thread::spawn(move || {
         let mut v = Vec::new();
@@ -269,7 +281,7 @@ fn explain_ssh_failure(stderr: &str) -> String {
 }
 
 fn probe(shell: &dyn Shell) -> Result<Platform, String> {
-    let uname = output_within(shell.command("uname -sm"), PROBE_TIMEOUT)?;
+    let uname = output_within(shell.command("uname -sm"), PROBE_TIMEOUT, None)?;
     if uname.status.code() == Some(SSH_FAILED) {
         return Err(explain_ssh_failure(&String::from_utf8_lossy(&uname.stderr)));
     }
@@ -280,7 +292,7 @@ fn probe(shell: &dyn Shell) -> Result<Platform, String> {
         }
     }
     // No uname, or Git for Windows' which says too little about the machine: ask Windows.
-    let cmd = output_within(shell.command(r#"cmd /c "echo %OS% %PROCESSOR_ARCHITECTURE%""#), PROBE_TIMEOUT)?;
+    let cmd = output_within(shell.command(r#"cmd /c "echo %OS% %PROCESSOR_ARCHITECTURE%""#), PROBE_TIMEOUT, None)?;
     Platform::from_cmd(&String::from_utf8_lossy(&cmd.stdout)).ok_or_else(|| {
         let why = String::from_utf8_lossy(&uname.stderr);
         format!("could not tell what system this is ({})", why.trim())
@@ -290,46 +302,30 @@ fn probe(shell: &dyn Shell) -> Result<Platform, String> {
 /// Installs through a copy where stdin cannot be trusted: on a Windows host, PowerShell
 /// stops reading a large stdin part way through and never ends. It also keeps the
 /// host free of a script: scp ships with every OpenSSH.
-fn install_by_copy(shell: &dyn Shell, helper: &HelperBinary) -> Result<(), String> {
+fn install_by_copy(shell: &dyn Shell, helper: &HelperBinary) -> Result<Output, String> {
     let dir = windows_helper_dir();
     let remote = format!("{HELPER_DIR}/helper-{}.exe", helper.hash);
     // Both may fail harmlessly: the folder exists, or an older helper is in use. The copy has the last word.
-    for line in [format!(r#"cmd /c mkdir "{dir}""#), format!(r#"cmd /c del /q "{dir}\helper-*.exe""#)] {
-        let _ = output_within(shell.command(&line), PROBE_TIMEOUT)?;
+    for line in [format!(r"cmd /c mkdir {dir}"), format!(r"cmd /c del /q {dir}\helper-*.exe")] {
+        let _ = output_within(shell.command(&line), PROBE_TIMEOUT, None)?;
     }
     let local = std::env::temp_dir().join(format!("grove-{}-{}.exe", helper.hash, std::process::id()));
     std::fs::write(&local, helper.bytes).map_err(|e| e.to_string())?;
     let copied = match shell.upload(&local, &remote) {
-        Some(cmd) => output_within(cmd, UPLOAD_TIMEOUT),
+        Some(cmd) => output_within(cmd, UPLOAD_TIMEOUT, None),
         None => Err("this connection cannot copy files".to_string()),
     };
     let _ = std::fs::remove_file(&local);
-    let copied = copied?;
-    if !copied.status.success() {
-        return Err(format!("installing the helper failed: {}", String::from_utf8_lossy(&copied.stderr).trim()));
-    }
-    Ok(())
+    copied
 }
 
 fn install(shell: &dyn Shell, platform: Platform, helper: &HelperBinary) -> Result<(), String> {
-    if platform.os == Os::Windows {
-        return install_by_copy(shell, helper);
-    }
-    let mut cmd = shell.command(&platform.install_line(helper.hash));
-    cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
-    crate::exec::hide_console(&mut cmd);
-    let program = cmd.get_program().to_string_lossy().into_owned();
-    let mut child = cmd.spawn().map_err(|e| could_not_start(&program, &e))?;
-    let mut stdin = child.stdin.take().expect("piped stdin");
-    let bytes = helper.bytes;
-    // A failing install stops reading; its stderr below says why, not this write.
-    let writer = std::thread::spawn(move || {
-        let _ = stdin.write_all(bytes);
-    });
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
-    let _ = writer.join();
-    if !out.status.success() {
-        return Err(format!("installing the helper failed: {}", String::from_utf8_lossy(&out.stderr).trim()));
+    let done = match platform.os {
+        Os::Windows => install_by_copy(shell, helper)?,
+        _ => output_within(shell.command(&platform.install_line(helper.hash)), UPLOAD_TIMEOUT, Some(helper.bytes))?,
+    };
+    if !done.status.success() {
+        return Err(format!("installing the helper failed: {}", String::from_utf8_lossy(&done.stderr).trim()));
     }
     Ok(())
 }
@@ -496,7 +492,8 @@ mod tests {
     #[test]
     fn windows_hosts_keep_the_helper_in_the_home_folder_not_the_app_install_folder() {
         let p = Platform { os: Os::Windows, arch: Arch::X86_64 };
-        assert_eq!(p.launch_line("abc"), r#"cmd /c "%USERPROFILE%\.local\share\grove\helper-abc.exe""#);
+        // Relative and with no variable, so no shell has anything to get wrong.
+        assert_eq!(p.launch_line("abc"), r"cmd /c .local\share\grove\helper-abc.exe");
     }
 
     #[test]
@@ -516,6 +513,26 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["-p", "2222"]));
         assert!(a.windows(2).any(|w| w == ["-l", "dev"]));
         assert_eq!(&a[a.len() - 3..], ["--", "build.example.com", "uname -sm"]);
+    }
+
+    fn sh(script: &str) -> Command {
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(script);
+        c
+    }
+
+    #[test]
+    fn a_command_that_hangs_is_stopped_at_the_limit() {
+        let start = Instant::now();
+        let err = output_within(sh("sleep 30"), Duration::from_millis(200), Some(b"x")).unwrap_err();
+        assert!(err.contains("did not answer"), "{err}");
+        assert!(start.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn input_reaches_the_command_and_its_output_comes_back() {
+        let out = output_within(sh("cat"), Duration::from_secs(10), Some(b"hello")).unwrap();
+        assert_eq!(out.stdout, b"hello");
     }
 
     #[test]

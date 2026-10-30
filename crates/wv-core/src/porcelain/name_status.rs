@@ -1,9 +1,9 @@
 //! `git diff --name-status -z -M`, used for Branch vs base and commit file lists.
 
 use super::{lossy, ChangeKind};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangedFile {
     pub path: String,

@@ -3,6 +3,7 @@
 
 use crate::allowlist;
 use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
+use crate::overview::Overview;
 use crate::protocol::{Message, Op, Request};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, VecDeque};
@@ -17,6 +18,12 @@ type Pending = Arc<Mutex<HashMap<u64, Sender<Message>>>>;
 type Watches = Arc<Mutex<HashMap<u64, OnChange>>>;
 
 const LOST: &str = "the connection to the helper was lost";
+/// A large reply with no part for this long is a stalled connection. Ending it fails the
+/// calls waiting on it and starts a reconnect; nothing else would, since ssh still sees a
+/// live server. Replies that are not parts have no such limit: git may just be slow.
+const PART_TIMEOUT: Duration = Duration::from_secs(60);
+/// How much of the helper's stderr a failed start can show.
+const STDERR_KEEP: usize = 2000;
 
 /// `WV_HELPER_LOG=<file>` records every call and how long it took, to find out what is slow on a real host.
 fn trace(text: impl FnOnce() -> String) {
@@ -33,7 +40,7 @@ fn trace(text: impl FnOnce() -> String) {
 
 pub struct HelperClient {
     sender: Arc<ReplyGate>,
-    child: Mutex<Child>,
+    child: Arc<Mutex<Child>>,
     next_id: AtomicU64,
     pending: Pending,
     watches: Watches,
@@ -50,15 +57,15 @@ struct ReplyGate {
 struct SendState {
     /// None once the client is dropped: the helper exits when its stdin closes.
     stdin: Option<ChildStdin>,
-    /// The large reply on its way.
-    large: Option<u64>,
+    /// The large reply on its way, and when its next part was asked for.
+    large: Option<(u64, Instant)>,
     /// Large replies waiting for their turn.
     queued: VecDeque<u64>,
 }
 
 impl ReplyGate {
     fn go(state: &mut SendState, id: u64) {
-        state.large = Some(id);
+        state.large = Some((id, Instant::now()));
         if let (Ok(line), Some(stdin)) = (serde_json::to_string(&Request { id, op: Op::Go }), state.stdin.as_mut()) {
             let _ = writeln!(stdin, "{line}").and_then(|_| stdin.flush());
         }
@@ -79,7 +86,7 @@ impl ReplyGate {
 
     fn reply_arrived(&self, id: u64) {
         let mut state = self.state.lock().unwrap();
-        if state.large != Some(id) {
+        if state.large.is_none_or(|(large, _)| large != id) {
             return;
         }
         state.large = None;
@@ -87,6 +94,10 @@ impl ReplyGate {
             Some(next) => Self::go(&mut state, next),
             None => self.quiet_over.notify_all(),
         }
+    }
+
+    fn stalled(&self, limit: Duration) -> bool {
+        self.state.lock().unwrap().large.is_some_and(|(_, asked)| asked.elapsed() > limit)
     }
 
     fn connection_ended(&self) {
@@ -109,17 +120,30 @@ impl ReplyGate {
 impl HelperClient {
     /// Starts the helper and waits for its hello line. `on_lost` runs if a helper that
     /// said hello goes away, which ends its watches.
-    pub fn spawn(mut cmd: Command, on_lost: Box<dyn FnOnce() + Send>) -> Result<Self, String> {
+    pub fn spawn(cmd: Command, on_lost: Box<dyn FnOnce() + Send>) -> Result<Self, String> {
+        Self::spawn_with_part_timeout(cmd, on_lost, PART_TIMEOUT)
+    }
+
+    /// [`Self::spawn`], with a limit on waiting for a part that tests need not sit through.
+    #[doc(hidden)]
+    pub fn spawn_with_part_timeout(mut cmd: Command, on_lost: Box<dyn FnOnce() + Send>, part_timeout: Duration) -> Result<Self, String> {
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped());
         crate::exec::hide_console(&mut cmd);
         let mut child = cmd.spawn().map_err(|e| format!("could not start helper: {e}"))?;
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
+        let (stderr_tx, stderr_rx) = channel();
         if let Some(stderr) = child.stderr.take() {
             std::thread::spawn(move || {
+                let mut kept = String::new();
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                     trace(|| format!("stderr: {line}"));
+                    if kept.len() < STDERR_KEEP {
+                        kept.push_str(&line);
+                        kept.push('\n');
+                    }
                 }
+                let _ = stderr_tx.send(kept);
             });
         }
 
@@ -143,7 +167,8 @@ impl HelperClient {
                             sender.next_part(*id);
                             continue;
                         }
-                        let Ok(whole) = serde_json::from_str::<Message>(&parts) else { continue };
+                        // Requests wait for this reply, so one that can't be read ends the connection.
+                        let Ok(whole) = serde_json::from_str::<Message>(&parts) else { break };
                         parts.clear();
                         msg = whole;
                     }
@@ -190,12 +215,27 @@ impl HelperClient {
             Err(_) => {
                 let _ = child.kill();
                 let status = child.wait().ok().and_then(|s| s.code());
-                return Err(format!("helper did not start (exit code {status:?})"));
+                let stderr = stderr_rx.recv_timeout(Duration::from_secs(1)).unwrap_or_default();
+                return Err(format!("helper did not start (exit code {status:?}) {}", stderr.trim()).trim_end().to_string());
             }
         };
+        let child = Arc::new(Mutex::new(child));
+        {
+            let (sender, child, alive) = (sender.clone(), child.clone(), alive.clone());
+            std::thread::spawn(move || {
+                while alive.load(Ordering::SeqCst) {
+                    if sender.stalled(part_timeout) {
+                        trace(|| "large reply stalled: ending the connection".into());
+                        let _ = child.lock().unwrap().kill();
+                        return;
+                    }
+                    std::thread::sleep((part_timeout / 4).min(Duration::from_secs(5)));
+                }
+            });
+        }
         Ok(Self {
             sender,
-            child: Mutex::new(child),
+            child,
             next_id: AtomicU64::new(1),
             pending,
             watches,
@@ -285,6 +325,10 @@ impl GitHost for HelperClient {
     fn unwatch(&self, id: u64) {
         self.watches.lock().unwrap().remove(&id);
         let _ = self.call::<()>(Op::Unwatch { watch_id: id }, None);
+    }
+
+    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String> {
+        self.call(Op::Overview { cwds: cwds.to_vec(), base: base.map(str::to_string) }, None)
     }
 }
 

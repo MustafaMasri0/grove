@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use wv_core::host::{Change, DirEntry, GitHost};
-use wv_core::overview::{self, Overview};
+use wv_core::overview::Overview;
 use wv_core::paths::{display_path, local_separator, Route};
 use wv_core::preview;
 use wv_core::porcelain::blame::Blame;
@@ -125,7 +125,7 @@ pub async fn status(state: State<'_, AppState>, repo: String, cwd: String) -> Re
 /// Every worktree in `cwds` side by side, compared with `base`, and the files they both change.
 #[tauri::command]
 pub async fn worktrees_overview(state: State<'_, AppState>, repo: String, cwds: Vec<String>, base: Option<String>) -> Res<Overview> {
-    with_host!(state, repo, |h| Ok(overview::overview(h, &cwds, base.as_deref())))
+    with_host!(state, repo, |h| h.overview(&cwds, base.as_deref()))
 }
 
 #[tauri::command]

@@ -26,6 +26,7 @@ pub enum Op {
     Mtime { path: String },
     Watch { spec: WatchSpec },
     Unwatch { watch_id: u64 },
+    Overview { cwds: Vec<String>, base: Option<String> },
     /// The client is ready for the next part of the large reply to this request id.
     Go,
 }

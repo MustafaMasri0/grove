@@ -18,8 +18,8 @@ fn main() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
-            app.state::<commands::AppState>().hosts.on_lost(move || {
-                let _ = handle.emit("connection-lost", ());
+            app.state::<commands::AppState>().hosts.on_lost(move |name| {
+                let _ = handle.emit("connection-lost", name);
             });
             // Lets test and measurement instances be told apart from the real one.
             if let (Ok(title), Some(w)) = (std::env::var("WV_TITLE"), app.get_webview_window("main")) {

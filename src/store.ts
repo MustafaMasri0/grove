@@ -182,8 +182,8 @@ interface State {
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
-  /** A helper went away: its watches are gone, so reconnect and watch again. */
-  connectionLost: () => Promise<void>;
+  /** A helper went away (`name` says which): its watches are gone, so reconnect and watch again. */
+  connectionLost: (name: string) => Promise<void>;
   openWorktrees(): void;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
@@ -763,12 +763,13 @@ export const useStore = create<State>()((set, get) => {
       set({ notice: n });
     },
 
-    async connectionLost() {
+    async connectionLost(name) {
       watched = "";
       const { repo } = get();
       if (!repo || repo.kind === "local" || reconnecting) return;
       reconnecting = true;
-      set({ notice: `Connection to ${repo.name} lost. Reconnecting…` });
+      // Named by the connection: it may not be the current repository's.
+      set({ notice: `Connection to ${name} lost. Reconnecting…` });
       try {
         while (get().repo?.id === repo.id) {
           await new Promise((done) => window.setTimeout(done, RECONNECT_MS));

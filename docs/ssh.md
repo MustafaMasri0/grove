@@ -25,11 +25,22 @@ starts a command there (`WslDistro`, `SshTarget`). Connecting is the same for bo
    It lives in `~/.local/share/grove` on every system. Unix hosts store it from
    stdin (`cat > file`). Windows hosts get it through `scp`, because PowerShell on an
    OpenSSH server stops reading a large stdin part way through and never exits.
+   Every step has a time limit, and a helper that fails to start reports its stderr.
 
 `Connections` keeps one helper per machine, with a lock per machine so that a slow
 host cannot hold up another, and remembers a failure for a few seconds so that the
 burst of calls behind one screen does not queue one timeout each. When a helper goes
-away the app emits `connection-lost`, and the UI reconnects and watches again.
+away the app emits `connection-lost` with its name, and the UI reconnects and watches
+again.
+
+## What runs on the host
+
+Work that takes many git commands, or file lists the UI never shows, runs in the helper
+and only its result travels. `GitHost::overview` is the example: on a repository with
+12 worktrees, computing it in the app took about 100 round trips and moved up to 20 MB
+of file lists, to show a few rows per worktree. It is one request now, and
+`WorktreeSummary::committed` never leaves the host. Add to this rather than to the
+chattiness of the protocol.
 
 ## Large replies
 
@@ -39,11 +50,22 @@ stopped a connection for good when several 1 MB replies went out at full speed i
 first megabytes of a session while requests were arriving: the helper stayed blocked
 writing stdout, with both the Windows and the Git for Windows ssh, and through
 `ssh -W` too. The same traffic spaced 200 ms apart, or after the first 4 MB, was fine.
-The cause inside the server is not known, and no regular sshd has been compared.
-With parts, 36 overviews of 12 worktrees (15 MB each) ran without a stall, where most
-runs had stalled before.
+The cause inside the server is not known. A stock OpenSSH sshd served the same load
+with parts; it has not been tried without them.
+
+The price is one round trip per 128 KB, so a large file is slow on a long link: a 5 MB
+file takes 40 round trips, about 6 s at 150 ms. If a part does not arrive within a
+minute the connection is ended, which fails the calls waiting on it and reconnects:
+ssh itself would never notice, since the server still answers its keepalives.
 
 `WV_HELPER_LOG=<file>` records every call and reply, for looking into a slow host.
+
+## Testing against a real host
+
+`scripts/test-ssh-host.sh` runs the real-host tests against a stock OpenSSH sshd in a
+throwaway Docker container, with a throwaway key. Pass `linux/arm64` for the Arm helper,
+on an Arm machine or a Docker with Arm emulation.
+`crates/wv-helper/tests/provision.rs` says how to point the same tests at another host.
 
 ## Why the system ssh
 
@@ -56,6 +78,8 @@ work with nothing to configure, and the app holds no credentials or SSH crypto.
   `SSH_ASKPASS` and a dialog, with no change to this design.
 - **Host keys are never accepted silently.** A new host needs one connection from a
   terminal first. Grove says so when that is the failure.
+- **Connection sharing.** Grove uses a `ControlMaster` the user already has open, but
+  never starts one, so a persistent master cannot hold its pipes open.
 - **Fetch and push run on the remote machine** with its credentials. Agent forwarding
   is left to the user's ssh config (`ForwardAgent`).
 - **An `ssh://` address is untrusted input** that ends up on ssh's command line:
