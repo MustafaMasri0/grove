@@ -4,6 +4,12 @@
 use crate::host::{Change, WatchSpec};
 use serde::{Deserialize, Serialize};
 
+/// A reply longer than this travels in parts of this size, each sent after [`Op::Go`] for
+/// the one before, while the client sends nothing else. A real SSH server (Tailscale SSH)
+/// was seen to stop a connection for good when megabytes were sent at full speed soon
+/// after it opened, with requests still arriving. Little in flight at a time avoids it.
+pub const LARGE_REPLY: usize = 128 * 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub id: u64,
@@ -20,6 +26,8 @@ pub enum Op {
     Mtime { path: String },
     Watch { spec: WatchSpec },
     Unwatch { watch_id: u64 },
+    /// The client is ready for the next part of the large reply to this request id.
+    Go,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +35,10 @@ pub enum Op {
 pub enum Message {
     /// First line the helper prints.
     Hello { version: String },
+    /// The reply to `id` is large: answer with [`Op::Go`] when nothing else is being sent.
+    Large { id: u64 },
+    /// The next part of the reply line to `id`; `last` completes it.
+    Part { id: u64, text: String, last: bool },
     Done { id: u64, result: serde_json::Value },
     Failed { id: u64, error: String },
     Progress { id: u64, line: String },

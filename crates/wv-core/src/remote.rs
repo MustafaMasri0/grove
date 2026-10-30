@@ -342,7 +342,7 @@ pub fn provision(shell: &dyn Shell, platform: Platform, helpers: &[HelperBinary]
     let helper = platform.helper(helpers)?;
     let start = || {
         let mut cmd = shell.command(&platform.launch_line(helper.hash));
-        cmd.stderr(Stdio::null());
+        cmd.stderr(Stdio::piped());
         let on_lost = on_lost.clone();
         HelperClient::spawn(cmd, Box::new(move || on_lost()))
     };

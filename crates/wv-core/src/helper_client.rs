@@ -5,27 +5,105 @@ use crate::allowlist;
 use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
 use crate::protocol::{Message, Op, Request};
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 type Pending = Arc<Mutex<HashMap<u64, Sender<Message>>>>;
 type Watches = Arc<Mutex<HashMap<u64, OnChange>>>;
 
 const LOST: &str = "the connection to the helper was lost";
 
+/// `WV_HELPER_LOG=<file>` records every call and how long it took, to find out what is slow on a real host.
+fn trace(text: impl FnOnce() -> String) {
+    static LOG: OnceLock<Option<(Mutex<std::fs::File>, Instant)>> = OnceLock::new();
+    let log = LOG.get_or_init(|| {
+        let path = std::env::var_os("WV_HELPER_LOG")?;
+        let file = std::fs::OpenOptions::new().create(true).append(true).open(path).ok()?;
+        Some((Mutex::new(file), Instant::now()))
+    });
+    if let Some((file, start)) = log {
+        let _ = writeln!(file.lock().unwrap(), "{:9.3} {}", start.elapsed().as_secs_f64(), text());
+    }
+}
+
 pub struct HelperClient {
-    stdin: Mutex<ChildStdin>,
+    sender: Arc<ReplyGate>,
     child: Mutex<Child>,
     next_id: AtomicU64,
     pending: Pending,
     watches: Watches,
     alive: Arc<AtomicBool>,
     version: String,
+}
+
+/// The helper's stdin. Requests wait while a large reply travels: see `protocol::LARGE_REPLY`.
+struct ReplyGate {
+    state: Mutex<SendState>,
+    quiet_over: Condvar,
+}
+
+struct SendState {
+    /// None once the client is dropped: the helper exits when its stdin closes.
+    stdin: Option<ChildStdin>,
+    /// The large reply on its way.
+    large: Option<u64>,
+    /// Large replies waiting for their turn.
+    queued: VecDeque<u64>,
+}
+
+impl ReplyGate {
+    fn go(state: &mut SendState, id: u64) {
+        state.large = Some(id);
+        if let (Ok(line), Some(stdin)) = (serde_json::to_string(&Request { id, op: Op::Go }), state.stdin.as_mut()) {
+            let _ = writeln!(stdin, "{line}").and_then(|_| stdin.flush());
+        }
+    }
+
+    fn large_reply_ready(&self, id: u64) {
+        let mut state = self.state.lock().unwrap();
+        if state.large.is_some() {
+            state.queued.push_back(id);
+        } else {
+            Self::go(&mut state, id);
+        }
+    }
+
+    fn next_part(&self, id: u64) {
+        Self::go(&mut self.state.lock().unwrap(), id);
+    }
+
+    fn reply_arrived(&self, id: u64) {
+        let mut state = self.state.lock().unwrap();
+        if state.large != Some(id) {
+            return;
+        }
+        state.large = None;
+        match state.queued.pop_front() {
+            Some(next) => Self::go(&mut state, next),
+            None => self.quiet_over.notify_all(),
+        }
+    }
+
+    fn connection_ended(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.large = None;
+        state.queued.clear();
+        self.quiet_over.notify_all();
+    }
+
+    fn send(&self, line: &str) -> std::io::Result<()> {
+        let mut state = self.state.lock().unwrap();
+        while state.large.is_some() {
+            state = self.quiet_over.wait(state).unwrap();
+        }
+        let stdin = state.stdin.as_mut().ok_or(std::io::ErrorKind::BrokenPipe)?;
+        writeln!(stdin, "{line}").and_then(|_| stdin.flush())
+    }
 }
 
 impl HelperClient {
@@ -37,30 +115,53 @@ impl HelperClient {
         let mut child = cmd.spawn().map_err(|e| format!("could not start helper: {e}"))?;
         let stdin = child.stdin.take().expect("piped stdin");
         let stdout = child.stdout.take().expect("piped stdout");
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    trace(|| format!("stderr: {line}"));
+                }
+            });
+        }
 
+        let sender = Arc::new(ReplyGate { state: Mutex::new(SendState { stdin: Some(stdin), large: None, queued: VecDeque::new() }), quiet_over: Condvar::new() });
         let pending: Pending = Default::default();
         let watches: Watches = Default::default();
         let alive = Arc::new(AtomicBool::new(true));
         let (hello_tx, hello_rx) = channel();
         {
-            let (pending, watches, alive) = (pending.clone(), watches.clone(), alive.clone());
+            let (pending, watches, alive, sender) = (pending.clone(), watches.clone(), alive.clone(), sender.clone());
             std::thread::spawn(move || {
                 let mut said_hello = false;
+                let mut parts = String::new();
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
-                    let Ok(msg) = serde_json::from_str::<Message>(&line) else { continue };
+                    trace(|| format!("reply {} bytes", line.len()));
+                    let Ok(mut msg) = serde_json::from_str::<Message>(&line) else { continue };
+                    if let Message::Part { id, text, last } = &msg {
+                        parts.push_str(text);
+                        if !*last {
+                            sender.next_part(*id);
+                            continue;
+                        }
+                        let Ok(whole) = serde_json::from_str::<Message>(&parts) else { continue };
+                        parts.clear();
+                        msg = whole;
+                    }
                     match &msg {
                         Message::Hello { version } => {
                             said_hello = true;
                             let _ = hello_tx.send(version.clone());
                         }
                         Message::Changed { watch_id, change } => {
+                            trace(|| format!("changed watch={watch_id} files={} paths={}", change.files, change.paths.len()));
                             let cb = watches.lock().unwrap().get(watch_id).cloned();
                             if let Some(cb) = cb {
                                 cb(change.clone());
                             }
                         }
+                        Message::Large { id } => sender.large_reply_ready(*id),
                         Message::Done { id, .. } | Message::Failed { id, .. } => {
+                            sender.reply_arrived(*id);
                             if let Some(tx) = pending.lock().unwrap().remove(id) {
                                 let _ = tx.send(msg);
                             }
@@ -70,11 +171,14 @@ impl HelperClient {
                                 let _ = tx.send(msg);
                             }
                         }
+                        Message::Part { .. } => {}
                     }
                 }
                 alive.store(false, Ordering::SeqCst);
+                sender.connection_ended();
                 // Dropping the senders wakes every waiting caller with an error.
                 pending.lock().unwrap().clear();
+                trace(|| "connection ended".into());
                 if said_hello {
                     on_lost();
                 }
@@ -90,7 +194,7 @@ impl HelperClient {
             }
         };
         Ok(Self {
-            stdin: Mutex::new(stdin),
+            sender,
             child: Mutex::new(child),
             next_id: AtomicU64::new(1),
             pending,
@@ -113,16 +217,14 @@ impl HelperClient {
             return Err(LOST.into());
         }
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let (started, what) = (Instant::now(), format!("{op:?}"));
         let (tx, rx) = channel();
         self.pending.lock().unwrap().insert(id, tx);
         let line = serde_json::to_string(&Request { id, op }).map_err(|e| e.to_string())?;
-        {
-            let mut stdin = self.stdin.lock().unwrap();
-            let sent = writeln!(stdin, "{line}").and_then(|_| stdin.flush());
-            if let Err(e) = sent {
-                self.pending.lock().unwrap().remove(&id);
-                return Err(format!("{LOST} ({e})"));
-            }
+        let done = |outcome: &str| trace(|| format!("{:7}ms {outcome} {}", started.elapsed().as_millis(), what.chars().take(140).collect::<String>()));
+        if let Err(e) = self.sender.send(&line) {
+            self.pending.lock().unwrap().remove(&id);
+            return Err(format!("{LOST} ({e})"));
         }
         loop {
             match rx.recv() {
@@ -131,10 +233,19 @@ impl HelperClient {
                         p(&line);
                     }
                 }
-                Ok(Message::Done { result, .. }) => return serde_json::from_value(result).map_err(|e| e.to_string()),
-                Ok(Message::Failed { error, .. }) => return Err(error),
+                Ok(Message::Done { result, .. }) => {
+                    done("ok");
+                    return serde_json::from_value(result).map_err(|e| e.to_string());
+                }
+                Ok(Message::Failed { error, .. }) => {
+                    done("failed");
+                    return Err(error);
+                }
                 Ok(_) => {}
-                Err(_) => return Err(LOST.into()),
+                Err(_) => {
+                    done("lost");
+                    return Err(LOST.into());
+                }
             }
         }
     }
@@ -179,6 +290,7 @@ impl GitHost for HelperClient {
 
 impl Drop for HelperClient {
     fn drop(&mut self) {
+        self.sender.state.lock().unwrap().stdin = None;
         let _ = self.child.lock().unwrap().kill();
     }
 }

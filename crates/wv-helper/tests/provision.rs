@@ -113,3 +113,27 @@ fn a_real_ssh_host_serves_a_repository() {
     let root = String::from_utf8(out.stdout).unwrap();
     assert!(h.list_dir(root.trim()).unwrap().iter().any(|e| e.name == ".git"));
 }
+
+/// As above, with `WV_TEST_HASH` the hash of a helper already on the host: runs the real
+/// overview of every worktree, as the app does on opening a repository.
+#[test]
+#[ignore = "needs a real SSH server"]
+fn a_real_ssh_host_serves_the_overview() {
+    let address = std::env::var("WV_TEST_SSH").expect("WV_TEST_SSH");
+    let Route::Ssh { target, path } = route(&address).unwrap() else { panic!("not an ssh address") };
+    let bytes = std::fs::read(std::env::var("WV_TEST_HELPER").expect("WV_TEST_HELPER")).unwrap();
+    let helper = HelperBinary {
+        target: std::env::var("WV_TEST_TARGET").expect("WV_TEST_TARGET").leak(),
+        hash: std::env::var("WV_TEST_HASH").expect("WV_TEST_HASH").leak(),
+        bytes: bytes.leak(),
+    };
+    let h = connect(&target, &[helper], Arc::new(|| {})).unwrap();
+    let cwds: Vec<String> = wv_core::repo_ops::worktrees(&h, &path).unwrap().into_iter().map(|w| w.path).collect();
+    let base = std::env::var("WV_TEST_BASE").ok();
+    for round in 0..3 {
+        let started = std::time::Instant::now();
+        let o = wv_core::overview::overview(&h, &cwds, base.as_deref());
+        eprintln!("round {round}: {} worktrees in {:?}", o.worktrees.len(), started.elapsed());
+        assert!(o.errors.is_empty(), "{:?}", o.errors);
+    }
+}

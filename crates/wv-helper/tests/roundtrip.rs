@@ -116,6 +116,29 @@ fn concurrent_requests_are_matched_to_their_callers() {
 }
 
 #[test]
+fn large_replies_arrive_whole_among_small_ones() {
+    let (_d, repo) = repo();
+    let data = vec![b'x'; 900_000];
+    std::fs::write(format!("{repo}/big.dat"), &data).unwrap();
+    let h = Arc::new(helper());
+    let threads: Vec<_> = (0..24)
+        .map(|i| {
+            let (h, repo, data) = (h.clone(), repo.clone(), data.clone());
+            std::thread::spawn(move || {
+                if i % 2 == 0 {
+                    assert_eq!(h.read_file(&format!("{repo}/big.dat"), 1_000_000).unwrap().data, Some(data));
+                } else {
+                    assert_eq!(h.git(&repo, &s(&["rev-list", "--count", "HEAD"]), None).unwrap().stdout, b"1\n");
+                }
+            })
+        })
+        .collect();
+    for t in threads {
+        t.join().unwrap();
+    }
+}
+
+#[test]
 fn progress_lines_are_forwarded() {
     let (d, repo) = repo();
     let bare = d.path().join("remote.git");

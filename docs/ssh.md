@@ -31,6 +31,20 @@ host cannot hold up another, and remembers a failure for a few seconds so that t
 burst of calls behind one screen does not queue one timeout each. When a helper goes
 away the app emits `connection-lost`, and the UI reconnects and watches again.
 
+## Large replies
+
+Replies over `protocol::LARGE_REPLY` travel in parts, each sent after the client asks
+for it, and the client sends no other request meanwhile. Tailscale SSH (seen on 1.104)
+stopped a connection for good when several 1 MB replies went out at full speed in the
+first megabytes of a session while requests were arriving: the helper stayed blocked
+writing stdout, with both the Windows and the Git for Windows ssh, and through
+`ssh -W` too. The same traffic spaced 200 ms apart, or after the first 4 MB, was fine.
+The cause inside the server is not known, and no regular sshd has been compared.
+With parts, 36 overviews of 12 worktrees (15 MB each) ran without a stall, where most
+runs had stalled before.
+
+`WV_HELPER_LOG=<file>` records every call and reply, for looking into a slow host.
+
 ## Why the system ssh
 
 Grove runs the `ssh` that comes with Windows 10+, macOS and Linux instead of linking
