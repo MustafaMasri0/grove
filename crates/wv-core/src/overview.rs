@@ -66,7 +66,8 @@ pub struct Overview {
 }
 
 /// One worktree's state; `base` is the branch it is compared with ("Branch vs base").
-pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>) -> Result<WorktreeSummary, String> {
+/// Lists the files HEAD changed since then only for `find_overlaps`.
+pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>, find_overlaps: bool) -> Result<WorktreeSummary, String> {
     let st = status(h, cwd)?;
     let uncommitted = st
         .entries
@@ -93,17 +94,19 @@ pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>) -> Result<Worktre
     if let Some(base) = base {
         // A base without a common ancestor (an unrelated history) has nothing to compare.
         if let Ok(merge_base) = run_text(h, cwd, &["merge-base", base, &head]) {
-            s.committed = parse_path_list(&run(h, cwd, &["diff", "--name-only", "-z", "--no-renames", &merge_base, &head, "--"])?);
+            if find_overlaps {
+                s.committed = parse_path_list(&run(h, cwd, &["diff", "--name-only", "-z", "--no-renames", &merge_base, &head, "--"])?);
+            }
             (s.base_behind, s.base_ahead) = parse_left_right(&run(h, cwd, &["rev-list", "--left-right", "--count", &format!("{base}...{head}")])?)?;
         }
     }
     Ok(s)
 }
 
-/// Every worktree in `cwds` side by side, and the files they both change.
-pub fn overview(h: &dyn GitHost, cwds: &[String], base: Option<&str>) -> Overview {
+/// Every worktree in `cwds` side by side and, for `find_overlaps`, the files they both change.
+pub fn overview(h: &dyn GitHost, cwds: &[String], base: Option<&str>, find_overlaps: bool) -> Overview {
     let results: Vec<_> = std::thread::scope(|sc| {
-        let handles: Vec<_> = cwds.iter().map(|cwd| sc.spawn(move || summary(h, cwd, base))).collect();
+        let handles: Vec<_> = cwds.iter().map(|cwd| sc.spawn(move || summary(h, cwd, base, find_overlaps))).collect();
         handles.into_iter().map(|t| t.join().unwrap_or_else(|_| Err("reading the worktree failed".into()))).collect()
     });
     let mut out = Overview::default();
@@ -114,6 +117,9 @@ pub fn overview(h: &dyn GitHost, cwds: &[String], base: Option<&str>) -> Overvie
                 out.errors.insert(cwd.clone(), e);
             }
         }
+    }
+    if !find_overlaps {
+        return out;
     }
     // Worktrees share one object store, so any of them can compare commits of the others.
     if let Some(first) = out.worktrees.first().map(|w| w.path.clone()) {

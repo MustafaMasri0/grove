@@ -44,6 +44,7 @@ describe("filterSettings", () => {
 
   it("finds settings by extra keywords", () => {
     expect(paths("dark")).toContain("theme");
+    expect(paths("overlap")).toEqual(["possibleConflicts"]);
   });
 
   it("returns nothing when no setting matches", () => {

@@ -140,7 +140,7 @@ fn a_real_ssh_host_serves_the_overview() {
     let base = std::env::var("WV_TEST_BASE").ok();
     for round in 0..3 {
         let started = std::time::Instant::now();
-        let o = h.overview(&cwds, base.as_deref()).unwrap();
+        let o = h.overview(&cwds, base.as_deref(), true).unwrap();
         eprintln!("round {round}: {} worktrees, {} overlaps in {:?}", o.worktrees.len(), o.overlaps.len(), started.elapsed());
         assert!(o.errors.is_empty(), "{:?}", o.errors);
     }

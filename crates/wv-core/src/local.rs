@@ -73,7 +73,7 @@ impl GitHost for LocalHost {
         self.watches.lock().unwrap().remove(&id);
     }
 
-    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String> {
-        Ok(overview::overview(self, cwds, base))
+    fn overview(&self, cwds: &[String], base: Option<&str>, find_overlaps: bool) -> Result<Overview, String> {
+        Ok(overview::overview(self, cwds, base, find_overlaps))
     }
 }

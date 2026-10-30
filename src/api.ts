@@ -214,7 +214,7 @@ export const api = {
   branches: (a: At) => invoke<BranchRef[]>("branches", a),
   status: (a: At) => invoke<Status>("status", a),
   /** Every worktree in `cwds` compared with `base`, and the files they both change. */
-  worktreesOverview: (repo: string, cwds: string[], base: string | null) => invoke<Overview>("worktrees_overview", { repo, cwds, base }),
+  worktreesOverview: (repo: string, cwds: string[], base: string | null, findOverlaps: boolean) => invoke<Overview>("worktrees_overview", { repo, cwds, base, findOverlaps }),
   resolveBase: (a: At, preferred: string | null) => invoke<string | null>("resolve_base", { ...a, preferred }),
   branchChanges: (a: At, base: string, rev: string) => invoke<BaseDiff>("branch_changes", { ...a, base, rev }),
   log: (a: At, rev: string, skip: number, limit: number) => invoke<CommitSummary[]>("log", { ...a, rev, skip, limit }),

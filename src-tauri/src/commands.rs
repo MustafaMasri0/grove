@@ -124,8 +124,8 @@ pub async fn status(state: State<'_, AppState>, repo: String, cwd: String) -> Re
 
 /// Every worktree in `cwds` side by side, compared with `base`, and the files they both change.
 #[tauri::command]
-pub async fn worktrees_overview(state: State<'_, AppState>, repo: String, cwds: Vec<String>, base: Option<String>) -> Res<Overview> {
-    with_host!(state, repo, |h| h.overview(&cwds, base.as_deref()))
+pub async fn worktrees_overview(state: State<'_, AppState>, repo: String, cwds: Vec<String>, base: Option<String>, find_overlaps: bool) -> Res<Overview> {
+    with_host!(state, repo, |h| h.overview(&cwds, base.as_deref(), find_overlaps))
 }
 
 #[tauri::command]

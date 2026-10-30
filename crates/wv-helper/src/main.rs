@@ -88,7 +88,7 @@ fn handle(host: &LocalHost, out: &Out, gates: &Gates, req: Request) {
             host.unwatch(watch_id);
             reply(out, gates, id, Ok(()));
         }
-        Op::Overview { cwds, base } => reply(out, gates, id, host.overview(&cwds, base.as_deref())),
+        Op::Overview { cwds, base, find_overlaps } => reply(out, gates, id, host.overview(&cwds, base.as_deref(), find_overlaps)),
         // Handled in `main`, in order with the requests before it.
         Op::Go => {}
     }

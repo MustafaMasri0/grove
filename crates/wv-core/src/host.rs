@@ -79,7 +79,8 @@ pub trait GitHost: Send + Sync {
     fn unwatch(&self, id: u64);
     /// Every worktree in `cwds` side by side, computed on the machine holding the repository:
     /// it takes many git commands and long file lists, of which the result keeps little.
-    fn overview(&self, cwds: &[String], base: Option<&str>) -> Result<Overview, String>;
+    /// Most of that is `find_overlaps`, the work behind `Overview::overlaps`.
+    fn overview(&self, cwds: &[String], base: Option<&str>, find_overlaps: bool) -> Result<Overview, String>;
 }
 
 /// Joins a host path and a repository-relative path. Every OS accepts `/`.

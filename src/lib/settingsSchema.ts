@@ -2,7 +2,7 @@
 // grouped in sections, and the search that filters them.
 import { RANGES, type SettingPath } from "./settings";
 
-export type SectionId = "appearance" | "editor" | "diff" | "markdown" | "explorer" | "history" | "repositories" | "shortcuts";
+export type SectionId = "appearance" | "editor" | "diff" | "markdown" | "explorer" | "history" | "worktrees" | "repositories" | "shortcuts";
 
 export const SECTIONS: readonly { id: SectionId; title: string }[] = [
   { id: "appearance", title: "Appearance" },
@@ -11,6 +11,7 @@ export const SECTIONS: readonly { id: SectionId; title: string }[] = [
   { id: "markdown", title: "Markdown" },
   { id: "explorer", title: "Explorer and lists" },
   { id: "history", title: "History" },
+  { id: "worktrees", title: "Worktrees" },
   { id: "repositories", title: "Repositories" },
   { id: "shortcuts", title: "Keyboard shortcuts" },
 ];
@@ -276,6 +277,15 @@ export const SETTINGS: readonly SettingDef[] = [
     description: "How many commits History loads at a time; more load when you scroll to the end.",
     keywords: "log limit",
     control: num("historyPageSize", 10),
+  },
+
+  {
+    path: "possibleConflicts",
+    section: "worktrees",
+    label: "Possible conflicts",
+    description: "Finds the files more than one worktree changes, for the Worktrees overview and the count on its button. When off, Grove runs none of the git commands this takes.",
+    keywords: "overlap shared files overview merge",
+    control: { kind: "toggle" },
   },
 ];
 

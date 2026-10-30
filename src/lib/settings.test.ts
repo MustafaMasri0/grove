@@ -30,6 +30,12 @@ describe("normalizeSettings", () => {
     expect(normalizeSettings({ explorerAutoReveal: "no" }).explorerAutoReveal).toBe(true);
   });
 
+  it("looks for possible conflicts unless turned off", () => {
+    expect(defaultSettings.possibleConflicts).toBe(true);
+    expect(normalizeSettings({ possibleConflicts: false }).possibleConflicts).toBe(false);
+    expect(normalizeSettings({ possibleConflicts: "no" }).possibleConflicts).toBe(true);
+  });
+
   it("remembers how image diffs are compared, falling back to side by side", () => {
     expect(defaultSettings.imageDiff).toBe("sideBySide");
     expect(normalizeSettings({ imageDiff: "swipe" }).imageDiff).toBe("swipe");
