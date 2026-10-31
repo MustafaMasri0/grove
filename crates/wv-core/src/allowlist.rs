@@ -1,12 +1,13 @@
 //! The app is read-only. Every git invocation, in the app and in the
-//! helper, passes through [`check`] first. Only fetch, plain push and
-//! `push -u origin <branch>` may change anything, and nothing may force or delete.
+//! helper, passes through [`check`] first. Only fetch, plain push,
+//! `push -u origin <branch>` and a clone into a new folder may change anything,
+//! and nothing may force or delete.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
     /// Reads the repository only.
     Read,
-    /// Talks to a remote: fetch, push, publish.
+    /// Talks to a remote: fetch, push, publish, clone.
     Network,
 }
 
@@ -58,6 +59,19 @@ pub fn check(args: &[String]) -> Result<Access, String> {
             [u, remote, branch] if u == "-u" && valid_name(remote) && valid_name(branch) => Ok(Access::Network),
             _ => Err("only `git push` and `git push -u <remote> <branch>` are allowed".into()),
         },
+        // Exactly this shape: nothing can pass an option, and the folder can only be a new one inside `cwd`.
+        "clone" => match rest {
+            [p, dd, url, folder] if p == "--progress" && dd == "--" => {
+                if !valid_clone_url(url) {
+                    Err("only https://, ssh:// and user@host:path addresses can be cloned".into())
+                } else if !valid_folder_name(folder) {
+                    Err(format!("{folder} is not a valid folder name"))
+                } else {
+                    Ok(Access::Network)
+                }
+            }
+            _ => Err("only `git clone --progress -- <url> <folder>` is allowed".into()),
+        },
         other => Err(format!("git {other} is not allowed in a read-only viewer")),
     }
 }
@@ -105,6 +119,31 @@ fn valid_name(s: &str) -> bool {
         && !s.contains("..")
         && s != "@"
         && !s.chars().any(|c| c.is_whitespace() || c.is_control() || ":+*?^~[\\".contains(c))
+}
+
+/// The part of an address that names the user and machine: nothing an ssh client could read as an option, even once percent-decoded.
+fn valid_authority(s: &str) -> bool {
+    s.split(['@', ':']).all(|part| !part.is_empty() && !part.starts_with('-')) && s.chars().all(|c| c.is_ascii_alphanumeric() || "._-@:~".contains(c))
+}
+
+/// https, ssh and scp-style addresses. Refuses the rest on purpose: `ext::` and other remote helpers run programs named in the address.
+fn valid_clone_url(url: &str) -> bool {
+    if url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return false;
+    }
+    if let Some(rest) = url.strip_prefix("https://").or_else(|| url.strip_prefix("ssh://")) {
+        return rest.split_once('/').is_some_and(|(authority, path)| valid_authority(authority) && !path.is_empty());
+    }
+    // `user@host:path`. One letter before the colon is a Windows drive, a second colon a remote helper, and `://` another scheme.
+    url.split_once(':').is_some_and(|(place, path)| {
+        let host = place.rsplit('@').next().unwrap_or(place);
+        valid_authority(place) && host.len() > 1 && !path.is_empty() && !path.starts_with([':', '-']) && !path.starts_with("//")
+    })
+}
+
+/// One new folder inside the working directory, never a path out of it.
+fn valid_folder_name(s: &str) -> bool {
+    !s.is_empty() && s != "." && s != ".." && !s.starts_with('-') && !s.chars().any(|c| c.is_control() || "/\\:".contains(c))
 }
 
 #[cfg(test)]
@@ -191,6 +230,7 @@ mod tests {
             &["reset", "--hard"],
             &["stash"],
             &["pull"],
+            &["clone"],
             &["merge", "x"],
             &["rebase", "x"],
             &["restore", "a"],
@@ -207,6 +247,73 @@ mod tests {
             &["remote", "add", "x", "y"],
             &["remote", "remove", "origin"],
             &[],
+        ] {
+            assert!(c(args).is_err(), "should refuse {args:?}");
+        }
+    }
+
+    #[test]
+    fn clone_takes_a_known_kind_of_address() {
+        for url in [
+            "https://example.com/user/example.git",
+            "https://token@example.com/user/example",
+            "ssh://git@example.com/user/example.git",
+            "ssh://git@example.com:2222/user/example.git",
+            "git@example.com:user/example.git",
+            "example.com:user/example.git",
+        ] {
+            assert_eq!(c(&["clone", "--progress", "--", url, "example"]), Ok(Access::Network), "{url}");
+        }
+    }
+
+    #[test]
+    fn clone_refuses_addresses_that_run_programs_or_read_local_paths() {
+        for url in [
+            "ext::sh -c touch% /tmp/x",
+            "ext::sh",
+            "fd::3",
+            "file:///tmp/example",
+            "/tmp/example",
+            "C:\\src\\example",
+            "C:/src/example",
+            "http://example.com/user/example",
+            "git://example.com/user/example",
+            "ssh://-oProxyCommand=x/example",
+            "ssh://%2doProxyCommand=x/example",
+            "ssh://user@-host/example",
+            "ssh://user:-secret@host/example",
+            "ssh://@host/example",
+            "-oProxyCommand=x@example.com:path",
+            "git@example.com:-path",
+            "git@example.com:",
+            "https://example.com",
+            "https://exa mple.com/x",
+            "https://example.com/x\nfoo",
+            "",
+        ] {
+            assert!(c(&["clone", "--progress", "--", url, "example"]).is_err(), "should refuse {url}");
+        }
+    }
+
+    #[test]
+    fn clone_has_one_shape_and_stays_inside_its_folder() {
+        let url = "https://example.com/user/example.git";
+        for args in [
+            &["clone", url, "example"][..],
+            &["clone", "--progress", url, "example"],
+            &["clone", "--progress", "--", url],
+            &["clone", "--progress", "--", url, "example", "extra"],
+            &["clone", "--progress", "--recurse-submodules", "--", url, "example"],
+            &["clone", "--progress", "-c", "core.hooksPath=x", "--", url, "example"],
+            &["clone", "--progress", "--", url, ""],
+            &["clone", "--progress", "--", url, "."],
+            &["clone", "--progress", "--", url, ".."],
+            &["clone", "--progress", "--", url, "../example"],
+            &["clone", "--progress", "--", url, "a/b"],
+            &["clone", "--progress", "--", url, "a\\b"],
+            &["clone", "--progress", "--", url, "C:\\example"],
+            &["clone", "--progress", "--", url, "/tmp/example"],
+            &["clone", "--progress", "--", url, "-example"],
         ] {
             assert!(c(args).is_err(), "should refuse {args:?}");
         }

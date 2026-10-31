@@ -14,6 +14,24 @@ fn h() -> LocalHost {
     LocalHost::new()
 }
 
+#[test]
+fn cloning_refuses_local_sources_and_an_occupied_folder_without_touching_it() {
+    let r = temp_repo();
+    let parent = r.dir.path().to_str().unwrap().to_string();
+    // Addresses are limited to the network ones, so this never reaches git.
+    let refused = ops::clone_repo(&h(), &parent, "file:///tmp/example", "copy", None).unwrap_err();
+    assert!(refused.contains("can be cloned"), "{refused}");
+    assert!(!r.dir.path().join("copy").exists());
+
+    let taken = r.dir.path().join("taken");
+    std::fs::create_dir(&taken).unwrap();
+    std::fs::write(taken.join("keep.txt"), "mine").unwrap();
+    // Port 9 is never listening, and git refuses the folder before it connects.
+    let refused = ops::clone_repo(&h(), &parent, "https://127.0.0.1:9/example.git", "taken", None).unwrap_err();
+    assert!(refused.contains("already exists"), "{refused}");
+    assert_eq!(std::fs::read_to_string(taken.join("keep.txt")).unwrap(), "mine");
+}
+
 /// A LocalHost that remembers the git commands it ran.
 struct RecordingHost {
     inner: LocalHost,

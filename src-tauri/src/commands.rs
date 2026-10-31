@@ -214,6 +214,28 @@ pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo:
     .await
 }
 
+/// Clones into a new folder `name` under `parent`, which may be on any host a repository can be. Progress lines are emitted
+/// as `clone-progress`. Returns the new repository's path, ready to open.
+#[tauri::command]
+pub async fn clone_repo(app_handle: AppHandle, state: State<'_, AppState>, url: String, parent: String, name: String) -> Res<String> {
+    let app = state.inner().clone();
+    blocking(move || {
+        let (host, route) = app.hosts.resolve(&parent)?;
+        let host_parent = match route {
+            Route::Local { path } => path,
+            Route::Wsl { linux_path, .. } => linux_path,
+            Route::Ssh { path, .. } => path,
+        };
+        let emit = |line: &str| {
+            let _ = app_handle.emit("clone-progress", line.to_string());
+        };
+        ops::clone_repo(&*host, &host_parent, &url, &name, Some(&emit))?;
+        let separator = if parent.contains('\\') { '\\' } else { '/' };
+        Ok(format!("{}{separator}{name}", parent.trim_end_matches(['/', '\\'])))
+    })
+    .await
+}
+
 #[derive(Clone, Serialize)]
 struct ChangedEvent {
     cwd: String,

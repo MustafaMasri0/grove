@@ -11,8 +11,8 @@ Grove is free and open source under the [MIT licence](LICENSE).
 
 - **Safe by default.** Today Grove does not change your working tree, index,
   branches or stashes. The only git commands that write anything are `fetch`,
-  `push` (never forced) and `push -u origin <branch>`, each started by an
-  explicit button. Every git command Grove may run, in the app and in its
+  `push` (never forced), `push -u origin <branch>` and `clone` into a new
+  folder, each started by an explicit button. Every git command Grove may run, in the app and in its
   helper, is on an allowlist, and reads are limited to known commands and
   options. Editing files and more git actions are planned. They will go
   through the same allowlist.
@@ -55,7 +55,9 @@ You need:
   host key. Fetch and push run on the host, with its credentials.
 
 Add a repository from the **Repository** menu at the top left: choose
-**Add repository…**, then pick or paste a local folder, or switch to **SSH**.
+**Add repository…**, then pick or paste a local folder, switch to **SSH**, or
+choose **Clone** to download one from an `https://`, `ssh://` or `user@host:path`
+address.
 
 ## Features
 

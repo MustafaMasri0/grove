@@ -2216,6 +2216,40 @@ try {
     await size(1440, 900);
     return d;
   });
+  await attempt("surfaceRepoClone", async () => {
+    await size(800, 500);
+    await openApp();
+    await click(".t-repo");
+    await sleep(160);
+    await click(".picker-f .btn");
+    await sleep(160);
+    await clickText(".repo-dlg .tray button", "Clone");
+    await sleep(100);
+    const d = { addressFocused: await focusIs('.repo-dlg input[placeholder^="https://"]') };
+    d.fits = await inWindow(".repo-dlg");
+    d.needsAll = (await ev(`document.querySelector(".repo-dlg .dlg-f .btn.primary").getAttribute("aria-disabled")`)) === "true";
+    await type("https://example.com/user/denied.git");
+    await key("Tab", 9);
+    await type("C:\\src");
+    await key("Tab", 9); // Browse…
+    await key("Tab", 9);
+    d.nameFromAddress = (await ev(`document.activeElement.placeholder`)) === "denied";
+    await key("Enter", 13);
+    await sleep(300);
+    d.cloneCall = (await ev(`JSON.stringify(window.__ipc.filter(c=>c.cmd==="clone_repo").pop()?.args)`)) === JSON.stringify({ url: "https://example.com/user/denied.git", parent: "C:\\src", name: "denied" });
+    d.error = (await text(".repo-err"))?.includes("terminal prompts disabled");
+    d.staysOpen = await has(".repo-dlg");
+    d.errorFits = await inWindow(".repo-dlg");
+    await shot("surface-repo-clone-800x500");
+    await fill('.repo-dlg input[placeholder^="https://"]', "git@example.com:user/example.git");
+    await fill('.repo-dlg .repo-f:nth-of-type(3) input', "renamed");
+    await key("Enter", 13);
+    await sleep(500);
+    d.opened = (await ev(`window.__ipc.filter(c=>c.cmd==="open_repo").some(c=>c.args.path==="C:\\\\src\\\\renamed")`));
+    d.closedAfter = !(await has(".repo-dlg"));
+    await size(1440, 900);
+    return d;
+  });
   await attempt("surfaceScope", async () => {
     await openApp(autoQ({ openFile: "src/server/orders/create.ts" }));
     await waitFor(".monaco-editor .view-lines", 15000);

@@ -58,6 +58,16 @@
   }
 }
 
+/* One line, however long git's progress line is. */
+.ui-root .repo-progress {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .ui-root .repo-err {
   font-size: var(--fs-sm);
   line-height: var(--lh-sm);

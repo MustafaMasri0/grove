@@ -29,6 +29,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_repo,
+            commands::clone_repo,
             commands::worktrees,
             commands::branches,
             commands::status,

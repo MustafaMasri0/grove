@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canReveal, displayPath, githubCommitUrl, joinPath, relativeForCopy, sshAddress } from "./hostPaths";
+import { canReveal, displayPath, githubCommitUrl, joinPath, relativeForCopy, repoNameFromUrl, sshAddress } from "./hostPaths";
 
 const wsl = { kind: "wsl" as const, distro: "Ubuntu", separator: "/" };
 const win = { kind: "local" as const, distro: null, separator: "\\" };
@@ -76,5 +76,15 @@ describe("githubCommitUrl", () => {
     expect(githubCommitUrl("a/b/c", "abc1234")).toBeNull();
     expect(githubCommitUrl("a/b", "HEAD; rm")).toBeNull();
     expect(githubCommitUrl(null, "abc1234")).toBeNull();
+  });
+});
+
+describe("repoNameFromUrl", () => {
+  it("takes the last part of an address, without .git", () => {
+    expect(repoNameFromUrl("https://example.com/user/example.git")).toBe("example");
+    expect(repoNameFromUrl("https://example.com/user/example/")).toBe("example");
+    expect(repoNameFromUrl("ssh://git@example.com:2222/user/example")).toBe("example");
+    expect(repoNameFromUrl("  git@example.com:example.git ")).toBe("example");
+    expect(repoNameFromUrl("")).toBe("");
   });
 });

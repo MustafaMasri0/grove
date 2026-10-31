@@ -223,6 +223,8 @@ type LeftTabName = "changes" | "history" | "explorer" | "search";
 
 export const api = {
   openRepo: (path: string) => invoke<RepoInfo>("open_repo", { path }),
+  /** Clones into a new folder `name` under `parent`; returns the path to open. Progress lines arrive as `clone-progress`. */
+  cloneRepo: (url: string, parent: string, name: string) => invoke<string>("clone_repo", { url, parent, name }),
   worktrees: (a: At) => invoke<WorktreeInfo[]>("worktrees", a),
   branches: (a: At) => invoke<BranchRef[]>("branches", a),
   status: (a: At) => invoke<Status>("status", a),

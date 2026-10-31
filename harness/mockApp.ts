@@ -143,6 +143,9 @@ export function respondApp(cmd: string, args?: unknown): unknown {
       return { path: "C:\\Users\\user\\AppData\\Roaming\\Grove\\settings.json", text: "{}" };
     case "automation":
       return auto();
+    case "clone_repo":
+      if (String(a.url).includes("denied")) throw "fatal: could not read Username for 'https://example.com': terminal prompts disabled";
+      return `${a.parent}\\${a.name}`;
     case "open_repo":
       // Made-up failures, for the repository menu: what remote.rs and open_repo answer.
       if (String(a.path).includes("denied-box")) throw "ssh user@denied-box: user@denied-box: Permission denied (publickey).\nGrove signs in with your ssh config, keys and agent. It cannot ask for a password or passphrase: load the key into ssh-agent.";
