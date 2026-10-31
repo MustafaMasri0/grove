@@ -1611,6 +1611,7 @@
   }
 
   & .picker-l {
+    min-height: 0;
     max-height: min(300px, 50vh);
     overflow: hidden auto;
     outline: none;

@@ -25,10 +25,11 @@ export function RepoPicker() {
   const close = () => setOpen(false);
 
   const add = async (path: string) => {
+    if (!path.trim() || connecting) return;
     setError(null);
     setConnecting(true);
     try {
-      await addRepo(path);
+      await addRepo(path.trim());
       setTyped("");
       setSsh(null);
       close();
@@ -45,7 +46,7 @@ export function RepoPicker() {
     return {
       key: r,
       label: name,
-      detail: info && "error" in info ? `⚠ ${info.error}` : r,
+      detail: info && "error" in info ? <span className="repo-ed" title={info.error}>⚠ {info.error}</span> : r,
       search: `${name} ${r}`,
       current: repo?.id === r,
       menu: () => repoItems(menuEnv, { name, path: info && "root" in info ? displayPath(info, info.root) : null, reveal: !!info && "root" in info && canReveal(info), remove: () => removeRepo(r) }),
@@ -81,7 +82,7 @@ export function RepoPicker() {
           label="Repository"
           width={440}
           footer={
-            <div className="repo-add">
+            <>
               <Button
                 kind="primary"
                 text="Add repository folder…"
@@ -90,9 +91,10 @@ export function RepoPicker() {
                   if (typeof picked === "string") await add(picked);
                 }}
               />
-              <Button text="Connect over SSH…" onClick={() => setSsh(ssh ? null : { host: "", path: "" })} />
+              <Button text="Connect over SSH…" aria-expanded={!!ssh} onClick={() => setSsh(ssh ? null : { host: "", path: "" })} />
               {ssh && (
                 <form
+                  className="repo-form"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (ssh.host.trim() && ssh.path.trim()) void add(sshAddress(ssh.host, ssh.path));
@@ -104,6 +106,7 @@ export function RepoPicker() {
                 </form>
               )}
               <form
+                className="repo-form"
                 onSubmit={(e) => {
                   e.preventDefault();
                   void add(typed);
@@ -111,8 +114,12 @@ export function RepoPicker() {
               >
                 <Field placeholder="or paste a path, or ssh://user@host/path" value={typed} onChange={(e) => setTyped(e.target.value)} />
               </form>
-              {error && <div className="error-text">{error}</div>}
-            </div>
+              {error && (
+                <div className="repo-err" role="alert">
+                  {error}
+                </div>
+              )}
+            </>
           }
         />
       )}

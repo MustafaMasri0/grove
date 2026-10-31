@@ -144,6 +144,9 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "automation":
       return auto();
     case "open_repo":
+      // Made-up failures, for the repository menu: what remote.rs and open_repo answer.
+      if (String(a.path).includes("denied-box")) throw "ssh user@denied-box: user@denied-box: Permission denied (publickey).\nGrove signs in with your ssh config, keys and agent. It cannot ask for a password or passphrase: load the key into ssh-agent.";
+      if (String(a.path).includes("not-a-repo")) throw `${a.path} is not a git repository (fatal: not a git repository (or any of the parent directories): .git)`;
       return repoInfo(a.path);
     case "worktrees":
       return [...WT.map((w) => ({ ...w, missing: false, prunable: null, bare: false })), ...(query.has("states") ? UNUSUAL : [])].map((w) => ({ path: w.path, head: w.bare ? null : HEAD, branch: w.branch, detached: false, bare: w.bare, locked: null, prunable: w.prunable, isMain: w.isMain, displayPath: w.path, missing: w.missing }));

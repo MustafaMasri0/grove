@@ -147,6 +147,7 @@ export interface SelectOption {
 }
 
 export interface SelectProps {
+  id?: string;
   /** The accessible name. */
   label: string;
   value: string | null;
@@ -162,7 +163,7 @@ export interface SelectProps {
 }
 
 /** A button that opens a Picker. Arrow keys open it too. */
-export function Select({ label, value, options, onPick, disabled, placeholder, searchable, free, popWidth = 180, className }: SelectProps) {
+export function Select({ id, label, value, options, onPick, disabled, placeholder, searchable, free, popWidth = 180, className }: SelectProps) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const current = options.find((o) => o.value === value);
@@ -170,6 +171,7 @@ export function Select({ label, value, options, onPick, disabled, placeholder, s
     <>
       <button
         ref={button}
+        id={id}
         type="button"
         className={cx("sel", className)}
         aria-haspopup="listbox"

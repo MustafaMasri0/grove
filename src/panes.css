@@ -296,3 +296,8 @@
 .app[data-size="s"] .ui-root .fdir {
   display: none;
 }
+
+/* A SHA selects whole on one click. */
+.ui-root .selectable {
+  user-select: all;
+}

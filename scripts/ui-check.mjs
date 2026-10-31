@@ -4,7 +4,7 @@
 //   node scripts/ui-check.mjs          everything except the bundle check
 //   pnpm build && node scripts/ui-check.mjs --bundle
 //   node scripts/ui-check.mjs --panes   only the panes and editor checks
-//   node scripts/ui-check.mjs --panes=panesMonaco   only the panes checks whose name starts so
+//   node scripts/ui-check.mjs --panes=panesMonaco   only the checks on the real App whose name starts so (surface: Settings, the palette, the repository menu)
 // Set EDGE_PATH when Edge is not in its usual place.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -27,7 +27,7 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/editor.css", "src/components/EditorArea.tsx", "src/components/ImageView.tsx", "src/components/MarkdownPreview.tsx", "src/components/HtmlPreview.tsx", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
+const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/editor.css", "src/settings.css", "src/palette.css", "src/components/SettingsDialog.tsx", "src/components/Palette.tsx", "src/lib/palette.ts", "src/components/EditorArea.tsx", "src/components/ImageView.tsx", "src/components/MarkdownPreview.tsx", "src/components/HtmlPreview.tsx", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
 const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
 const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
@@ -60,15 +60,18 @@ const classesOf = (css) => [...new Set([...css.replace(/\/\*[\s\S]*?\*\//g, "").
 const inCode = (c) => new RegExp(`(className|classList|class=)[^\\n]*(?<![\\w-])${c}(?![\\w-])`).test(drawn);
 const undrawn = classesOf(legacy).filter((c) => !inCode(c));
 check("noUnusedAppRules", !undrawn.length, undrawn);
-const paneCss = readSrc("panes.css") + readSrc("editor.css");
+const paneCss = ["panes.css", "editor.css", "settings.css", "palette.css"].map(readSrc).join("\n");
 // Monaco draws these itself; editor.css themes them.
 const MONACO_CLASSES = ["monaco-editor", "margin-view-overlays", "line-numbers", "gutter-insert", "gutter-delete"];
 const undrawnPanes = classesOf(paneCss).filter((c) => c !== "app" && !MONACO_CLASSES.includes(c) && !inCode(c) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
 check("noUnusedPaneRules", !undrawnPanes.length, undrawnPanes);
-const allCss = ["styles.css", "shell.css", "panes.css", "editor.css", "overview.css"].map(readSrc).join("\n") + drawn;
+const allCss = ["styles.css", "shell.css", "panes.css", "editor.css", "overview.css", "settings.css", "palette.css"].map(readSrc).join("\n") + drawn;
 const unreadTokens = [...new Set([...legacy.matchAll(/^\s*(--[\w-]+):/gm)].map((m) => m[1]))].filter((t) => !allCss.includes(`var(${t}`) && !allCss.includes(`"${t}"`));
 check("noUnusedAppTokens", !unreadTokens.length, unreadTokens);
 check("noPaneRulesInAppStyles", !/\.(left|list-row|ed-tab|tab-strip|image-|md-preview|html-preview|editor-)/.test(legacy));
+// Every surface has moved: what stays in styles.css is the page itself, and the old surfaces are gone with their rules.
+check("appStylesAreOnlyThePage", classesOf(legacy).join() === "app" && !/^(button|input|select|kbd)\b/m.test(legacy), classesOf(legacy));
+check("oldSurfacesGone", !existsSync(join(root, "src", "components", "SettingsPage.tsx")) && !existsSync(join(root, "src", "components", "QuickOpen.tsx")) && !/\.settings-|\.quick-open/.test(readSrc("shell.css")));
 check("monacoNeverNamedDirectly", !/setTheme\(.*vs/.test(readSrc("components/EditorArea.tsx") + readSrc("App.tsx")) && !/#[0-9a-f]{3,8}\b/i.test(readSrc("lib/editorTheme.ts").replace(/"#00000000"/, "").replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "").replace(/`#\$\{[^`]*`/g, "").replace(/\^#\(/g, "")));
 
 if (process.argv.includes("--bundle")) {
@@ -196,7 +199,7 @@ try {
   const mouse = (x, y, type = "mouseMoved") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", clickCount: type === "mouseMoved" ? 0 : 1 });
   const hover = async (sel) => { const c = await center(sel); if (!c) throw new Error(`no ${sel}`); await mouse(c.x, c.y); return c; };
   const click = async (sel) => { const c = await hover(sel); await mouse(c.x, c.y, "mousePressed"); await mouse(c.x, c.y, "mouseReleased"); };
-  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", PageDown: "PageDown", PageUp: "PageUp", Home: "Home", End: "End", " ": "Space", p: "KeyP", w: "KeyW", b: "KeyB", o: "KeyO" };
+  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", PageDown: "PageDown", PageUp: "PageUp", Home: "Home", End: "End", Backspace: "Backspace", " ": "Space", p: "KeyP", w: "KeyW", b: "KeyB", o: "KeyO", k: "KeyK", ",": "Comma", "=": "Equal" };
   // mods: 2 is Ctrl, 8 is Shift.
   const key = async (k, vk, mods = 0) => {
     const base = { key: k, code: CODES[k], windowsVirtualKeyCode: vk, modifiers: mods };
@@ -532,20 +535,20 @@ try {
     const before = await ev(tabs);
     await key("p", 80, 2);
     await sleep(200);
-    d.quickOpen = await has("#overlays .quick-open");
+    d.quickOpen = await has("#overlays .pal");
     d.inert = await has(".app[inert]");
     await key("w", 87, 2);
     await sleep(100);
     d.pageIgnoresCtrlW = (await ev(tabs)) === before;
-    await ev(`document.querySelector(".qo-item")?.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:300,clientY:200}));1`);
+    await ev(`document.querySelector(".pal .mi")?.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:300,clientY:200}));1`);
     await sleep(120);
     d.menuOverQuickOpen = await has("#overlays .menu");
-    d.modalStays = await has("#overlays .quick-open");
+    d.modalStays = await has("#overlays .pal");
     await key("Escape", 27);
-    d.escClosesMenuOnly = !(await has("#overlays .menu")) && (await has("#overlays .quick-open"));
+    d.escClosesMenuOnly = !(await has("#overlays .menu")) && (await has("#overlays .pal"));
     await key("Escape", 27);
     await sleep(60);
-    d.closed = !(await has("#overlays .quick-open"));
+    d.closed = !(await has("#overlays .pal"));
     d.inertGone = !(await has(".app[inert]"));
     d.focusBackInMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
     return d;
@@ -769,7 +772,7 @@ try {
     await shot("shell-work");
     await click('.rail-nav[aria-label="Settings"]');
     await sleep(160);
-    d.settings = (await has(".settings-page")) && (await has('.rail-nav[aria-label="Settings"][aria-pressed="true"]')) && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
+    d.settings = (await has(".set-dlg")) && (await has('.rail-nav[aria-label="Settings"][aria-pressed="true"]')) && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
     return d;
   });
   await attempt("pageHeader", async () => {
@@ -1749,7 +1752,7 @@ try {
     imageDiff: async () => { await openDiff("docs/assets/logo.png"); await sleep(300); },
     message: async () => { await openPlain("assets/app.bin"); },
   };
-  for (const [theme, w, h, font] of [["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 18], ["dark", 800, 500, 10]]) {
+  for (const [theme, w, h, font] of panesPrefix.startsWith("surface") ? [] : [["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 18], ["dark", 800, 500, 10]]) {
     const views = {};
     await size(w, h);
     for (const [name, go] of Object.entries(VIEWS)) {
@@ -1767,6 +1770,489 @@ try {
     }
     const bad = Object.fromEntries(Object.entries(views).filter(([, v]) => !auditOk(v)));
     check(`panes-${theme}-${w}x${h}-${font}px`, !Object.keys(bad).length, Object.keys(bad).length ? bad : undefined);
+  }
+  await size(1440, 900);
+
+  // ---- Settings, the palette and the repository menu, on the real App. ----
+  const ROOT_REPO = "/home/user/src/shop-platform";
+  const fill = async (sel, value) => { await ev(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});e.focus();e.select();})();1`); await type(value); };
+  const pickOption = async (label) => ev(`(()=>{const e=[...document.querySelectorAll(".picker .mi")].find(m=>m.textContent.includes(${JSON.stringify(label)}));e.click();return 1})()`);
+  const setting = (path) => ev(`(()=>{const p=${JSON.stringify(path)}.split(".");return p.reduce((a,k)=>a[k],window.__store.getState().settings)})()`);
+  const openSettings = async () => { await key(",", 188, CTRL); await sleep(160); };
+  const clickText = (sel, label) => ev(`(()=>{const e=[...document.querySelectorAll(${JSON.stringify(sel)})].find(b=>b.textContent.trim()===${JSON.stringify(label)});e.click();return !!e})()`);
+  const inWindow = async (sel) => { const b = await box(sel); return !!b && b.t >= 0 && b.l >= 0 && b.b <= (await ev(`innerHeight`)) && b.r <= (await ev(`innerWidth`)); };
+
+  await attempt("surfaceSettingsModal", async () => {
+    await size(1440, 900);
+    await openApp(autoQ({ openFile: "src/server/orders/create.ts" }) + settingsQ({ theme: "system" }));
+    const d = { editor: await waitFor(".monaco-editor .view-lines", 15000) };
+    await sleep(500);
+    await ev(`document.querySelector(".monaco-editor").__keep=1;1`);
+    await click('.rail-nav[aria-label="Settings"]');
+    await sleep(160);
+    d.modal = await has("#overlays .dlg.set-dlg[aria-modal=true]");
+    d.inert = await has(".app[inert]");
+    d.noPage = !(await has(".settings-page"));
+    d.searchFocused = await focusIs(".set-q input");
+    d.navPressed = await has('.rail-nav[aria-label="Settings"][aria-pressed="true"]');
+    d.pageStaysBehind = (await ev(`getComputedStyle(document.querySelector(".work")).visibility`)) === "visible" && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
+    d.count = (await text(".set-count")) === "All settings are at their defaults";
+    d.resetOff = await has('.set-top .tgl[aria-disabled="true"]');
+    await shot("surface-settings");
+    await type("minimap");
+    await sleep(80);
+    d.filtered = (await count(".set-sec")) === 1 && (await count(".set-b .setting")) === 1 && (await count(".set-n")) === 1;
+    await type(" nothing matches this");
+    await sleep(80);
+    d.noMatch = (await text(".set-b .empty-line")) === "No settings match “minimap nothing matches this”.";
+    await key("Escape", 27);
+    await sleep(60);
+    d.escClears = (await ev(`document.querySelector(".set-q input").value`)) === "" && (await has(".set-dlg"));
+    d.focusKept = await focusIs(".set-q input");
+    await key("Escape", 27);
+    await sleep(60);
+    d.escCloses = !(await has(".set-dlg")) && !(await has(".app[inert]"));
+    d.focusBack = await focusIs('.rail-nav[aria-label="Settings"]');
+    await openSettings();
+    d.ctrlComma = await has(".set-dlg");
+    await key(",", 188, CTRL);
+    await sleep(60);
+    d.ctrlCommaCloses = !(await has(".set-dlg"));
+    await openSettings();
+    await mouse(4, 4);
+    await mouse(4, 4, "mousePressed");
+    await mouse(4, 4, "mouseReleased");
+    await sleep(60);
+    d.scrimCloses = !(await has(".set-dlg"));
+    await openSettings();
+    await click(".set-dlg .dlg-x");
+    await sleep(60);
+    d.closeButton = !(await has(".set-dlg"));
+    await openSettings();
+    await ev(`document.querySelector("[id='setting-theme']").focus();1`);
+    for (let i = 0; i < 90; i++) await key("Tab", 9);
+    d.focusTrapped = await ev(`!!document.activeElement.closest(".set-dlg")`);
+    return d;
+  });
+  await attempt("surfaceSettingsControls", async () => {
+    await openApp();
+    await openSettings();
+    const d = {};
+    // Select: applies at once, marks the row, and resets.
+    await click("[id='setting-theme']");
+    await sleep(120);
+    d.pickerOverDialog = await has("#overlays .picker");
+    await pickOption("Light");
+    await sleep(120);
+    d.themeApplied = (await ev(`document.documentElement.dataset.theme`)) === "light";
+    d.selectShows = (await text("[id='setting-theme'] .ell")) === "Light";
+    d.modified = (await count(".set-b .setting.modified")) === 1 && (await text(".set-count")) === "1 changed";
+    await click(".set-rst");
+    await sleep(100);
+    d.reset = (await setting("theme")) === "system" && (await count(".set-b .setting.modified")) === 0;
+    await sleep(400);
+    d.saved = (await lastSaved())?.theme === "system";
+    // Checkbox.
+    await click(".chk:has([id='setting-editor.minimap'])");
+    d.toggled = (await setting("editor.minimap")) === false;
+    await click(".chk:has([id='setting-editor.minimap'])");
+    // Number: valid as typed, clamped on leaving, stepped by the arrow keys.
+    await fill("[id='setting-uiFontSize']", "15");
+    d.applied = (await setting("uiFontSize")) === 15;
+    await fill("[id='setting-uiFontSize']", "99");
+    d.invalid = await has("[id='setting-uiFontSize'][aria-invalid=true]");
+    d.notApplied = (await setting("uiFontSize")) === 15;
+    await ev(`document.querySelector("[id='setting-uiFontSize']").blur();1`);
+    await sleep(60);
+    d.clamped = (await setting("uiFontSize")) === 18 && (await ev(`document.querySelector("[id='setting-uiFontSize']").value`)) === "18";
+    await ev(`document.querySelector("[id='setting-uiFontSize']").focus();1`);
+    await key("ArrowDown", 40);
+    await sleep(60);
+    d.stepped = (await setting("uiFontSize")) === 17;
+    d.fontApplied = (await ev(`document.documentElement.style.getPropertyValue("--ui-font-size")`)) === "17px";
+    await fill("[id='setting-uiFontSize']", "abc");
+    await ev(`document.querySelector("[id='setting-uiFontSize']").blur();1`);
+    await sleep(60);
+    d.garbageGoesBack = (await ev(`document.querySelector("[id='setting-uiFontSize']").value`)) === "17";
+    // Text: an emptied field goes back when it loses focus.
+    await fill("[id='setting-editor.fontFamily']", "Cascadia Mono");
+    d.textApplied = (await setting("editor.fontFamily")) === "Cascadia Mono";
+    await ev(`(()=>{const e=document.querySelector("[id='setting-editor.fontFamily']");e.focus();e.select();})();1`);
+    await key("Backspace", 8);
+    await ev(`document.querySelector("[id='setting-editor.fontFamily']").blur();1`);
+    await sleep(60);
+    d.textBack = (await ev(`document.querySelector("[id='setting-editor.fontFamily']").value`)) === "Cascadia Mono";
+    // The window zooms while Settings is open: Zoom is one of its rows.
+    await key("=", 187, CTRL);
+    await sleep(60);
+    d.zoomKey = (await setting("zoom")) === 1.1 && (await text("[id='setting-zoom'] .ell")) === "110%";
+    // Reset all asks twice, and keeps the repositories.
+    await clickText(".set-top .tgl", "Reset all");
+    await sleep(60);
+    d.asks = (await text(".set-top .tgl .btn-l")) === "Click again to reset all";
+    await clickText(".set-top .tgl", "Click again to reset all");
+    await sleep(100);
+    d.allReset = (await text(".set-count")) === "All settings are at their defaults" && (await setting("zoom")) === 1 && (await setting("repos")).length === 1;
+    return d;
+  });
+  await attempt("surfaceSettingsNav", async () => {
+    await openApp();
+    await openSettings();
+    const d = {};
+    const on = () => text(".set-n[aria-pressed=true] .btn-l");
+    d.startsAtTop = (await on()) === "Appearance";
+    d.sections = (await count(".set-n")) === 9;
+    await clickText(".set-n", "Keyboard shortcuts");
+    await sleep(100);
+    d.lastReachesTop = await ev(`(()=>{const s=document.querySelector('section[data-sec="shortcuts"]'),b=document.querySelector(".set-b");return Math.abs(s.offsetTop-b.scrollTop)<=8})()`);
+    d.chosen = (await on()) === "Keyboard shortcuts";
+    await clickText(".set-n", "Editor");
+    await sleep(100);
+    d.editorChosen = (await on()) === "Editor";
+    await ev(`(()=>{const b=document.querySelector(".set-b");b.scrollTop=document.querySelector('section[data-sec="history"]').offsetTop;})();1`);
+    await sleep(100);
+    d.spies = (await on()) === "History";
+    d.ctrlK = (await ev(`[...document.querySelectorAll(".keys-t tr")].some(r=>r.querySelector("kbd").textContent==="Ctrl+K")`));
+    d.ctrlB = (await ev(`[...document.querySelectorAll(".keys-t tr")].some(r=>r.querySelector("kbd").textContent==="Ctrl+B")`));
+    // A base branch is chosen from the branches, or typed.
+    await clickText(".set-n", "Repositories");
+    await sleep(100);
+    d.openBadge = (await text(".setting.repo .badge")) === "open";
+    d.repoPath = (await text(".setting.repo .setting-d.mono")) === ROOT_REPO;
+    d.automatic = /^Automatic: /.test((await text(".setting.repo .sel .ell")) ?? "");
+    await click(".setting.repo .sel");
+    await sleep(120);
+    await type("release/next");
+    await sleep(60);
+    await key("Enter", 13);
+    await sleep(120);
+    d.baseSaved = (await setting("base"))[ROOT_REPO] === "release/next";
+    d.baseShown = (await text(".setting.repo .sel .ell")) === "release/next";
+    await clickText(".setting.repo .btn.link", "Reset to default");
+    await sleep(100);
+    d.baseReset = (await setting("base"))[ROOT_REPO] === undefined;
+    await clickText(".setting.repo .btn.link", "Remove");
+    await sleep(160);
+    d.removed = (await text(".set-note")) === "No repositories yet. Add one from the Repository menu at the top left.";
+    return d;
+  });
+  await attempt("surfaceSettingsJson", async () => {
+    await openApp();
+    await openSettings();
+    await clickText(".set-top .btn.link", "Open settings.json");
+    await sleep(300);
+    const d = { closes: !(await has(".set-dlg")), tab: (await text(".tabs .tab.on .ell")) === "settings.json", header: await has(".head h1") };
+    d.list = await has(".left .ptabs");
+    return d;
+  });
+  await attempt("surfaceSettingsNoRepository", async () => {
+    await size(1440, 900);
+    await openApp("&none=1");
+    await openSettings();
+    const d = { opens: await has(".set-dlg"), empty: (await text(".set-note")) === "No repositories yet. Add one from the Repository menu at the top left." };
+    await clickText(".set-top .btn.link", "Open settings.json");
+    d.editor = await waitFor(".monaco-editor .view-lines", 15000);
+    await sleep(300);
+    d.tab = (await text(".tabs .tab.on .ell")) === "settings.json";
+    d.closed = !(await has(".set-dlg")) && !(await has(".ov-page"));
+    d.noHeader = !(await has(".work-top .head"));
+    d.noList = !(await has(".left")) && !(await has(".pane-edge"));
+    d.moveBand = (await box('.work-top [data-tauri-drag-region="deep"]'))?.b === 44;
+    d.fullPage = (await width(".ed-chrome")) === (await ev(`innerWidth`)) - (await width(".rail"));
+    d.nothingOn = !(await has('.rail-nav[aria-pressed="true"]'));
+    await shot("surface-settings-json-no-repository");
+    await click('.rail-nav[aria-label="Overview"]');
+    await sleep(120);
+    d.overviewShowsWelcome = await has(".ov-page .empty");
+    await openSettings();
+    await clickText(".set-top .btn.link", "Open settings.json");
+    await sleep(300);
+    d.sameTab = (await count(".tabs .tab")) === 1;
+    await key("w", 87, CTRL);
+    await sleep(160);
+    d.closingGoesHome = (await has(".ov-page .empty")) && (await count(".tabs .tab")) === 0;
+    await size(800, 500);
+    await openApp("&none=1");
+    await openSettings();
+    await clickText(".set-top .btn.link", "Open settings.json");
+    await waitFor(".monaco-editor .view-lines", 15000);
+    await sleep(300);
+    const a = await shellAudit();
+    d.narrow = auditOk(a) || a;
+    d.narrowNoDrawerButton = !(await has('.work-top [aria-label="Toggle list"]'));
+    await shot("surface-settings-json-no-repository-800x500");
+    await size(1440, 900);
+    return d;
+  });
+  await attempt("surfaceSettingsAutomation", async () => {
+    await openApp(autoQ({ openSettings: "1" }));
+    const d = { plain: await waitFor(".set-dlg", 5000) };
+    await openApp(autoQ({ openSettings: "minimap" }));
+    await waitFor(".set-dlg", 5000);
+    await sleep(100);
+    d.typed = (await ev(`document.querySelector(".set-q input").value`)) === "minimap" && (await count(".set-b .setting")) === 1;
+    await openApp(autoQ({ openSettings: "settings.json" }));
+    await waitFor(".tabs .tab", 5000);
+    await sleep(100);
+    d.file = (await text(".tabs .tab.on .ell")) === "settings.json" && !(await has(".set-dlg"));
+    await openApp(autoQ({ settingsPatch: { theme: "light" } }));
+    for (let i = 0; i < 40 && (await setting("theme")) !== "light"; i++) await sleep(100);
+    d.patch = (await setting("theme")) === "light";
+    return d;
+  });
+  await attempt("surfacePalette", async () => {
+    await size(1440, 900);
+    await openApp();
+    await toWork(1);
+    await ev(`document.querySelector(".rail .wt").focus();1`);
+    await key("k", 75, CTRL);
+    await sleep(160);
+    const d = { opens: await has("#overlays .dlg.pal[aria-modal=true]"), inert: await has(".app[inert]"), focused: await focusIs(".pal input") };
+    d.placeholder = (await ev(`document.querySelector(".pal input").placeholder`)) === "Search files, worktrees…";
+    d.sections = (await ev(`[...document.querySelectorAll(".pal .sec-l")].map(e=>e.textContent).join()`)) === "Commands,Worktrees";
+    d.rows = (await count(".pal .mi")) === 6;
+    d.keys = (await text(".pal .mi:nth-of-type(1) .keys, .pal .mi .keys")) === "CtrlShiftO";
+    d.state = await has(".pal .mi .st-tag");
+    d.foot = (await ev(`document.querySelector(".pal-foot").textContent`)) === "↑↓ to navigate↵ to select";
+    await shot("surface-palette");
+    await key("ArrowDown", 40);
+    d.arrows = (await text(".pal .mi.on .mi-l")) === "Open Settings";
+    await key("ArrowUp", 40);
+    await key("Tab", 9);
+    d.tabStays = await focusIs(".pal input");
+    await type("cart-rounding");
+    await sleep(60);
+    d.byBranch = (await count(".pal .mi")) === 1 && (await text(".pal .mi .mi-l")) === "agent-02";
+    await key("Enter", 13);
+    await sleep(300);
+    d.worktreeOpened = !(await has(".pal")) && (await text(".head h1 .ell")) === "agent-02";
+    await key("k", 75, CTRL);
+    await sleep(120);
+    await type("create");
+    await sleep(60);
+    d.fileSection = (await text(".pal .sec-l")) === "Files in every worktree" && (await text(".pal .mi .mi-d")) === "agent-01";
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.fileMenu = (await has("#overlays .menu .mi.on")) && (await has(".pal"));
+    await key("Escape", 27);
+    d.menuOnly = !(await has("#overlays .menu")) && (await has(".pal"));
+    await key("Enter", 13);
+    await sleep(500);
+    d.changeOpened = (await text(".tabs .tab.on .ell"))?.startsWith("create.ts") && (await text(".head h1 .ell")) === "agent-01";
+    await key("k", 75, CTRL);
+    await sleep(120);
+    await type("no such thing");
+    await sleep(60);
+    d.none = (await text(".pal .empty-line")) === "Nothing matches";
+    await key("Escape", 27);
+    await sleep(60);
+    d.escCloses = !(await has(".pal")) && !(await has(".app[inert]"));
+    await key("k", 75, CTRL);
+    await sleep(120);
+    await mouse(4, 4);
+    await mouse(4, 4, "mousePressed");
+    await mouse(4, 4, "mouseReleased");
+    await sleep(60);
+    d.scrimCloses = !(await has(".pal"));
+    await key("k", 75, CTRL);
+    await sleep(120);
+    await type("shortcuts");
+    await sleep(60);
+    await key("Enter", 13);
+    await sleep(200);
+    d.shortcutsSection = (await text(".set-n[aria-pressed=true] .btn-l")) === "Keyboard shortcuts";
+    await key("k", 75, CTRL);
+    await sleep(100);
+    d.noPaletteOverSettings = !(await has(".pal"));
+    await key("Escape", 27);
+    await sleep(60);
+    await click('.rail-top [aria-label="Search"]');
+    await sleep(120);
+    d.railButton = await has(".pal");
+    await key("Escape", 27);
+    await sleep(60);
+    await key("k", 75, CTRL);
+    await sleep(120);
+    await type("overview");
+    await sleep(60);
+    await key("Enter", 13);
+    await sleep(200);
+    d.overviewCommand = await has(".ov-page");
+    return d;
+  });
+  await attempt("surfaceQuickOpen", async () => {
+    await openApp();
+    await toWork(2);
+    await key("p", 80, CTRL);
+    await sleep(200);
+    const d = { opens: await has("#overlays .dlg.pal"), noSections: !(await has(".pal .sec-l")) };
+    d.placeholder = (await ev(`document.querySelector(".pal input").placeholder`)) === "Go to file (10 files)";
+    d.limit = (await count(".pal .mi")) === 10;
+    await type("refund");
+    await sleep(80);
+    d.matched = (await text(".pal .mi.on .mi-l")) === "refund.ts" && (await text(".pal .mi.on .mi-d")) === "src/server/orders";
+    d.marks = (await count(".pal .mi.on mark")) === 6;
+    await key("Enter", 13);
+    await sleep(300);
+    d.opened = (await text(".tabs .tab.on .ell")) === "refund.ts" && !(await has(".pal"));
+    await key("p", 80, CTRL);
+    await sleep(160);
+    await type("zzzz");
+    await sleep(80);
+    d.none = (await text(".pal .empty-line")) === "No matching files";
+    await key("Escape", 27);
+    await openApp("&none=1");
+    await key("p", 80, CTRL);
+    await sleep(120);
+    d.noRepoNoQuickOpen = !(await has(".pal"));
+    await click('.rail-top [aria-label="Search"]');
+    await sleep(120);
+    d.noRepoPalette = (await ev(`[...document.querySelectorAll(".pal .sec-l")].map(e=>e.textContent).join()`)) === "Commands";
+    await type("settings");
+    await sleep(60);
+    await key("Enter", 13);
+    await sleep(160);
+    d.noRepoCommandRuns = await has(".set-dlg");
+    return d;
+  });
+  await attempt("surfaceRepoPicker", async () => {
+    await size(800, 500);
+    await openApp(settingsQ({ repos: [ROOT_REPO, "/home/user/src/not-a-repo"] }));
+    await click(".t-repo");
+    await sleep(160);
+    const d = { broken: (await text(".picker .repo-ed"))?.startsWith("⚠ /home/user/src/not-a-repo is not a git repository") };
+    d.closedForm = (await ev(`document.querySelectorAll(".picker-f .btn")[1].getAttribute("aria-expanded")`)) === "false";
+    await click(".picker-f .btn:nth-of-type(2)");
+    await sleep(160);
+    d.openForm = (await ev(`document.querySelectorAll(".picker-f .btn")[1].getAttribute("aria-expanded")`)) === "true";
+    d.formFits = await inWindow(".picker");
+    await type("user@denied-box");
+    await key("Tab", 9);
+    await type("~/src/example");
+    await key("Enter", 13);
+    await sleep(300);
+    d.error = (await text(".repo-err"))?.startsWith("ssh user@denied-box: user@denied-box: Permission denied (publickey).");
+    d.errorAnnounced = await has('.repo-err[role="alert"]');
+    d.staysOpen = await has(".picker");
+    d.errorFits = await inWindow(".picker");
+    d.buttonsLive = !(await has('.picker-f [aria-disabled="true"]'));
+    await shot("surface-repo-error-800x500");
+    await fill('.picker-f input[placeholder^="or paste"]', "C:\\Users\\user\\src\\not-a-repo");
+    await key("Enter", 13);
+    await sleep(300);
+    d.pasteError = (await text(".repo-err"))?.includes("is not a git repository");
+    const before = await ipc("open_repo");
+    await fill('.picker-f input[placeholder^="or paste"]', "   ");
+    await key("Enter", 13);
+    await sleep(100);
+    d.blankIgnored = (await ipc("open_repo")) === before;
+    await fill('.picker-f input[placeholder^="or paste"]', "\\\\wsl.localhost\\Ubuntu\\home\\user\\src\\example");
+    await key("Enter", 13);
+    await sleep(400);
+    d.pasted = !(await has(".picker"));
+    await size(1440, 900);
+    return d;
+  });
+  await attempt("surfaceScope", async () => {
+    await openApp(autoQ({ openFile: "src/server/orders/create.ts" }));
+    await waitFor(".monaco-editor .view-lines", 15000);
+    await openSettings();
+    await click("[id='setting-theme']");
+    await sleep(120);
+    const stray = `[...document.querySelectorAll("button,input,select,kbd")].filter(e=>!e.closest(".ui-root,.monaco-editor,.monaco-diff-editor")).map(e=>e.tagName+"."+e.className).slice(0,6)`;
+    const d = { settings: !(await ev(stray)).length || (await ev(stray)) };
+    await key("Escape", 27);
+    await key("Escape", 27);
+    await sleep(60);
+    await key("k", 75, CTRL);
+    await sleep(120);
+    d.palette = !(await ev(stray)).length || (await ev(stray));
+    d.noOldClasses = !(await has(".quick-open, .qo-item, .overlay, .pref, .settings-page, .icon-button, .toggle, .pill"));
+    return d;
+  });
+  await attempt("surfaceMotion", async () => {
+    await openApp();
+    const seen = new Map(), bad = new Map();
+    const grab = async () => { for (const a of await ev(CLASSIFY)) { seen.set(a.key, 1); if (a.bad) bad.set(a.bad, a.where); } };
+    const sample = async () => { for (let i = 0; i < 5; i++) { await grab(); await sleep(20); } };
+    await key("k", 75, CTRL);
+    await sample();
+    await key("Escape", 27);
+    await key("p", 80, CTRL);
+    await sample();
+    await key("Escape", 27);
+    await key(",", 188, CTRL);
+    await sample();
+    await click("[id='setting-theme']");
+    await sample();
+    await key("Escape", 27);
+    await key("Escape", 27);
+    await click(".t-repo");
+    await sample();
+    await click(".picker-f .btn:nth-of-type(2)");
+    await sample();
+    return { allowed: !bad.size, bad: bad.size ? [...bad.keys()].join() : true, fades: seen.has("animation:fade-in") };
+  });
+  // Each surface at both ends of the window, in both themes, at the UI font's limits, and zoomed in past the 800px band.
+  for (const [theme, w, h, font] of [["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 800, 500, 10], ["dark", 800, 500, 18], ["light", 800, 500, 18], ["dark", 640, 400, 13]]) {
+    const name = `surface-${theme}-${w}x${h}-${font}px`;
+    await attempt(name, async () => {
+      await size(w, h);
+      const q = `${settingsQ({ repos: [ROOT_REPO, "/home/user/src/not-a-repo"], base: { [ROOT_REPO]: "main" } })}&font=${font}${theme === "light" ? "&theme=light" : ""}`;
+      await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=${theme}${q.replace("&theme=light", "")}` });
+      await waitFor(".rail .wt:not(.skel)", 60000);
+      await sleep(400);
+      const audited = async (sel, tag) => {
+        const a = await ev(audit(sel));
+        const page = await ev(`document.documentElement.scrollWidth<=innerWidth`);
+        await shot(`${name}-${tag}`);
+        return (!a.failCount && !a.overflow.length && page && (await inWindow(sel))) || { fails: a.fails, overflow: a.overflow, page, box: await box(sel) };
+      };
+      const d = {};
+      await openSettings();
+      await clickText(".set-n", "Editor");
+      await sleep(100);
+      await ev(`window.__store.getState().updateSettings({uiFontSize:${font}+0,editor:{...window.__store.getState().settings.editor,tabSize:2}});1`);
+      await sleep(100);
+      d.settings = await audited(".set-dlg", "settings");
+      await clickText(".set-n", "Repositories");
+      await sleep(100);
+      d.repositories = await audited(".set-dlg", "repositories");
+      await clickText(".set-n", "Keyboard shortcuts");
+      await sleep(100);
+      d.shortcuts = await audited(".set-dlg", "shortcuts");
+      d.noBodyScrollSideways = await ev(`(()=>{const b=document.querySelector(".set-b");return b.scrollWidth<=b.clientWidth})()`);
+      // The nav is a strip below the 800px band; above it every section's name fits.
+      if (w >= 800) d.navNamesFit = await ev(`[...document.querySelectorAll(".set-n")].every(n=>n.scrollWidth<=n.clientWidth)&&(()=>{const n=document.querySelector(".set-nav");return n.scrollWidth<=n.clientWidth})()`);
+      await key("Escape", 27);
+      await sleep(60);
+      await key("k", 75, CTRL);
+      await sleep(120);
+      d.palette = await audited(".pal", "palette");
+      await type("create");
+      await sleep(80);
+      d.paletteFile = await audited(".pal", "palette-file");
+      await key("Escape", 27);
+      await sleep(60);
+      await key("p", 80, CTRL);
+      await sleep(200);
+      await type("ref");
+      await sleep(80);
+      d.quickOpen = await audited(".pal", "quick-open");
+      await key("Escape", 27);
+      await sleep(60);
+      await click(".t-repo");
+      await sleep(160);
+      await click(".picker-f .btn:nth-of-type(2)");
+      await sleep(120);
+      await type("user@denied-box");
+      await key("Tab", 9);
+      await type("~/src/example");
+      await key("Enter", 13);
+      await sleep(250);
+      d.repo = await audited(".picker", "repo");
+      return d;
+    });
   }
   await size(1440, 900);
 

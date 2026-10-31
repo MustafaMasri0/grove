@@ -88,7 +88,8 @@ paste a path, or use **Connect over SSH…**.
   then origin's), else the default branch of origin (`origin/HEAD`).
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base),
   History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens
-  Quick Open.
+  Quick Open. Ctrl+K finds worktrees, the files each one has changed, and
+  commands.
 - **Changed files** in Changes and in a commit show as a flat list or as a
   folder tree (the toggle next to the filter). The tree counts the files in
   each folder and joins single-child folders (`src/main/java`), like VS Code.
@@ -123,7 +124,7 @@ paste a path, or use **Connect over SSH…**.
   options, the repository list and each repository's base branch, and a list of
   shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
 
-Shortcuts: Ctrl+, settings, Ctrl+P quick open, Ctrl+Shift+F search,
+Shortcuts: Ctrl+, settings, Ctrl+K search, Ctrl+P quick open, Ctrl+Shift+F search,
 Ctrl+Shift+O worktrees overview, Ctrl+B fold the rail, Ctrl+F find,
 Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0

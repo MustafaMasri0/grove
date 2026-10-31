@@ -129,7 +129,7 @@ export function EditorArea() {
   const pinTab = useStore((s) => s.pinTab);
   const blameOn = useStore((s) => s.blame);
   const toggleBlame = useStore((s) => s.toggleBlame);
-  const page = useStore((s) => (s.settingsOpen ? "settings" : s.view === "overview" ? "overview" : null));
+  const covered = useStore((s) => s.view === "overview");
 
   const diffHost = useRef<HTMLDivElement>(null);
   const codeHost = useRef<HTMLDivElement>(null);
@@ -417,7 +417,7 @@ export function EditorArea() {
   }, [active?.spec.type === "file" ? active.spec.line : undefined]);
 
   const isDiff = active?.spec.type === "diff";
-  const ready = activeDoc?.state === "ready" && !page;
+  const ready = activeDoc?.state === "ready" && !covered;
   const isMarkdown = active?.spec.type === "file" && languageFor(active.spec.path) === "markdown";
   const showPreview = isMarkdown && mdPreview && ready;
   const kind = active && (active.spec.type === "file" || active.spec.type === "diff") ? viewKind(active.spec.path) : "text";
@@ -454,10 +454,10 @@ export function EditorArea() {
     }
   });
 
-  // Settings and the overview have no editor; the hidden code editor must not take focus.
-  editorCommands.focus = () => !page && (isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current)?.focus();
+  // The overview has no editor; the hidden code editor must not take focus.
+  editorCommands.focus = () => !covered && (isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current)?.focus();
   editorCommands.run = (id) => {
-    if (page) return;
+    if (covered) return;
     const ed = isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current;
     ed?.focus();
     ed?.getAction(id)?.run();

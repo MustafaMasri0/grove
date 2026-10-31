@@ -67,9 +67,9 @@ export function Row({ lead, trail, on, menu, indent, role = "option", disabled, 
   );
 }
 
-export function SettingRow(p: { label: string; description: string; control: ReactNode; htmlFor?: string; modified?: boolean; mono?: boolean; after?: ReactNode; extra?: ReactNode; reset?: ReactNode }) {
+export function SettingRow(p: { className?: string; label: string; description: string; control: ReactNode; htmlFor?: string; modified?: boolean; mono?: boolean; after?: ReactNode; extra?: ReactNode; reset?: ReactNode }) {
   return (
-    <div className={cx("setting", p.modified && "modified")}>
+    <div className={cx("setting", p.modified && "modified", p.className)}>
       <span className="setting-l">
         <span className="setting-t">
           <label htmlFor={p.htmlFor}>

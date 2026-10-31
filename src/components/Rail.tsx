@@ -30,14 +30,13 @@ function FoldButton({ label, className }: { label: string; className?: string })
 }
 
 function RailTop({ icons }: { icons: boolean }) {
-  const hasRepo = useStore((s) => !!s.repo);
-  const setQuickOpen = useStore((s) => s.setQuickOpen);
+  const setPalette = useStore((s) => s.setPalette);
   return (
     <div className="rail-top" data-tauri-drag-region="deep">
       <RepoPicker />
       {!icons && (
         <>
-          <Button kind="ghost" icon="search" label="Search files" tip="Search files (Ctrl+P)" disabled={hasRepo ? undefined : "Add a repository first"} onClick={() => setQuickOpen(true)} />
+          <Button kind="ghost" icon="search" label="Search" tip="Search (Ctrl+K)" onClick={() => setPalette("all")} />
           <FoldButton label="Collapse sidebar" />
         </>
       )}
@@ -97,7 +96,7 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
   const lastChange = useStore((s) => s.lastChange);
   const actions = useStore((s) => s.actions);
   const cwd = useStore((s) => s.cwd);
-  const atWork = useStore((s) => s.view === "work" && !s.settingsOpen);
+  const atWork = useStore((s) => s.view === "work");
   const loading = useStore(railLoading);
   const now = useNow(5_000);
   const [menuPath, setMenuPath] = useState<string | null>(null);
@@ -165,13 +164,11 @@ export function Rail() {
   const icons = useStore(railIcons);
   const width = useStore((s) => s.settings.railWidth);
   const narrow = useStore((s) => isNarrow(s.appWidth));
-  const atOverview = useStore((s) => s.view === "overview" && !s.settingsOpen);
+  const atOverview = useStore((s) => s.view === "overview");
   const settingsOpen = useStore((s) => s.settingsOpen);
   const setView = useStore((s) => s.setView);
   const openSettings = useStore((s) => s.openSettings);
-  const closeSettings = useStore((s) => s.closeSettings);
-  const setQuickOpen = useStore((s) => s.setQuickOpen);
-  const hasRepo = useStore((s) => !!s.repo);
+  const setPalette = useStore((s) => s.setPalette);
   const noRepo = useStore((s) => s.settingsLoaded && !s.settings.lastRepo && !s.repo);
   const loading = useStore(railLoading);
   const [query, setQuery] = useState("");
@@ -189,7 +186,7 @@ export function Rail() {
       <RailTop icons={icons} />
       <div>
         <Nav icon="home" label="Overview" tip="Overview (Ctrl+Shift+O)" on={atOverview} onClick={() => setView("overview")} />
-        {icons && <Nav icon="search" label="Search" tip="Search files (Ctrl+P)" onClick={() => hasRepo && setQuickOpen(true)} />}
+        {icons && <Nav icon="search" label="Search" tip="Search (Ctrl+K)" onClick={() => setPalette("all")} />}
       </div>
       <div className="rail-filter">
         <Field quiet placeholder="Filter worktrees" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -198,7 +195,7 @@ export function Rail() {
       {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} query={query} changesOnly={changesOnly} onClear={clear} />}
       <div className="rail-foot">
         {icons && !narrow && <FoldButton label="Expand sidebar" className="rail-nav" />}
-        <Nav icon="gear" label="Settings" tip="Settings (Ctrl+,)" on={settingsOpen} onClick={() => (settingsOpen ? closeSettings() : openSettings())} />
+        <Nav icon="gear" label="Settings" tip="Settings (Ctrl+,)" on={settingsOpen} onClick={() => openSettings()} />
       </div>
     </aside>
   );

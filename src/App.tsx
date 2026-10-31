@@ -8,10 +8,10 @@ import { previewForTest } from "./components/HtmlPreview";
 import { foldRail } from "./components/foldRail";
 import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
-import { QuickOpen } from "./components/QuickOpen";
+import { Palette } from "./components/Palette";
 import { dragWidth, nudgeWidth } from "./components/paneWidth";
 import { Rail } from "./components/Rail";
-import { SettingsPage } from "./components/SettingsPage";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { WindowControls } from "./components/WindowControls";
 import { WorkHeader } from "./components/WorkHeader";
 import { WorktreesPage } from "./components/WorktreesPage";
@@ -22,7 +22,7 @@ import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
 import { bandOf, commitInList, isNarrow } from "./lib/shell";
 import { effectiveDark, setActionProgress, useStore, type LeftTab } from "./store";
-import { Banner, isKeyboardEcho, keepOverlaysOnBlur, OverlayHost, Resizer, Spinner } from "./ui";
+import { Banner, closeOverlay, isKeyboardEcho, keepOverlaysOnBlur, OverlayHost, Resizer, Spinner } from "./ui";
 import { topEntry } from "./ui/overlayStack";
 import "./shell.css";
 
@@ -43,13 +43,20 @@ function onKeyDown(e: KeyboardEvent) {
   const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const inEditor = !!(document.activeElement as HTMLElement | null)?.closest?.(".monaco-editor");
-  const atWork = s.view === "work" && !s.settingsOpen;
+  const atWork = s.view === "work";
   const tabs: Record<string, LeftTab> = { "1": "changes", "2": "history", "3": "explorer" };
 
   // An open overlay had the key first and passed on it: the page behind must not act. Browser shortcuts stay off.
-  if (topEntry()) {
-    if (key !== "F3" && !(ctrl && (key === "s" || key === "u" || key === "p"))) return;
-  } else if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
+  const top = topEntry();
+  const zoomKey = ctrl && (key === "=" || key === "+" || key === "-" || key === "0");
+  if (top) {
+    // Settings owns these two: Ctrl+, opens and closes it, and Zoom is one of its rows, so the window still zooms behind it.
+    const settingsOnTop = s.settingsOpen && top.kind === "dialog";
+    if (settingsOnTop && ctrl && !e.shiftKey && key === ",") closeOverlay();
+    else if (settingsOnTop && zoomKey) key === "0" ? setZoom(1) : stepZoom(key === "-" ? -1 : 1);
+    else if (key !== "F3" && !(ctrl && (key === "s" || key === "u" || key === "p"))) return;
+  } else if (ctrl && !e.shiftKey && key === "k") s.setPalette("all");
+  else if (ctrl && !e.shiftKey && key === "p") s.setPalette("files");
   else if (ctrl && e.shiftKey && key === "o") s.setView("overview");
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
@@ -62,7 +69,7 @@ function onKeyDown(e: KeyboardEvent) {
   }
   else if (ctrl && !e.shiftKey && tabs[key]) s.setLeftTab(tabs[key]);
   else if (ctrl && !e.shiftKey && key === "b") isNarrow(s.appWidth) ? s.toggleList() : foldRail();
-  else if (ctrl && !e.shiftKey && key === ",") s.settingsOpen ? s.closeSettings() : s.openSettings();
+  else if (ctrl && !e.shiftKey && key === ",") s.openSettings();
   else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) void s.refresh();
   // While an image is shown these zoom the image, not the window.
   else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);
@@ -78,15 +85,18 @@ function onKeyDown(e: KeyboardEvent) {
 
 export function App() {
   const settingsLoaded = useStore((s) => s.settingsLoaded);
-  const quickOpen = useStore((s) => s.quickOpen);
+  const palette = useStore((s) => s.palette);
+  const settingsOpen = useStore((s) => s.settingsOpen);
   const repo = useStore((s) => s.repo);
   const leftWidth = useStore((s) => s.settings.leftWidth);
   const commitWidth = useStore((s) => s.settings.commitPaneWidth);
   const appWidth = useStore((s) => s.appWidth);
   const narrow = isNarrow(appWidth);
+  // With no repository the work view has only settings.json to show, so the editor takes the whole page.
+  const editorOnly = narrow || !repo;
   const listOpen = useStore((s) => s.listOpen);
   const commitColumn = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null && !commitInList(s.appWidth));
-  const page = useStore((s) => (s.settingsOpen ? "settings" : s.view === "overview" ? "overview" : null));
+  const overview = useStore((s) => s.view === "overview");
   const dark = useStore(effectiveDark);
   const zoom = useStore((s) => s.settings.zoom);
   const uiFontSize = useStore((s) => s.settings.uiFontSize);
@@ -162,7 +172,7 @@ export function App() {
     document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
   }, [uiFontSize]);
 
-  const columns = narrow ? "minmax(0, 1fr)" : commitColumn ? `minmax(160px, ${leftWidth}px) 0 minmax(160px, ${commitWidth}px) 0 minmax(320px, 1fr)` : `minmax(160px, ${leftWidth}px) 0 minmax(320px, 1fr)`;
+  const columns = editorOnly ? "minmax(0, 1fr)" : commitColumn ? `minmax(160px, ${leftWidth}px) 0 minmax(160px, ${commitWidth}px) 0 minmax(320px, 1fr)` : `minmax(160px, ${leftWidth}px) 0 minmax(320px, 1fr)`;
   return (
     <>
       <div ref={appEl} className="app" data-size={bandOf(appWidth)} data-overlay-inert="">
@@ -172,13 +182,15 @@ export function App() {
           <main className="main" id="main">
             <Notices />
             <div className="page-stack">
-              <div className="work" data-covered={page ? "" : undefined} inert={!!page}>
+              <div className="work" data-covered={overview ? "" : undefined} inert={overview}>
                 <WorkHeader />
                 <div className="work-body" style={{ gridTemplateColumns: columns }}>
-                  <div className="list-clip" data-open={!narrow || listOpen} inert={narrow && !listOpen}>
-                    {repo ? <LeftPane /> : <aside className="ui-root left" />}
-                  </div>
-                  {!narrow && <PaneEdge width="leftWidth" label="Resize the list pane" />}
+                  {repo && (
+                    <div className="list-clip" data-open={!narrow || listOpen} inert={narrow && !listOpen}>
+                      <LeftPane />
+                    </div>
+                  )}
+                  {!editorOnly && <PaneEdge width="leftWidth" label="Resize the list pane" />}
                   {commitColumn && (
                     <>
                       <div className="ui-root commit-col">
@@ -190,13 +202,13 @@ export function App() {
                   <EditorArea />
                 </div>
               </div>
-              {page === "overview" && <WorktreesPage />}
-              {page === "settings" && <SettingsPage />}
+              {overview && <WorktreesPage />}
             </div>
           </main>
         </div>
         <WindowControls />
-        {quickOpen && repo && <QuickOpen />}
+        {palette && <Palette scope={palette} />}
+        {settingsOpen && <SettingsDialog />}
       </div>
       <OverlayHost />
     </>
@@ -274,7 +286,7 @@ async function runAutomation() {
     else if (auto.openSettings !== "1") useStore.getState().setSettingsQuery(auto.openSettings);
   }
   if (auto.settingsPatch && typeof auto.settingsPatch === "object") {
-    // Like changing them on the Settings page, a moment after everything above has rendered.
+    // Like changing them in Settings, a moment after everything above has rendered.
     await wait(2000);
     const s = useStore.getState();
     const patch = auto.settingsPatch as Record<string, unknown>;
@@ -486,14 +498,14 @@ async function openMenuForTest(spec: string) {
         return open(await find(".left .lbox .row", (els) => els.filter(shown)[1]));
       }
       case "quickopen":
-        s.setQuickOpen(true);
+        s.setPalette("files");
         if (how === "key") {
-          const input = await find(".quick-open input");
-          await find(".qo-item");
+          const input = await find(".pal input");
+          await find(".pal .mi");
           input.dispatchEvent(new KeyboardEvent("keydown", { key: "ContextMenu", code: "ContextMenu", bubbles: true, cancelable: true }));
           return;
         }
-        return open(await find(".qo-item", (els) => els[1] ?? els[0]));
+        return open(await find(".pal .mi", (els) => els[1] ?? els[0]));
       case "tab":
         return open(await find(".tabs .tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
       case "repo":

@@ -48,7 +48,7 @@ export interface OverlayProps extends HTMLAttributes<HTMLDivElement> {
   keys?: (e: KeyboardEvent) => boolean;
   /** Asked to close: the owner stops rendering it. */
   onClose: () => void;
-  /** Positions it, on opening and when the window resizes. */
+  /** Positions it, on opening and when it or the window resizes. */
   place?: (el: HTMLElement) => void;
   /** What takes focus on opening; the overlay itself by default. */
   focus?: (el: HTMLElement) => HTMLElement | null;
@@ -79,8 +79,12 @@ export function Overlay({ kind, modal, transient, anchor, toggledByAnchor, retur
     (focus?.(el.current!) ?? el.current!).focus();
     const replace = () => live.current.place?.(el.current!);
     window.addEventListener("resize", replace);
+    // Content that grows, like the SSH form in the repository menu, must stay inside the window.
+    const resized = new ResizeObserver(replace);
+    if (live.current.place) resized.observe(el.current!);
     return () => {
       window.removeEventListener("resize", replace);
+      resized.disconnect();
       removeEntry(entry);
     };
     // One registration for the overlay's life; `live` carries what changes.

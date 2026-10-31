@@ -1,4 +1,4 @@
-// What the Settings page offers: each setting's label, description and control,
+// What Settings offers: each setting's label, description and control,
 // grouped in sections, and the search that filters them.
 import { RANGES, type SettingPath } from "./settings";
 

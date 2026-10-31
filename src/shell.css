@@ -500,11 +500,6 @@
   transition: transform 160ms ease, visibility 0s 160ms;
 }
 
-/* Settings keeps its own head for now: the top of the page is a window band all the same. */
-.settings-head {
-  padding-right: calc(var(--wc) + 12px);
-}
-
 /* A page with no head of its own still has to move the window. */
 .page-band {
   flex: none;
@@ -546,4 +541,25 @@
   .list-clip {
     transition: none !important;
   }
+}
+
+/* The repository menu's footer. Rows, fields and buttons come from src/ui. */
+.ui-root .repo-ed {
+  color: var(--err);
+}
+
+.ui-root .repo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ui-root .repo-err {
+  padding: 2px 4px;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--err);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }

@@ -19,6 +19,8 @@ import {
 import { uncommittedCount } from "./lib/changes";
 import { coalesce } from "./lib/coalesce";
 import { shortSha } from "./lib/format";
+import type { PaletteScope } from "./lib/palette";
+import type { SectionId } from "./lib/settingsSchema";
 import { bandOf, isNarrow } from "./lib/shell";
 import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readablePaths, type ActivityEvent, type OverviewSort } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
@@ -101,6 +103,8 @@ interface State {
   /** Bumped after each write of settings.json. */
   settingsSaved: number;
   settingsQuery: string;
+  /** The section Settings opens at. */
+  settingsSection: SectionId;
   repos: Record<string, RepoInfo | { error: string }>;
   repo: RepoInfo | null;
   repoError: string | null;
@@ -150,7 +154,8 @@ interface State {
   tick: number;
   tabs: Tab[];
   activeTab: string | null;
-  quickOpen: boolean;
+  /** What the palette is searching while it is open: everything (Ctrl+K), or the worktree's files (Ctrl+P). */
+  palette: PaletteScope | null;
   searchFocus: number;
   systemDark: boolean;
   /** `owner/repo` when the repository's origin is on github.com. */
@@ -201,11 +206,12 @@ interface State {
   closeTabs(ids: string[], keep?: string): void;
   activateTab(id: string): void;
   cycleTab(delta: number): void;
-  setQuickOpen(open: boolean): void;
+  setPalette(scope: PaletteScope | null): void;
   focusSearch(): void;
   setSystemDark(dark: boolean): void;
   setView(view: View): void;
-  openSettings(): void;
+  /** With a section, shows that section, unfiltered. */
+  openSettings(section?: SectionId): void;
   closeSettings(): void;
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
@@ -348,6 +354,9 @@ export const useStore = create<State>()((set, get) => {
 
   const showWork = () => set({ view: "work", settingsOpen: false });
 
+  /** With no repository the work view exists only for settings.json: without a tab it goes back to the welcome page. */
+  const afterClosing = (rest: readonly Tab[]) => (!get().repo && rest.length === 0 ? { view: "overview" as const } : {});
+
   /** Watches every worktree of the repository, for refreshes and live activity. */
   const watchWorktrees = () => {
     const { repo, worktrees } = get();
@@ -409,6 +418,7 @@ export const useStore = create<State>()((set, get) => {
     settingsLoaded: false,
     settingsSaved: 0,
     settingsQuery: "",
+    settingsSection: "appearance",
     repos: {},
     repo: null,
     repoError: null,
@@ -447,7 +457,7 @@ export const useStore = create<State>()((set, get) => {
     tick: 0,
     tabs: [],
     activeTab: null,
-    quickOpen: false,
+    palette: null,
     searchFocus: 0,
     systemDark: true,
     githubRepo: null,
@@ -823,7 +833,7 @@ export const useStore = create<State>()((set, get) => {
       if (idx < 0) return;
       const rest = tabs.filter((t) => t.id !== id);
       const nextActive = activeTab === id ? (rest[idx] ?? rest[idx - 1])?.id ?? null : activeTab;
-      set({ tabs: rest, activeTab: nextActive });
+      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
     },
 
     closeTabs(ids, keep) {
@@ -837,7 +847,7 @@ export const useStore = create<State>()((set, get) => {
         const before = tabs.slice(0, tabs.findIndex((t) => t.id === activeTab)).filter((t) => !gone.has(t.id));
         nextActive = (keep && !gone.has(keep) ? keep : before.at(-1)?.id ?? rest[0]?.id) ?? null;
       }
-      set({ tabs: rest, activeTab: nextActive });
+      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
     },
 
     activateTab(id) {
@@ -852,8 +862,9 @@ export const useStore = create<State>()((set, get) => {
       set({ activeTab: tabs[(idx + delta + tabs.length) % tabs.length].id });
     },
 
-    setQuickOpen(open) {
-      set({ quickOpen: open });
+    setPalette(scope) {
+      // Quick Open lists a worktree's files: with no repository there is nothing to go to.
+      if (scope !== "files" || get().repo) set({ palette: scope });
     },
 
     focusSearch() {
@@ -868,8 +879,8 @@ export const useStore = create<State>()((set, get) => {
       set({ view, settingsOpen: false });
     },
 
-    openSettings() {
-      set({ settingsOpen: true });
+    openSettings(section) {
+      set({ settingsOpen: true, settingsSection: section ?? "appearance", ...(section ? { settingsQuery: "" } : {}) });
     },
 
     closeSettings() {

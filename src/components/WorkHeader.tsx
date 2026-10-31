@@ -118,6 +118,17 @@ function PushButton() {
 
 /** The worktree's page header. Its empty space moves the window. */
 export function WorkHeader() {
+  const hasRepo = useStore((s) => !!s.repo);
+  if (hasRepo) return <RepoHeader />;
+  // settings.json with no repository: nothing to name here, but the top of the page still moves the window.
+  return (
+    <div className="ui-root work-top">
+      <div className="page-band" data-tauri-drag-region="deep" />
+    </div>
+  );
+}
+
+function RepoHeader() {
   const worktrees = useStore((s) => s.worktrees);
   const cwd = useStore((s) => s.cwd);
   const viewBranch = useStore((s) => s.viewBranch);

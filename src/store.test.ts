@@ -192,6 +192,42 @@ describe("what fills the window", () => {
     useStore.setState({ repo: null, cwd: null });
     await useStore.getState().openSettingsFile();
     expect(titles()).toEqual(["settings.json"]);
+    expect(useStore.getState().view).toBe("work");
+  });
+
+  it("closing settings.json with no repository goes back to the welcome page", async () => {
+    useStore.setState({ repo: null, cwd: null });
+    await useStore.getState().openSettingsFile();
+    useStore.getState().closeTab("app:settings.json");
+    expect(useStore.getState()).toMatchObject({ view: "overview", activeTab: null });
+  });
+
+  it("closing the last tab of a repository stays on its work view", async () => {
+    useStore.setState({ repo: { id: "r" } as RepoInfo, cwd: "/a" });
+    await useStore.getState().openSettingsFile();
+    useStore.getState().closeTabs(["app:settings.json"]);
+    expect(useStore.getState().view).toBe("work");
+  });
+
+  it("settings open at a section, unfiltered", () => {
+    useStore.setState({ settingsQuery: "minimap" });
+    useStore.getState().openSettings();
+    expect(useStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: "appearance", settingsQuery: "minimap" });
+    useStore.getState().openSettings("shortcuts");
+    expect(useStore.getState()).toMatchObject({ settingsSection: "shortcuts", settingsQuery: "" });
+  });
+
+  it("Quick Open needs a repository; the palette does not", () => {
+    useStore.setState({ repo: null, palette: null });
+    useStore.getState().setPalette("files");
+    expect(useStore.getState().palette).toBeNull();
+    useStore.getState().setPalette("all");
+    expect(useStore.getState().palette).toBe("all");
+    useStore.getState().setPalette(null);
+    useStore.setState({ repo: { id: "r" } as RepoInfo });
+    useStore.getState().setPalette("files");
+    expect(useStore.getState().palette).toBe("files");
+    useStore.getState().setPalette(null);
   });
 });
 
