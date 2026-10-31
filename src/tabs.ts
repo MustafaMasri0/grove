@@ -1,7 +1,7 @@
 // Builds editor tabs for the things the left pane can open.
 import type { ChangedFile, Source, StatusEntry } from "./api";
 import { shortSha, splitPath } from "./lib/format";
-import type { Tab, TabSpec } from "./store";
+import type { Tab } from "./store";
 
 type NewTab = Omit<Tab, "preview" | "repo" | "cwd">;
 
@@ -51,20 +51,15 @@ export function fileTab(cwd: string, path: string, rev: string | null, line?: nu
   };
 }
 
-/** Settings and settings.json: not tied to a repository, kept when it changes. */
+/** settings.json: not tied to a repository, kept when it changes. */
 export function isAppTab(t: Tab): boolean {
   return t.repo === "";
-}
-
-/** Tabs the app draws itself (Settings, Worktrees), rather than an editor showing a file. */
-export function isPage(spec: TabSpec): spec is Extract<TabSpec, { type: "settings" | "worktrees" }> {
-  return spec.type === "settings" || spec.type === "worktrees";
 }
 
 /** Whether a tab shows files from disk and must be reloaded when the worktree changes. */
 export function isLive(t: Tab): boolean {
   const s = t.spec;
-  if (isPage(s) || s.type === "settingsJson") return false;
+  if (s.type === "settingsJson") return false;
   if (s.type === "file") return s.source.kind === "worktree" || (s.source.kind === "rev" && s.source.rev === "HEAD");
   return [s.left, s.right].some((x) => x.kind === "worktree" || (x.kind === "rev" && x.rev === "HEAD"));
 }

@@ -31,10 +31,7 @@ export type LeftTab = "changes" | "history" | "explorer" | "search";
 export type TabSpec =
   | { type: "diff"; path: string; origPath?: string | null; left: Source; right: Source; leftLabel: string; rightLabel: string }
   | { type: "file"; path: string; source: Source; line?: number }
-  /** App-level tabs (no repository): the Settings page and settings.json. */
-  | { type: "settings"; path: string }
-  /** The Worktrees overview of the current repository. */
-  | { type: "worktrees"; path: string }
+  /** An app-level tab (no repository). */
   | { type: "settingsJson"; path: string };
 
 export interface Tab {
@@ -48,10 +45,21 @@ export interface Tab {
   cwd: string;
 }
 
+/** What fills the window: every worktree side by side, or one worktree's files. */
+export type View = "overview" | "work";
+
 /** A branch shown read-only because no worktree has it checked out. */
 export interface ViewBranch {
   name: string;
   fullRef: string;
+}
+
+/** What a worktree has open while another one is shown; this session only. */
+export interface WorktreeView {
+  tabs: Tab[];
+  activeTab: string | null;
+  leftTab: LeftTab;
+  viewBranch: ViewBranch | null;
 }
 
 /** The file whose commits History shows instead of the branch's. */
@@ -80,7 +88,11 @@ export interface ActionState {
   label: string;
   progress: string;
   error: string | null;
+  /** The remote refused this worktree's last push; stays until a push or publish succeeds. */
+  rejected: boolean;
 }
+
+const IDLE_ACTION: ActionState = { running: false, label: "", progress: "", error: null, rejected: false };
 
 interface State {
   settings: Settings;
@@ -95,6 +107,10 @@ interface State {
   cwd: string | null;
   branches: BranchRef[];
   viewBranch: ViewBranch | null;
+  /** Worktree path → what it had open, for every worktree but the shown one. */
+  parked: Record<string, WorktreeView>;
+  view: View;
+  settingsOpen: boolean;
   status: Status | null;
   statusError: string | null;
   /** Worktree path → files with uncommitted changes; the current worktree's comes from its status. */
@@ -125,7 +141,8 @@ interface State {
   /** A file Explorer is asked to reveal ("Reveal in Explorer"); Explorer clears it once done. */
   explorerReveal: { path: string } | null;
   branchStatus: BranchStatus | null;
-  action: ActionState;
+  /** Worktree path → its fetch, push or publish. */
+  actions: Record<string, ActionState>;
   /** Bumped on every refresh so views reload what they show. */
   tick: number;
   tabs: Tab[];
@@ -137,6 +154,8 @@ interface State {
   githubRepo: string | null;
   /** A short message shown in a banner (a context menu option that failed). */
   notice: string | null;
+  /** The host whose connection was lost, while reconnecting. */
+  connectionLost: string | null;
 
   init(): Promise<void>;
   updateSettings(patch: Partial<Settings>): void;
@@ -178,13 +197,14 @@ interface State {
   setQuickOpen(open: boolean): void;
   focusSearch(): void;
   setSystemDark(dark: boolean): void;
+  setView(view: View): void;
   openSettings(): void;
+  closeSettings(): void;
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
   /** A helper went away (`name` says which): its watches are gone, so reconnect and watch again. */
-  connectionLost: (name: string) => Promise<void>;
-  openWorktrees(): void;
+  reconnect: (name: string) => Promise<void>;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
   /** A watcher event: refreshes what it affects and records the activity. */
@@ -207,6 +227,8 @@ let edited = new Map<string, Set<string>>();
 /** The repository and worktrees being watched, so an unchanged list is not watched again. */
 let watched = "";
 let reconnecting = false;
+/** Counts repository selections, so only the last one finishes. */
+let repoPick = 0;
 
 export const useStore = create<State>()((set, get) => {
   const at = () => {
@@ -217,15 +239,37 @@ export const useStore = create<State>()((set, get) => {
   /** The revision the views show: the view-only branch, or the worktree's HEAD. */
   const currentRev = () => get().viewBranch?.fullRef ?? "HEAD";
 
+  const shownKey = () => {
+    const { repo, cwd, viewBranch } = get();
+    return `${repo?.id}\n${cwd}\n${viewBranch?.fullRef}`;
+  };
+
+  /** A check that what is shown now is still shown: a late answer must not land in another worktree. */
+  const whileShown = () => {
+    const key = shownKey();
+    return () => shownKey() === key;
+  };
+
   const loadStatus = async () => {
     const a = at();
     if (!a || get().viewBranch) return set({ status: null, statusError: null });
+    const shown = whileShown();
     try {
       const status = await api.status(a);
-      if (at()?.cwd === a.cwd) set((s) => ({ status, statusError: null, changeCounts: { ...s.changeCounts, [a.cwd]: uncommittedCount(status) ?? 0 } }));
+      if (shown()) set((s) => ({ status, statusError: null, changeCounts: { ...s.changeCounts, [a.cwd]: uncommittedCount(status) ?? 0 } }));
     } catch (e) {
-      set({ statusError: errorText(e) });
+      if (shown()) set({ statusError: errorText(e) });
     }
+  };
+
+  const loadBranches = (a: { repo: string; cwd: string }) => {
+    const shown = whileShown();
+    return api.branches(a).then(
+      (branches) => {
+        if (shown()) set({ branches });
+      },
+      () => {},
+    );
   };
 
   const resetViews = () =>
@@ -251,13 +295,48 @@ export const useStore = create<State>()((set, get) => {
     return { tabs: kept, activeTab: kept.some((t) => t.id === activeTab) ? activeTab : null };
   };
 
-  const openAppTab = (tab: Omit<Tab, "preview" | "repo" | "cwd">) => {
-    const { tabs, activeTab } = get();
-    if (tabs.some((t) => t.id === tab.id)) return set({ tabs: tabs.map((t) => (t.id === tab.id ? { ...t, ...tab } : t)), activeTab: tab.id });
-    const copy = [...tabs];
-    copy.splice(tabs.findIndex((t) => t.id === activeTab) + 1, 0, { ...tab, preview: false, repo: "", cwd: "" });
-    set({ tabs: copy, activeTab: tab.id });
+  /** Parks what the shown worktree has open and shows `path` with what it had open; app tabs stay. */
+  const swapViews = (path: string, dropViewBranch: boolean) => {
+    const { cwd, tabs, activeTab, leftTab, viewBranch, parked } = get();
+    if (path === cwd) return dropViewBranch ? set({ viewBranch: null }) : undefined;
+    const own = tabs.filter((t) => !isAppTab(t));
+    const appTabs = tabs.filter(isAppTab);
+    const { [path]: next = { tabs: [], activeTab: null, leftTab: "changes" as const, viewBranch: null }, ...others } = parked;
+    const keepApp = appTabs.some((t) => t.id === activeTab);
+    set({
+      parked: cwd ? { ...others, [cwd]: { tabs: own, activeTab: keepApp ? null : activeTab, leftTab, viewBranch } } : others,
+      tabs: [...next.tabs, ...appTabs],
+      activeTab: next.activeTab ?? (keepApp ? activeTab : null),
+      leftTab: next.leftTab,
+      viewBranch: dropViewBranch ? null : next.viewBranch,
+    });
   };
+
+  const showWorktree = async (path: string, dropViewBranch: boolean) => {
+    const { repo, settings } = get();
+    if (!repo) return;
+    swapViews(path, dropViewBranch);
+    set({ cwd: path, status: null });
+    resetViews();
+    get().updateSettings({ lastWorktree: { ...settings.lastWorktree, [repo.id]: path } });
+    const a = { repo: repo.id, cwd: path };
+    const shown = whileShown();
+    await Promise.all([
+      loadStatus(),
+      loadBranches(a),
+      api.resolveBase(a, settings.base[repo.id] ?? null).then(
+        (base) => {
+          if (shown()) set({ base });
+        },
+        () => {},
+      ),
+      get().loadBranchStatus(),
+    ]);
+    if (shown()) loadForLeftTab();
+    void get().loadOverview();
+  };
+
+  const showWork = () => set({ view: "work", settingsOpen: false });
 
   /** Watches every worktree of the repository, for refreshes and live activity. */
   const watchWorktrees = () => {
@@ -303,7 +382,8 @@ export const useStore = create<State>()((set, get) => {
 
   /** Shows worktree `cwd` (not a viewed branch); false when that did not happen. */
   const enterWorktree = async (cwd: string) => {
-    if (get().cwd !== cwd || get().viewBranch) await get().selectWorktree(cwd);
+    showWork();
+    if (get().cwd !== cwd || get().viewBranch) await showWorktree(cwd, true);
     return get().cwd === cwd && !get().viewBranch;
   };
 
@@ -326,6 +406,9 @@ export const useStore = create<State>()((set, get) => {
     cwd: null,
     branches: [],
     viewBranch: null,
+    parked: {},
+    view: "overview",
+    settingsOpen: false,
     status: null,
     statusError: null,
     changeCounts: {},
@@ -349,7 +432,7 @@ export const useStore = create<State>()((set, get) => {
     fileListKey: "",
     explorerReveal: null,
     branchStatus: null,
-    action: { running: false, label: "", progress: "", error: null },
+    actions: {},
     tick: 0,
     tabs: [],
     activeTab: null,
@@ -358,6 +441,7 @@ export const useStore = create<State>()((set, get) => {
     systemDark: true,
     githubRepo: null,
     notice: null,
+    connectionLost: null,
 
     async init() {
       let saved: unknown = null;
@@ -405,13 +489,19 @@ export const useStore = create<State>()((set, get) => {
     removeRepo(path) {
       const { settings, repo } = get();
       get().updateSettings({ repos: settings.repos.filter((r) => r !== path), lastRepo: settings.lastRepo === path ? null : settings.lastRepo });
-      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, ...keepAppTabs() });
+      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, ...keepAppTabs() });
     },
 
     async selectRepo(id) {
+      const pick = ++repoPick;
       set({
         repoError: null,
         viewBranch: null,
+        parked: {},
+        leftTab: "changes",
+        actions: {},
+        view: "overview",
+        settingsOpen: false,
         ...keepAppTabs(),
         worktrees: [],
         branches: [],
@@ -428,6 +518,7 @@ export const useStore = create<State>()((set, get) => {
       resetViews();
       try {
         const info = await api.openRepo(id);
+        if (pick !== repoPick) return;
         set((s) => ({ repo: info, repos: { ...s.repos, [id]: info } }));
         get().updateSettings({ lastRepo: id });
         api.githubRepo({ repo: id, cwd: info.root }).then(
@@ -437,39 +528,35 @@ export const useStore = create<State>()((set, get) => {
           () => {},
         );
         const worktrees = await api.worktrees({ repo: id, cwd: info.root });
+        if (pick !== repoPick) return;
         set({ worktrees });
         watchWorktrees();
         const remembered = get().settings.lastWorktree[id];
-        const pick =
+        const worktree =
           worktrees.find((w) => w.path === remembered && !w.missing) ??
           worktrees.find((w) => w.path === info.root) ??
           worktrees.find((w) => !w.missing);
-        await get().selectWorktree(pick?.path ?? info.root);
+        await showWorktree(worktree?.path ?? info.root, false);
       } catch (e) {
-        set({ repo: null, repoError: errorText(e) });
+        if (pick === repoPick) set({ repo: null, repoError: errorText(e) });
       }
     },
 
     async selectWorktree(path) {
-      const { repo, settings } = get();
+      const { repo, cwd, viewBranch } = get();
       if (!repo) return;
-      set({ cwd: path, viewBranch: null, status: null });
-      resetViews();
-      get().updateSettings({ lastWorktree: { ...settings.lastWorktree, [repo.id]: path } });
-      const a = { repo: repo.id, cwd: path };
-      await Promise.all([
-        loadStatus(),
-        api.branches(a).then((branches) => set({ branches }), () => {}),
-        api.resolveBase(a, settings.base[repo.id] ?? null).then((base) => set({ base }), () => {}),
-        get().loadBranchStatus(),
-      ]);
-      loadForLeftTab();
-      void get().loadOverview();
+      showWork();
+      if (path === cwd && !viewBranch) return;
+      await showWorktree(path, path === cwd);
     },
 
     async selectBranch(b) {
       const wt = b.kind === "local" ? get().worktrees.find((w) => w.branch === b.name && !w.missing) : undefined;
-      if (wt) return get().selectWorktree(wt.path);
+      if (wt) {
+        await enterWorktree(wt.path);
+        return;
+      }
+      showWork();
       set({ viewBranch: { name: b.name, fullRef: b.fullRef }, status: null });
       resetViews();
       await get().loadBranchStatus();
@@ -481,13 +568,9 @@ export const useStore = create<State>()((set, get) => {
       if (!a) return;
       set((s) => ({ tick: s.tick + 1 }));
       const { repo } = get();
-      await Promise.all([
-        loadStatus(),
-        get().loadOverview(),
-        api.branches(a).then((branches) => set({ branches }), () => {}),
-        get().loadBranchStatus(),
-      ]);
-      if (!repo) return;
+      const shown = whileShown();
+      await Promise.all([loadStatus(), get().loadOverview(), loadBranches(a), get().loadBranchStatus()]);
+      if (!repo || !shown()) return;
       const { leftTab, settings, commits } = get();
       if (leftTab === "changes" && settings.changesMode === "base") void get().loadBaseDiff();
       if (leftTab === "explorer") void get().loadFileList();
@@ -496,7 +579,7 @@ export const useStore = create<State>()((set, get) => {
         try {
           const page = settings.historyPageSize;
           const first = await api.log(a, currentRev(), 0, page);
-          if (first[0]?.sha !== get().commits[0]?.sha) set({ commits: first, commitsDone: first.length < page });
+          if (shown() && first[0]?.sha !== get().commits[0]?.sha) set({ commits: first, commitsDone: first.length < page });
         } catch {
           // Keep what is shown.
         }
@@ -550,11 +633,12 @@ export const useStore = create<State>()((set, get) => {
       const { base } = get();
       if (!a) return;
       if (!base) return set({ baseError: "No base branch found (looked for development, main, master and the default branch of origin). Pick one with Base." });
+      const shown = whileShown();
       try {
         const baseDiff = await api.branchChanges(a, base, currentRev());
-        set({ baseDiff, baseError: null });
+        if (shown() && get().base === base) set({ baseDiff, baseError: null });
       } catch (e) {
-        set({ baseError: errorText(e) });
+        if (shown()) set({ baseError: errorText(e) });
       }
     },
 
@@ -563,21 +647,24 @@ export const useStore = create<State>()((set, get) => {
       const { commits, commitsDone, settings } = get();
       if (!a || commitsDone) return;
       const size = settings.historyPageSize;
+      const shown = whileShown();
       try {
         const page = await api.log(a, currentRev(), commits.length, size);
-        set({ commits: [...commits, ...page], commitsDone: page.length < size, commitsError: null });
+        if (shown()) set({ commits: [...commits, ...page], commitsDone: page.length < size, commitsError: null });
       } catch (e) {
-        set({ commitsError: errorText(e), commitsDone: true });
+        if (shown()) set({ commitsError: errorText(e), commitsDone: true });
       }
     },
 
     async selectCommit(sha) {
       const a = at();
       if (!a) return;
+      const shown = whileShown();
       try {
-        set({ selectedCommit: await api.commit(a, sha) });
+        const selectedCommit = await api.commit(a, sha);
+        if (shown()) set({ selectedCommit });
       } catch (e) {
-        set({ commitsError: errorText(e) });
+        if (shown()) set({ commitsError: errorText(e) });
       }
     },
 
@@ -597,7 +684,8 @@ export const useStore = create<State>()((set, get) => {
       const fh = get().fileHistory;
       if (!a || !fh || fh.done) return;
       const size = get().settings.historyPageSize;
-      const still = () => get().fileHistory?.path === fh.path && get().fileHistory?.rev === fh.rev;
+      const shown = whileShown();
+      const still = () => shown() && get().fileHistory?.path === fh.path && get().fileHistory?.rev === fh.rev;
       try {
         const page = await api.fileHistory(a, fh.rev, fh.path, fh.entries.length, size);
         if (still()) set({ fileHistory: { ...fh, entries: [...fh.entries, ...page], done: page.length < size, error: null } });
@@ -616,11 +704,13 @@ export const useStore = create<State>()((set, get) => {
       set({ historyQuery: query });
       const q = query.trim();
       if (!a || !q) return set({ historyMatches: null });
+      const shown = whileShown();
+      const still = () => shown() && get().historyQuery.trim() === q;
       try {
         const r = await api.searchLog(a, currentRev(), q, SEARCH_LIMIT);
-        if (get().historyQuery.trim() === q) set({ historyMatches: { query: q, ...r, error: null } });
+        if (still()) set({ historyMatches: { query: q, ...r, error: null } });
       } catch (e) {
-        if (get().historyQuery.trim() === q) set({ historyMatches: { query: q, commits: [], truncated: false, error: errorText(e) } });
+        if (still()) set({ historyMatches: { query: q, commits: [], truncated: false, error: errorText(e) } });
       }
     },
 
@@ -634,10 +724,11 @@ export const useStore = create<State>()((set, get) => {
       const { viewBranch, settings } = get();
       const rev = viewBranch?.fullRef ?? null;
       const key = `${a.cwd}|${rev}|${settings.showIgnored}`;
+      const shown = whileShown();
       try {
         const list = await api.listFiles(a, rev, settings.showIgnored && !rev);
         const fileList = { files: sortPaths(list.files), ignored: sortPaths(list.ignored) };
-        if (at()?.cwd === a.cwd) set({ fileList, fileListKey: key });
+        if (shown()) set({ fileList, fileListKey: key });
         return fileList;
       } catch {
         return null;
@@ -649,36 +740,41 @@ export const useStore = create<State>()((set, get) => {
       if (!a) return;
       const { viewBranch, worktrees } = get();
       const branch = viewBranch ? (viewBranch.fullRef.startsWith("refs/heads/") ? viewBranch.name : null) : worktrees.find((w) => w.path === a.cwd)?.branch;
+      const shown = whileShown();
       try {
         const branchStatus = await api.branchStatus(a, branch ?? "");
-        if (at()?.cwd === a.cwd) set({ branchStatus: { ...branchStatus, branch: branch ?? "" } });
+        if (shown()) set({ branchStatus: { ...branchStatus, branch: branch ?? "" } });
       } catch {
-        set({ branchStatus: null });
+        if (shown()) set({ branchStatus: null });
       }
     },
 
     async runAction(kind) {
       const a = at();
-      const { branchStatus, action } = get();
-      if (!a || action.running) return;
+      if (!a || actionOf(get()).running) return;
       const label = kind === "fetch" ? "Fetching origin" : kind === "push" ? "Pushing to origin" : "Publishing branch";
-      set({ action: { running: true, label, progress: "", error: null } });
+      const update = (patch: Partial<ActionState>) => set((s) => ({ actions: { ...s.actions, [a.cwd]: { ...(s.actions[a.cwd] ?? IDLE_ACTION), ...patch } } }));
+      update({ running: true, label, progress: "", error: null });
+      const done = { running: false, label: "", progress: "" };
       try {
-        await api.runAction(a, kind, branchStatus?.branch ?? "");
-        set({ action: { running: false, label: "", progress: "", error: null } });
+        const r = await api.runAction(a, kind, get().branchStatus?.branch ?? "");
+        // A fetch, or a push that never reached the remote, says nothing about an earlier refusal.
+        update({ ...done, error: r.ok ? null : r.text, ...(r.rejected ? { rejected: true } : r.ok && kind !== "fetch" ? { rejected: false } : {}) });
       } catch (e) {
-        set({ action: { running: false, label: "", progress: "", error: errorText(e) } });
+        update({ ...done, error: errorText(e) });
       }
       await get().refresh();
     },
 
     clearActionError() {
-      set((s) => ({ action: { ...s.action, error: null } }));
+      const { cwd } = get();
+      if (cwd) set((s) => ({ actions: { ...s.actions, [cwd]: { ...actionOf(s), error: null } } }));
     },
 
     openTab(tab, pin) {
       const { tabs, repo, cwd } = get();
       if (!repo || !cwd) return;
+      showWork();
       const existing = tabs.find((t) => t.id === tab.id);
       if (existing) {
         set({
@@ -729,6 +825,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     activateTab(id) {
+      showWork();
       set({ activeTab: id });
     },
 
@@ -751,13 +848,25 @@ export const useStore = create<State>()((set, get) => {
       set({ systemDark: dark });
     },
 
+    setView(view) {
+      set({ view, settingsOpen: false });
+    },
+
     openSettings() {
-      openAppTab({ id: "app:settings", title: "Settings", description: "", spec: { type: "settings", path: "Settings" } });
+      set({ settingsOpen: true });
+    },
+
+    closeSettings() {
+      set({ settingsOpen: false });
     },
 
     async openSettingsFile() {
       const { path } = await api.settingsFile();
-      openAppTab({ id: "app:settings.json", title: "settings.json", description: "Read-only", spec: { type: "settingsJson", path } });
+      const { tabs, activeTab } = get();
+      const tab: Tab = { id: "app:settings.json", title: "settings.json", description: "Read-only", spec: { type: "settingsJson", path }, preview: false, repo: "", cwd: "" };
+      const open = tabs.some((t) => t.id === tab.id);
+      showWork();
+      set({ tabs: open ? tabs.map((t) => (t.id === tab.id ? tab : t)) : tabs.toSpliced(tabs.findIndex((t) => t.id === activeTab) + 1, 0, tab), activeTab: tab.id });
     },
 
     setSettingsQuery(q) {
@@ -768,33 +877,29 @@ export const useStore = create<State>()((set, get) => {
       set({ notice: n });
     },
 
-    async connectionLost(name) {
+    async reconnect(name) {
       watched = "";
       const { repo } = get();
       if (!repo || repo.kind === "local" || reconnecting) return;
       reconnecting = true;
       // Named by the connection: it may not be the current repository's.
-      set({ notice: `Connection to ${name} lost. Reconnecting…` });
+      set({ connectionLost: name });
       try {
         while (get().repo?.id === repo.id) {
           await new Promise((done) => window.setTimeout(done, RECONNECT_MS));
           try {
             await api.openRepo(repo.id);
-            set({ notice: null });
+            set({ connectionLost: null });
             await get().refresh();
             return;
           } catch {
             // Still gone: try again.
           }
         }
-        set({ notice: null });
+        set({ connectionLost: null });
       } finally {
         reconnecting = false;
       }
-    },
-
-    openWorktrees() {
-      openAppTab({ id: "app:worktrees", title: "Worktrees", description: "", spec: { type: "worktrees", path: "Worktrees" } });
     },
 
     loadOverview: coalesce(loadOverviewOnce),
@@ -802,12 +907,14 @@ export const useStore = create<State>()((set, get) => {
     async openWorktreeChange(cwd, path) {
       const a = (await enterWorktree(cwd)) ? at() : null;
       if (!a) return;
+      const shown = whileShown();
       const entry = get().status?.entries.find((e) => e.kind !== "ignored" && (e.path === path || e.origPath === path));
       if (entry) return get().openTab(uncommittedTab(cwd, entry), true);
       const { base, worktrees } = get();
       if (base) {
         try {
           const d = await api.branchChanges(a, base, "HEAD");
+          if (!shown()) return;
           const f = d.files.find((f) => f.path === path || f.origPath === path);
           const branch = worktrees.find((w) => w.path === cwd)?.branch ?? "HEAD";
           if (f) return get().openTab(revisionTab(f, d.mergeBase, "HEAD", `${base} (${shortSha(d.mergeBase)})`, branch), true);
@@ -815,7 +922,7 @@ export const useStore = create<State>()((set, get) => {
           // Open the file itself instead.
         }
       }
-      get().openTab(fileTab(cwd, path, null), true);
+      if (shown()) get().openTab(fileTab(cwd, path, null), true);
     },
 
     async openWorktreeCommit(cwd, sha) {
@@ -847,6 +954,11 @@ export function effectiveDark(s: { settings: Settings; systemDark: boolean }): b
   return s.settings.theme === "dark" || (s.settings.theme === "system" && s.systemDark);
 }
 
-export function setActionProgress(line: string) {
-  useStore.setState((s) => (s.action.running ? { action: { ...s.action, progress: line } } : {}));
+/** The fetch, push or publish of the worktree shown. */
+export function actionOf(s: { cwd: string | null; actions: Record<string, ActionState> }): ActionState {
+  return (s.cwd ? s.actions[s.cwd] : undefined) ?? IDLE_ACTION;
+}
+
+export function setActionProgress(cwd: string, line: string) {
+  useStore.setState((s) => (s.actions[cwd]?.running ? { actions: { ...s.actions, [cwd]: { ...s.actions[cwd], progress: line } } } : {}));
 }
