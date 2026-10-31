@@ -21,6 +21,7 @@ import {
   Field,
   FoldBody,
   FoldHead,
+  HelpTip,
   IconTabs,
   Keys,
   LoadingLine,
@@ -39,9 +40,11 @@ import {
   Skeleton,
   Slider,
   Spinner,
+  SortHeader,
   SplitButton,
   StateTag,
   StatusLetter,
+  TableRow,
   Toggle,
   Toolbar,
   Tray,
@@ -308,11 +311,28 @@ function Lists() {
         <Cell label="Hover"><FoldHead text="Remote branches" open n={2} className="is-hover" /></Cell>
         <Cell label="Plain, a folder name"><FoldHead text="src/server" plain open /></Cell>
       </Group>
+      <Group title="Data table">
+        <Cell label="Sortable; rows open" wide>
+          <table className="dt">
+            <thead>
+              <tr>
+                <SortHeader text="Worktree" on dir={1} onSort={() => {}} />
+                <SortHeader text="Files" className="r" width="80px" onSort={() => {}} />
+              </tr>
+            </thead>
+            <tbody>
+              <TableRow onOpen={() => {}}><td>agent-06</td><td className="r">3</td></TableRow>
+              <TableRow onOpen={() => {}}><td>agent-02</td><td className="r">12</td></TableRow>
+            </tbody>
+          </table>
+        </Cell>
+      </Group>
       <Group title="Data atoms">
         <Cell label="Path"><div className="gal-w"><PathLabel path="src/server/api/orders/create.ts" /></div></Cell>
         <Cell label="Status letters">{KINDS.map((k) => <StatusLetter key={k} kind={k} />)}</Cell>
         <Cell label="Delta"><Delta add={18} del={4} /></Cell>
         <Cell label="Count"><Count n={12} /></Cell>
+        <Cell label="Help"><HelpTip text="A help tooltip explains the thing beside it" /></Cell>
         <Cell label="Chip"><Chip>agent-06</Chip></Cell>
         <Cell label="Chip button"><Chip onClick={() => {}}>agent-06</Chip></Cell>
         <Cell label="Chip button, hover"><Chip onClick={() => {}} className="is-hover">agent-06</Chip></Cell>

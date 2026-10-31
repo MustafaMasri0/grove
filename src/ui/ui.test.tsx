@@ -2,10 +2,11 @@ import { renderToStaticMarkup as html } from "react-dom/server";
 import { describe, expect, test, vi } from "vitest";
 import { Button, Toggle } from "./Button";
 import { STATUS_LETTER, STATUS_TITLE, cx, splitDisplayPath, thumbInsets } from "./classes";
-import { Banner } from "./Feedback";
+import { Banner, HelpTip } from "./Feedback";
 import { Checkbox, Field } from "./Field";
 import { Badge, Chip, Mark, StateTag } from "./Status";
 import { Row } from "./Structure";
+import { SortHeader, TableRow } from "./Table";
 import { Tray } from "./Tray";
 
 describe("cx", () => {
@@ -128,5 +129,47 @@ describe("Row", () => {
     expect(out).toContain('aria-disabled="true"');
     expect(out).toContain('data-tip="Bare repository"');
     expect((Row({ disabled: "no", onClick: run }) as { props: { onClick?: () => void } }).props.onClick).toBeUndefined();
+  });
+});
+
+describe("SortHeader", () => {
+  test("only the sorted column reports a direction", () => {
+    const head = (o: object) => html(<table><thead><tr><SortHeader text="Name" onSort={() => {}} {...o} /></tr></thead></table>);
+    expect(head({})).toContain('aria-sort="none"');
+    expect(head({ on: true, dir: 1 })).toContain('aria-sort="ascending"');
+    expect(head({ on: true, dir: -1 })).toContain('aria-sort="descending"');
+  });
+  test("sorts from a real button", () => expect(html(<table><thead><tr><SortHeader text="Name" onSort={() => {}} /></tr></thead></table>)).toContain('<button type="button" class="dt-sort"'));
+});
+
+describe("TableRow", () => {
+  const props = (onOpen: () => void) => (TableRow({ onOpen, children: null }) as { props: { onClick: () => void; onKeyDown: (e: object) => void } }).props;
+  const press = (key: string, inner = false) => {
+    const target = {};
+    return { key, target, currentTarget: inner ? {} : target, preventDefault() {} };
+  };
+  test("opens by click, Enter and Space", () => {
+    const open = vi.fn();
+    const { onClick, onKeyDown } = props(open);
+    onClick();
+    onKeyDown(press("Enter"));
+    onKeyDown(press(" "));
+    expect(open).toHaveBeenCalledTimes(3);
+  });
+  test("leaves other keys, and keys pressed inside a cell, alone", () => {
+    const open = vi.fn();
+    const { onKeyDown } = props(open);
+    onKeyDown(press("a"));
+    onKeyDown(press("Enter", true));
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
+describe("HelpTip", () => {
+  test("the keyboard reaches it and a screen reader reads it", () => {
+    const out = html(<HelpTip text="Why" />);
+    expect(out).toContain('data-tip="Why"');
+    expect(out).toContain('tabindex="0"');
+    expect(out).toContain('aria-label="Why"');
   });
 });

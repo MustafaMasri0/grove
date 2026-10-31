@@ -21,6 +21,15 @@ export function ProgressLine({ text }: { text: string }) {
   );
 }
 
+/** A question mark that explains the thing beside it in a tooltip; keyboard focus shows it too. */
+export function HelpTip({ text }: { text: string }) {
+  return (
+    <span className="help" data-tip={text} tabIndex={0} role="img" aria-label={text}>
+      <Icon name="question" size={14} />
+    </span>
+  );
+}
+
 /** A still placeholder: no shimmer. */
 export function Skeleton({ width = "100%", height = 8 }: { width?: string; height?: number }) {
   return <i className="sk" style={{ width, height }} />;

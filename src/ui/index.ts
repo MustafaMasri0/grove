@@ -13,4 +13,5 @@ export * from "./Overlay";
 export * from "./Picker";
 export * from "./Status";
 export * from "./Structure";
+export * from "./Table";
 export * from "./Tray";

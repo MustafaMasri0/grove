@@ -1027,6 +1027,114 @@
     flex: none;
   }
 
+  /* Data table. A surface sets the column widths and may set --dt-row and --dt-edge, the padding of its outer cells. Sorting is instant. */
+  & .dt {
+    --dt-row: var(--h-lg);
+    --dt-edge: 12px;
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: fixed;
+  }
+
+  & .dt th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    height: calc(var(--h-sm) + 10px);
+    padding: 0;
+    background: var(--sheet);
+    border-bottom: 0.5px solid var(--line-strong);
+    font-weight: 500;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    text-align: left;
+  }
+
+  & .dt-sort {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    height: 100%;
+    padding: 0 12px;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+    transition: color var(--t) ease;
+  }
+
+  & .dt-sort:focus-visible {
+    outline-offset: -2px;
+  }
+
+  & .dt-sort:hover,
+  & [aria-sort="ascending"] .dt-sort,
+  & [aria-sort="descending"] .dt-sort {
+    color: var(--ink);
+  }
+
+  /* The arrow rides in the padding, so sorting a column leaves its label where it was. */
+  & .dt-sort .icon {
+    margin-right: -12px;
+    opacity: 0;
+    color: var(--icon);
+  }
+
+  & [aria-sort="ascending"] .dt-sort .icon,
+  & [aria-sort="descending"] .dt-sort .icon {
+    opacity: 1;
+  }
+
+  & [aria-sort="ascending"] .dt-sort .icon {
+    transform: rotate(180deg);
+  }
+
+  & .dt th.r .dt-sort {
+    justify-content: flex-end;
+  }
+
+  & .dt th:first-child .dt-sort,
+  & .dt td:first-child {
+    padding-left: var(--dt-edge);
+  }
+
+  & .dt th:last-child .dt-sort,
+  & .dt td:last-child {
+    padding-right: calc(var(--dt-edge) + 4px);
+  }
+
+  & .dt td {
+    height: var(--dt-row);
+    padding: 0 12px;
+    border-bottom: 0.5px solid var(--line);
+    background: var(--sheet);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background-color var(--t) ease;
+  }
+
+  & .dt td.r {
+    text-align: right;
+  }
+
+  & .dt tr:last-child td {
+    border-bottom: 0;
+  }
+
+  & .dt-row {
+    cursor: pointer;
+  }
+
+  & .dt-row:hover td {
+    background: color-mix(in srgb, var(--sheet) 94%, var(--title));
+  }
+
+  & .dt-row:focus-visible {
+    outline-offset: -2px;
+  }
+
   /* Empty and loading */
   & .empty {
     flex: 1;
@@ -1061,6 +1169,14 @@
   & .empty-line .btn {
     display: block;
     margin-top: 4px;
+  }
+
+  & .help {
+    display: inline-flex;
+    flex: none;
+    color: var(--icon);
+    cursor: help;
+    border-radius: var(--r-xs);
   }
 
   & .spin {
