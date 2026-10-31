@@ -399,7 +399,7 @@ export const useStore = create<State>()((set, get) => {
     }
   };
 
-  /** Shows worktree `cwd` (not a viewed branch); false when that did not happen. */
+  /** Shows worktree `cwd`, leaving any branch on view; false when that did not happen. */
   const enterWorktree = async (cwd: string) => {
     showWork();
     if (get().cwd !== cwd || get().viewBranch) await showWorktree(cwd, true);

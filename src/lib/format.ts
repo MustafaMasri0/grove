@@ -1,5 +1,3 @@
-import type { ChangeKind } from "../api";
-
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 365 * 24 * 3600],
@@ -30,28 +28,6 @@ export function isoToUnix(iso: string): number {
 }
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
-
-export const STATUS_LETTER: Record<ChangeKind, string> = {
-  modified: "M",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  copied: "C",
-  untracked: "U",
-  ignored: "I",
-  conflicted: "!",
-};
-
-export const STATUS_TITLE: Record<ChangeKind, string> = {
-  modified: "Modified",
-  added: "Added",
-  deleted: "Deleted",
-  renamed: "Renamed",
-  copied: "Copied",
-  untracked: "Untracked",
-  ignored: "Ignored",
-  conflicted: "Conflicted",
-};
 
 export function splitPath(path: string): { name: string; dir: string } {
   const i = path.lastIndexOf("/");

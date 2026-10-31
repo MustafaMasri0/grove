@@ -27,9 +27,11 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/editor.css", "src/settings.css", "src/palette.css", "src/components/SettingsDialog.tsx", "src/components/Palette.tsx", "src/lib/palette.ts", "src/components/EditorArea.tsx", "src/components/ImageView.tsx", "src/components/MarkdownPreview.tsx", "src/components/HtmlPreview.tsx", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
-const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
-const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
+const isSource = (f) => /\.(css|tsx?|html)$/.test(f) && !/\.test\./.test(f) && !f.includes(join("src", "assets"));
+const appFiles = walk(join(root, "src")).filter(isSource);
+const read = (f) => readFileSync(f, "utf8");
+const appText = (ext) => appFiles.filter((f) => ext.test(f)).map(read).join("\n");
+const sourceText = [...appFiles, ...walk(join(root, "harness")).filter(isSource)].map(read).join("\n");
 
 // ---- Static checks ----
 const KEPT = ["fade-in", "pie", "turn", "blur-in", "blur-out", "rail-slide"];
@@ -40,38 +42,26 @@ check("noScriptedAnimation", !scripted.length, scripted);
 const WORDING = [["Needs review", /Needs review/], ["review as a state", /\breview\b/i], ["Next file", /Next file/], ["Done, next worktree", /Done, next worktree/], ["Open in terminal", /Open in terminal/], ["Compare", /\bCompare\b(?! images)/], ["Try again", /Try again/], ["viewed", /\bviewed\b/]];
 const forbidden = (text) => WORDING.filter(([, r]) => r.test(text)).map(([n]) => n);
 check("noForbiddenWording", !forbidden(sourceText).length, forbidden(sourceText));
-// The kit's class names belong to the kit: a bare rule for one in the app's stylesheet would reach every control that mounts.
-const legacy = readFileSync(join(root, "src", "styles.css"), "utf8");
-const collisions = [...legacy.matchAll(/(?<![\w-])\.(row|tab|badge|banner|spin|setting|avatar)(?![\w-])/g)].map((m) => m[0]);
-check("noKitClassesInAppStyles", !collisions.length, [...new Set(collisions)]);
-
-// Overview's styles live in src/overview.css, and each rule there is for something the page draws.
-check("noOverviewRulesInAppStyles", !/\.ov-|\.base-select select/.test(legacy));
-const pageText = ["src/components/WorktreesPage.tsx", "src/components/BaseSelect.tsx"].map((f) => readFileSync(join(root, f), "utf8")).join("\n");
-const overviewClasses = [...new Set([...readFileSync(join(root, "src", "overview.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(?<![\w-])\.([a-z][\w-]*)(?=[^{}]*\{)/g)].map((m) => m[1]))];
-const kitText = readFileSync(join(root, "src", "ui", "controls.css"), "utf8");
-const unused = overviewClasses.filter((c) => c !== "app" && !new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(pageText) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
-check("noUnusedOverviewRules", !unused.length, unused);
-
-// The app's stylesheets carry nothing unused: each class is drawn somewhere, each :root token is read somewhere.
+// Every surface keeps its own styles: what stays in styles.css is the page itself.
 const readSrc = (f) => readFileSync(join(root, "src", f), "utf8");
-const drawn = [...walk(join(root, "src", "components")), ...walk(join(root, "src", "ui")), join(root, "src", "App.tsx")].filter((f) => /\.tsx?$/.test(f) && !/\.test\./.test(f)).map((f) => readFileSync(f, "utf8")).join("\n");
 const classesOf = (css) => [...new Set([...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(?<![\w-])\.([a-z][\w-]*)(?=[^{}]*\{)/g)].map((m) => m[1]))];
-const inCode = (c) => new RegExp(`(className|classList|class=)[^\\n]*(?<![\\w-])${c}(?![\\w-])`).test(drawn);
-const undrawn = classesOf(legacy).filter((c) => !inCode(c));
-check("noUnusedAppRules", !undrawn.length, undrawn);
-const paneCss = ["panes.css", "editor.css", "settings.css", "palette.css"].map(readSrc).join("\n");
+const page = readSrc("styles.css");
+check("appStylesAreOnlyThePage", classesOf(page).join() === "app" && !/^(button|input|select|kbd)\b/m.test(page), classesOf(page));
+
+// The stylesheets carry nothing unused: each class is drawn somewhere, each design token is read somewhere, and each token read is defined.
+const css = appText(/\.css$/), code = appText(/\.tsx?$/);
+const kitText = readSrc("ui/controls.css");
+const inCode = (c) => new RegExp(`(className|classList|class=)[^\\n]*(?<![\\w-])${c}(?![\\w-])`).test(code);
 // Monaco draws these itself; editor.css themes them.
 const MONACO_CLASSES = ["monaco-editor", "margin-view-overlays", "line-numbers", "gutter-insert", "gutter-delete"];
-const undrawnPanes = classesOf(paneCss).filter((c) => c !== "app" && !MONACO_CLASSES.includes(c) && !inCode(c) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
-check("noUnusedPaneRules", !undrawnPanes.length, undrawnPanes);
-const allCss = ["styles.css", "shell.css", "panes.css", "editor.css", "overview.css", "settings.css", "palette.css"].map(readSrc).join("\n") + drawn;
-const unreadTokens = [...new Set([...legacy.matchAll(/^\s*(--[\w-]+):/gm)].map((m) => m[1]))].filter((t) => !allCss.includes(`var(${t}`) && !allCss.includes(`"${t}"`));
-check("noUnusedAppTokens", !unreadTokens.length, unreadTokens);
-check("noPaneRulesInAppStyles", !/\.(left|list-row|ed-tab|tab-strip|image-|md-preview|html-preview|editor-)/.test(legacy));
-// Every surface has moved: what stays in styles.css is the page itself, and the old surfaces are gone with their rules.
-check("appStylesAreOnlyThePage", classesOf(legacy).join() === "app" && !/^(button|input|select|kbd)\b/m.test(legacy), classesOf(legacy));
-check("oldSurfacesGone", !existsSync(join(root, "src", "components", "SettingsPage.tsx")) && !existsSync(join(root, "src", "components", "QuickOpen.tsx")) && !/\.settings-|\.quick-open/.test(readSrc("shell.css")));
+const surfaceCss = appFiles.filter((f) => f.endsWith(".css") && !f.includes(join("src", "ui"))).map(read).join("\n");
+const undrawn = classesOf(surfaceCss).filter((c) => !MONACO_CLASSES.includes(c) && !inCode(c) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
+check("noUnusedRules", !undrawn.length, undrawn);
+const tokens = [...new Set([...readSrc("ui/tokens.css").matchAll(/^\s*(--[\w-]+):/gm)].map((m) => m[1]))];
+const unreadTokens = tokens.filter((t) => !(css + code).includes(`var(${t}`) && !code.includes(`"${t}"`) && !code.includes(`"${t.slice(2)}"`));
+check("noUnreadTokens", !unreadTokens.length, unreadTokens);
+const undefinedTokens = [...new Set([...css.matchAll(/var\((--[\w-]+)/g)].map((m) => m[1]))].filter((t) => !t.startsWith("--vscode-") && !css.includes(`${t}:`) && !code.includes(`${t}`));
+check("noUndefinedTokens", !undefinedTokens.length, undefinedTokens);
 check("monacoNeverNamedDirectly", !/setTheme\(.*vs/.test(readSrc("components/EditorArea.tsx") + readSrc("App.tsx")) && !/#[0-9a-f]{3,8}\b/i.test(readSrc("lib/editorTheme.ts").replace(/"#00000000"/, "").replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "").replace(/`#\$\{[^`]*`/g, "").replace(/\^#\(/g, "")));
 
 if (process.argv.includes("--bundle")) {
@@ -495,6 +485,42 @@ try {
     await openApp(`&auto=${encodeURIComponent(JSON.stringify({ contextMenu: "changes>Copy path" }))}`);
     await sleep(1500);
     return { copied: (await ipc("copy_text")) === 1, closed: !(await has("#overlays .menu")) };
+  });
+  // The other WV_* hooks that reach into the page, each from a fresh start. One whose selector stopped matching logs an error, which noConsoleErrors also fails on.
+  await attempt("automationHooks", async () => {
+    const start = (o, q = "") => openApp(`${q}&auto=${encodeURIComponent(JSON.stringify(o))}`);
+    const errors = report.errors.length;
+    const d = {};
+    await start({ historySearch: "refund" });
+    await waitFor(".history-search input", 5000);
+    await sleep(300);
+    d.historySearch = (await ev(`document.querySelector(".history-search input").value`)) === "refund";
+    await start({ leftTab: "changes", listKeys: "ArrowDown" });
+    await sleep(1000);
+    d.listKeys = await has(".left .lbox .row.on");
+    await start({ worktrees: "1" });
+    d.worktrees = await waitFor(".ov-page", 5000);
+    await start({ worktrees: "chip:0" }, "&ov=many");
+    await sleep(1500);
+    await start({ openFile: "src/server/orders/create.ts", blame: "click:1" });
+    for (let i = 0; i < 100 && !(await ipc("commit")); i++) await sleep(100);
+    d.blame = (await ipc("commit")) > 0;
+    await start({ openFile: "docs/assets/logo.png", imageZoom: "2" });
+    await sleep(1500);
+    d.imageZoom = (await text(".image-zoom")) === "200%";
+    await start({ openFile: "docs/preview.html", previewLink: 0 });
+    await sleep(3000);
+    d.previewLink = await has("iframe.html-preview");
+    d.noErrors = report.errors.length === errors || report.errors.slice(errors);
+    return d;
+  });
+  // Too wide to fit on the right of its button, a picker still opens under it, ending at its right edge.
+  await attempt("pickerStaysUnderItsButton", async () => {
+    await openApp();
+    await click(".base-select .sel");
+    await waitFor("#overlays .picker", 5000);
+    const b = await box(".base-select .sel"), p = await box("#overlays .picker");
+    return { under: p.t >= b.b, spans: p.l <= b.l + 1 && p.r >= b.r - 1 };
   });
   await attempt("contextMenuKeys", async () => {
     await openApp();

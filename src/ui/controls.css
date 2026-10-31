@@ -1,5 +1,5 @@
 /* Every control of the design system. All of it is nested under .ui-root, so nothing here styles the app outside that element.
-   Motion is limited to BRIEF's list: colour changes at --t, the tray thumb, spinners, the Changing mark and its crossfade, and fold chevrons. Nothing else may transition. */
+   Motion is limited to a short list, which scripts/ui-check.mjs enforces: colour changes at --t, the tray thumb, spinners, the Changing mark and its crossfade, and fold chevrons. Nothing else may transition. */
 @keyframes pie {
   to {
     transform: rotate(360deg);

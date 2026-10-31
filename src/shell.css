@@ -1,5 +1,4 @@
-/* The shell: rail, page header, window controls, width bands and the fold. Controls and tokens live in src/ui; each surface keeps its own styles.
-   The rail and the header are .ui-root islands. Panes not yet moved to the design system stay outside, so neither styles the other. */
+/* The shell: rail, page header, window controls, width bands and the fold. Controls and tokens live in src/ui; each surface keeps its own styles. */
 @keyframes blur-in {
   from {
     opacity: 0;
@@ -323,7 +322,7 @@
   flex-direction: column;
   position: relative;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--sheet);
 }
 
 /* The page sits at the top right, so a notice keeps clear of the window controls. */
@@ -485,7 +484,7 @@
   z-index: 10;
   width: 300px;
   max-width: 85%;
-  background: var(--bg);
+  background: var(--sheet);
   border-radius: 0 10px 10px 0;
   overflow: hidden;
   box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.6);
@@ -506,14 +505,14 @@
   position: relative;
   z-index: 1;
   height: var(--band);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line);
 }
 
 /* Folding the rail (foldRail): transform, opacity and filter only, so nothing lays out while it runs. The page rides above the rail; its shadow carries the hairline and fills the strip it leaves on the right when opening. */
 #main[data-fold] {
   z-index: 1;
   animation: rail-slide 160ms ease;
-  box-shadow: -1px 0 var(--border), var(--fold-gap) 0 var(--bg);
+  box-shadow: -1px 0 var(--line), var(--fold-gap) 0 var(--sheet);
 }
 
 .rail[data-fold] > :not(.resize) {

@@ -39,7 +39,7 @@ const CODE = (extra: boolean) => [
   "",
 ].join("\n");
 const MARKDOWN = ["# shop-platform", "", "A sample storefront. See [Architecture](docs/architecture.md), or jump to [Usage](#usage).", "", "![Build status](https://example.com/badges/build.svg)", "", "![Order flow](docs/assets/order-flow.svg)", "", "## Usage", "", "Run the dev server with `npm run dev`.", "", "| Command | What it does |", "| --- | --- |", "| `npm test` | Runs the unit tests |", "", "```ts", "export const total = 1;", "```", "", "> Keep changes small.", ""].join("\n");
-const HTML_PAGE = '<!doctype html><html><head><title>Order status</title></head><body><h1>Order status</h1><p><a href="#x">Back</a></p></body></html>';
+const HTML_PAGE = '<!doctype html><html><head><title>Order status</title></head><body><h1>Order status</h1><p><a href="#x">Back</a> <a href="guide.html">Guide</a></p></body></html>';
 const svg = (fill: string, w: number, h: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${fill}"/></svg>`)}`;
 const text = (t: string) => ({ kind: "text", text: t });
 type Src = { kind: string; path?: string };

@@ -12,8 +12,8 @@ const tokensOf = (selector: string) => {
   };
 };
 const themes = [
-  { name: "dark", read: tokensOf(':root[data-theme="dark"] .ui-root'), dark: true },
-  { name: "light", read: tokensOf(':root[data-theme="light"] .ui-root'), dark: false },
+  { name: "dark", read: tokensOf(':root[data-theme="dark"]'), dark: true },
+  { name: "light", read: tokensOf(':root[data-theme="light"]'), dark: false },
 ];
 const hex = (v: string) => parseColour(`#${v.slice(0, 6)}`);
 

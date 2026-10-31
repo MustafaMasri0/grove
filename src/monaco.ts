@@ -73,14 +73,9 @@ monaco.languages.setMonarchTokensProvider("json", {
 
 /** Builds the theme from the design tokens as they resolve now, so call it after the page's theme changed. */
 export function applyEditorTheme(dark: boolean) {
-  const probe = document.createElement("div");
-  probe.className = "ui-root";
-  probe.hidden = true;
-  document.body.append(probe);
-  const css = getComputedStyle(probe);
+  const css = getComputedStyle(document.documentElement);
   const name = dark ? "grove-dark" : "grove-light";
   monaco.editor.defineTheme(name, editorTheme((t) => css.getPropertyValue(t), dark));
-  probe.remove();
   monaco.editor.setTheme(name);
 }
 

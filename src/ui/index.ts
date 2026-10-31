@@ -1,4 +1,4 @@
-// The design system. Importing it brings its styles and font: they apply only inside a .ui-root element.
+// The design system. Importing it brings its tokens, font and styles: the controls apply only inside a .ui-root element, which Monaco stays out of.
 import "@fontsource-variable/inter/wght.css";
 import "./tokens.css";
 import "./controls.css";

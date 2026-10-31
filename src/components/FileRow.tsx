@@ -1,5 +1,6 @@
 import type { ChangeKind } from "../api";
-import { STATUS_TITLE, splitPath } from "../lib/format";
+import { splitPath } from "../lib/format";
+import { STATUS_TITLE } from "../ui/classes";
 import { StatusLetter, TreeChevron } from "../ui";
 import { FileTypeIcon } from "./FileTypeIcon";
 import type { ListRow } from "./ListView";

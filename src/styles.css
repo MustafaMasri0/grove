@@ -1,27 +1,4 @@
-:root,
-:root[data-theme="dark"] {
-  --bg: #0c0d0e;
-  --border: #1a1b1c;
-  --fg: #cccccc;
-  --muted: #9d9d9d;
-  --focus: #0078d4;
-  color-scheme: dark;
-}
-
-:root[data-theme="light"] {
-  --bg: #fcfcfd;
-  --border: #e4e4e6;
-  --fg: #3b3b3b;
-  --muted: #6e6e6e;
-  --focus: #005fb8;
-  color-scheme: light;
-}
-
-/* Set from the "UI font size" setting; the smaller texts follow it. */
-:root {
-  --ui-font-size: 13px;
-}
-
+/* The page itself. Tokens and controls live in src/ui; each surface keeps its own styles. */
 * {
   box-sizing: border-box;
 }
@@ -35,9 +12,9 @@ body,
 }
 
 body {
-  background: var(--bg);
-  color: var(--fg);
-  font: var(--ui-font-size)/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  background: var(--sheet);
+  color: var(--ink);
+  font: var(--fs-md)/1.4 var(--ui);
   user-select: none;
 }
 

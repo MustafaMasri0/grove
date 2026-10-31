@@ -160,7 +160,7 @@ export function App() {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     applyEditorTheme(dark);
     // What the window shows behind the page: while it opens, and in the strip a fast resize uncovers.
-    const shell = getComputedStyle(document.getElementById("rail")!).getPropertyValue("--shell").trim();
+    const shell = getComputedStyle(document.documentElement).getPropertyValue("--shell").trim();
     void getCurrentWebviewWindow().setBackgroundColor(shell).catch(() => {});
   }, [dark]);
 
