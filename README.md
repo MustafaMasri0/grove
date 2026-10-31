@@ -120,7 +120,8 @@ address.
   without network access (scripts from a CDN do not load), and web links ask
   before opening.
 - **Context menus** on files, folders, tabs, commits, worktrees, repositories
-  and branches: copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`),
+  and branches, on the rail and the overview table: open a worktree in a terminal
+  (Windows Terminal if installed; `ssh` for SSH repositories), copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`),
   reveal in File Explorer (not for SSH repositories), open a commit on GitHub,
   and more.
 - **Settings** (gear at the foot of the rail, or Ctrl+,): theme, zoom, editor and diff

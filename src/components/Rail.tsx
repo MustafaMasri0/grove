@@ -1,14 +1,12 @@
 import { useMemo, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
-import { worktreeItems } from "../lib/contextMenus";
 import { shortTime } from "../lib/format";
-import { canReveal } from "../lib/hostPaths";
 import { isMenuKey } from "../lib/menu";
 import { changeCountTitle } from "../lib/changes";
 import { railRows, railTitle, railVisible, sharedTitle, STATE_MARK, type RailRow } from "../lib/rail";
 import { clampRail, isNarrow } from "../lib/shell";
 import { useNow } from "../lib/useNow";
 import { STATE_LABEL } from "../lib/worktrees";
-import { menuEnv } from "../menuEnv";
+import { worktreeMenu } from "../menuEnv";
 import { useStore } from "../store";
 import { Button, Count, Delta, Empty, EmptyLine, Field, Mark, menuAtElement, menuAtPointer, Resizer, Row, Skeleton, Toggle, WarnMark } from "../ui";
 import { foldRail } from "./foldRail";
@@ -89,7 +87,6 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
 const SKELETON = [1, 2, 3, 4, 5, 6];
 
 function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; query: string; changesOnly: boolean; onClear: () => void }) {
-  const repo = useStore((s) => s.repo);
   const worktrees = useStore((s) => s.worktrees);
   const overview = useStore((s) => s.overview);
   const changeCounts = useStore((s) => s.changeCounts);
@@ -104,8 +101,6 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
   const all = useMemo(() => railRows({ worktrees, overview, changeCounts, lastChange, actions }, now), [worktrees, overview, changeCounts, lastChange, actions, now]);
   const { rows, none } = railVisible(all, { query, changesOnly, icons, open: atWork ? cwd : null });
 
-  const items = (r: RailRow) => worktreeItems(menuEnv, { path: r.worktree.displayPath, branch: r.worktree.branch, missing: r.worktree.missing, reveal: !!repo && canReveal(repo) });
-
   const onKeyDown = (e: KeyboardEvent) => {
     const row = (e.target as Element).closest<HTMLElement>(".wt");
     if (!row) return;
@@ -116,7 +111,7 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
       const r = all.find((x) => x.worktree.path === row.dataset.path);
       if (!r) return;
       setMenuPath(r.worktree.path);
-      menuAtElement(row, items(r), () => setMenuPath(null));
+      menuAtElement(row, worktreeMenu(r.worktree), () => setMenuPath(null));
     } else return;
     e.preventDefault();
     e.stopPropagation();
@@ -150,7 +145,7 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
           now={now}
           onMenu={(e) => {
             setMenuPath(r.worktree.path);
-            menuAtPointer(e, items(r), () => setMenuPath(null));
+            menuAtPointer(e, worktreeMenu(r.worktree), () => setMenuPath(null));
           }}
         />
       ))}

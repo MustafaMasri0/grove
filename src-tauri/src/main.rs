@@ -3,6 +3,7 @@
 mod avatar;
 mod commands;
 mod hosts;
+mod terminal;
 
 use tauri::{Emitter, Manager};
 
@@ -60,6 +61,7 @@ fn main() {
             commands::avatar,
             commands::github_repo,
             commands::copy_text,
+            terminal::open_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Grove");

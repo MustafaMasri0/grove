@@ -39,7 +39,7 @@ const frames = [...sourceText.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1
 check("onlyKeptKeyframes", frames.every((n) => KEPT.includes(n)), frames.filter((n) => !KEPT.includes(n)));
 const scripted = [".animate(", "startViewTransition", "::view-transition"].filter((s) => sourceText.includes(s));
 check("noScriptedAnimation", !scripted.length, scripted);
-const WORDING = [["Needs review", /Needs review/], ["review as a state", /\breview\b/i], ["Next file", /Next file/], ["Done, next worktree", /Done, next worktree/], ["Open in terminal", /Open in terminal/], ["Compare", /\bCompare\b(?! images)/], ["Try again", /Try again/], ["viewed", /\bviewed\b/]];
+const WORDING = [["Needs review", /Needs review/], ["review as a state", /\breview\b/i], ["Next file", /Next file/], ["Done, next worktree", /Done, next worktree/], ["Compare", /\bCompare\b(?! images)/], ["Try again", /Try again/], ["viewed", /\bviewed\b/]];
 const forbidden = (text) => WORDING.filter(([, r]) => r.test(text)).map(([n]) => n);
 check("noForbiddenWording", !forbidden(sourceText).length, forbidden(sourceText));
 // Every surface keeps its own styles: what stays in styles.css is the page itself.
@@ -527,6 +527,26 @@ try {
     await waitFor("#overlays .picker", 5000);
     const b = await box(".base-select .sel"), p = await box("#overlays .picker");
     return { under: p.t >= b.b, spans: p.l <= b.l + 1 && p.r >= b.r - 1 };
+  });
+  // The overview table has the rail's worktree menu, by right-click and by key.
+  await attempt("worktreeTableMenu", async () => {
+    await openApp();
+    const d = {};
+    const labels = () => ev(`[...document.querySelectorAll("#overlays .menu [role=menuitem]")].map((e) => e.textContent).join()`);
+    const want = "Copy path,Copy branch name,Open in Terminal,Reveal in File Explorer";
+    await ev(`(()=>{const r=document.querySelector(".dt-row"),b=r.getBoundingClientRect();r.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,button:2,clientX:b.left+40,clientY:b.top+8}))})()`);
+    await waitFor("#overlays .menu", 3000);
+    d.pointer = (await labels()) === want;
+    d.marked = await has(".dt-row.menu-target");
+    await ev(`[...document.querySelectorAll("#overlays .menu [role=menuitem]")].find((e) => e.textContent === "Open in Terminal").click()`);
+    await sleep(200);
+    d.ran = (await ipc("open_terminal")) === 1;
+    d.unmarked = !(await has(".dt-row.menu-target"));
+    await ev(`document.querySelector(".dt-row").focus()`);
+    await key("ContextMenu", 93);
+    await waitFor("#overlays .menu", 3000);
+    d.key = (await labels()) === want;
+    return d;
   });
   await attempt("contextMenuKeys", async () => {
     await openApp();
@@ -2286,7 +2306,7 @@ try {
     await key("Escape", 27);
     await click(".t-repo");
     await sample();
-    await click(".picker-f .btn:nth-of-type(2)");
+    await click(".picker-f .btn");
     await sample();
     return { allowed: !bad.size, bad: bad.size ? [...bad.keys()].join() : true, fades: seen.has("animation:fade-in") };
   });
@@ -2348,14 +2368,16 @@ try {
       await sleep(60);
       await click(".t-repo");
       await sleep(160);
-      await click(".picker-f .btn:nth-of-type(2)");
+      await click(".picker-f .btn");
+      await sleep(120);
+      await clickText(".repo-dlg .tray button", "SSH");
       await sleep(120);
       await type("user@denied-box");
       await key("Tab", 9);
       await type("~/src/example");
       await key("Enter", 13);
       await sleep(250);
-      d.repo = await audited(".picker", "repo");
+      d.repo = await audited(".repo-dlg", "repo");
       return d;
     });
   }

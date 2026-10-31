@@ -4,6 +4,7 @@ import { isoToUnix, relativeTime, shortSha, shortTime, splitPath } from "../lib/
 import { STATE_MARK } from "../lib/rail";
 import { useNow } from "../lib/useNow";
 import { heldOrder, nextSort, ORIGIN_TEXT, overviewRows, sharedFiles, sortRows, STATE_LABEL, worktreeName, type ActivityEvent, type OverviewColumn, type OverviewRow, type SharedFile } from "../lib/worktrees";
+import { worktreeMenu } from "../menuEnv";
 import { useStore } from "../store";
 import { Badge, Banner, Button, Checkbox, Chip, Count, Delta, Empty, EmptyLine, HelpTip, LoadingLine, PathLabel, Row, SortHeader, StateTag, StatusLetter, TableRow, WarnTriangle } from "../ui";
 import { BaseSelect } from "./BaseSelect";
@@ -243,7 +244,7 @@ function WorktreeRow({ r, now, base, current, lastChange, possibleConflicts, dis
   const c = w.lastCommit;
   const details = [r.branch, originTip(r), c && `${c.subject} (${c.authorName})`].filter(Boolean).join(" · ");
   return (
-    <TableRow onOpen={onOpen} data-path={w.path}>
+    <TableRow onOpen={onOpen} menu={() => worktreeMenu({ path: w.path, displayPath, branch: w.branch, missing: false })} data-path={w.path}>
       <td className="wname" data-tip={`Show ${displayPath}\n${details}`}>
         <span className="wn">
           <span className="ell">{r.name}</span>

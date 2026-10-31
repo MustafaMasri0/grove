@@ -1148,7 +1148,8 @@
     cursor: pointer;
   }
 
-  & .dt-row:hover td {
+  & .dt-row:hover td,
+  & .dt-row.menu-target td {
     background: color-mix(in srgb, var(--sheet) 94%, var(--title));
   }
 

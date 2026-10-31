@@ -138,6 +138,7 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "save_settings":
     case "watch":
     case "copy_text":
+    case "open_terminal":
       return null;
     case "settings_file":
       return { path: "C:\\Users\\user\\AppData\\Roaming\\Grove\\settings.json", text: "{}" };
