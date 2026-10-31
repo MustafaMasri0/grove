@@ -1,19 +1,37 @@
 import type { ChangeKind } from "../api";
-import { STATUS_LETTER, STATUS_TITLE, splitPath } from "../lib/format";
-import { useStore } from "../store";
+import { STATUS_TITLE, splitPath } from "../lib/format";
+import { StatusLetter, TreeChevron } from "../ui";
 import { FileTypeIcon } from "./FileTypeIcon";
+import type { ListRow } from "./ListView";
 
-/** `inTree`: the row sits under its folder in a tree, so only a rename's old path is shown. */
-export function FileRow({ path, origPath, kind, inTree }: { path: string; origPath?: string | null; kind: ChangeKind; inTree?: boolean }) {
+interface FileRow {
+  path: string;
+  origPath?: string | null;
+  kind: ChangeKind;
+  /** The row sits under its folder in a tree, so only a rename's old path is shown. */
+  inTree?: boolean;
+  /** The "Show folder path" setting. */
+  showDir?: boolean;
+}
+
+/** One changed file: its icon, its name in its status colour, its folder and its status letter. */
+export function fileRow({ path, origPath, kind, inTree, showDir }: FileRow): ListRow {
   const { name, dir } = splitPath(path);
-  const showDir = useStore((s) => s.settings.showFolderPath) && !inTree;
-  return (
-    <span className={`file-row k-${kind}`} title={`${STATUS_TITLE[kind]}: ${origPath ? `${origPath} → ` : ""}${path}`}>
-      <FileTypeIcon name={name} />
-      <span className={`file-name k-${kind}`}>{name}</span>
-      {showDir && <span className="file-dir">{origPath ? `${origPath} → ${dir}` : dir}</span>}
-      {inTree && <span className="file-dir">{origPath ? `from ${origPath}` : ""}</span>}
-      <span className={`status-letter k-${kind}`}>{STATUS_LETTER[kind]}</span>
-    </span>
-  );
+  const where = inTree ? (origPath ? `from ${origPath}` : "") : showDir ? (origPath ? `${origPath} → ${dir}` : dir) : "";
+  return {
+    title: `${STATUS_TITLE[kind]}: ${origPath ? `${origPath} → ` : ""}${path}`,
+    lead: (
+      <>
+        {inTree && <TreeChevron />}
+        <FileTypeIcon name={name} />
+      </>
+    ),
+    main: (
+      <>
+        <span className={`fname k-${kind}`}>{name}</span>
+        <span className="fdir">{where}</span>
+      </>
+    ),
+    trail: <StatusLetter kind={kind} />,
+  };
 }

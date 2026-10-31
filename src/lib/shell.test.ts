@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { bandOf, clampRail, commitInList, isNarrow } from "./shell";
+import { bandOf, clampRail, commitInList, commitRowHeight, isNarrow, listRowHeight } from "./shell";
+
+describe("list rows", () => {
+  it("are the designed heights at the default font", () => expect([listRowHeight(13), commitRowHeight(13)]).toEqual([28, 44]));
+  it("grow with the UI font, in whole pixels", () => expect([listRowHeight(10), listRowHeight(18), commitRowHeight(18)]).toEqual([22, 39, 59]));
+});
 
 describe("shell bands", () => {
   it("splits at 800, 1100 and 1500", () => {

@@ -25,7 +25,7 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const SHELL = ["src/shell.css", "src/overview.css", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
+const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
 const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
 const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
@@ -95,7 +95,7 @@ const CLASSIFY = `(()=>{const out=[];for(const a of document.getAnimations()){co
  else if(a instanceof CSSTransition){const p=a.transitionProperty,{dur,ease}=spec("transition","transitionProperty",p);key="transition:"+p;
   if(${JSON.stringify(COLOUR)}.includes(p)||p==="fill"){if(dur!==120||ease!=="ease")bad=key+" "+dur+" "+ease}
   else if(p==="left"||p==="right"){if(!t.matches(".tray>.glide")||dur!==160||ease!=="ease")bad=key+" "+where(t)+" "+dur}
-  else if(p==="transform"){const drawer=t.matches(".list-clip");if(drawer?dur!==160:!t.closest(".sec")||dur!==120)bad=key+" "+where(t)+" "+dur;else if(ease!=="ease")bad=key+" "+where(t)+" "+ease}
+  else if(p==="transform"){const drawer=t.matches(".list-clip");if(drawer?dur!==160:!t.closest(".sec,.tchev")||dur!==120)bad=key+" "+where(t)+" "+dur;else if(ease!=="ease")bad=key+" "+where(t)+" "+ease}
   else if(p==="visibility"){if(!t.matches(".list-clip"))bad=key+" "+where(t)}
   else bad=key}
  else{key="waapi";bad=key}
@@ -467,29 +467,29 @@ try {
   await attempt("contextMenuKeys", async () => {
     await openApp();
     await toWork(2);
-    await ev(`[...document.querySelectorAll(".left-tabs button")][0].click();1`);
+    await ev(`document.querySelector(".ptabs button").click();1`);
     await sleep(300);
-    const d = { list: await waitFor(".left .list .list-row", 8000) };
-    await click(".left .list .list-row");
-    await ev(`document.querySelector(".left .list").focus();1`);
+    const d = { list: await waitFor(".left .lbox .row", 8000) };
+    await click(".left .lbox .row");
+    await ev(`document.querySelector(".left .lbox").focus();1`);
     await key("F10", 121, 8);
     await sleep(100);
     d.shiftF10 = await has("#overlays .menu .mi.on");
-    d.target = await has(".left .list .list-row.menu-target");
-    await ev(`document.querySelector(".left .list").dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true}));1`);
+    d.target = await has(".left .lbox .row.menu-target");
+    await ev(`document.querySelector(".left .lbox").dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true}));1`);
     d.echoIgnored = (await ev(`document.querySelectorAll("#overlays .menu").length`)) === 1;
     await key("ArrowDown", 40);
     d.arrow = await ev(`document.querySelector("#overlays .menu").getAttribute("aria-activedescendant")!=="mi-0"`);
     await key("Escape", 27);
     d.closed = !(await has("#overlays .menu"));
-    d.targetCleared = !(await has(".left .list .list-row.menu-target"));
-    d.focusBack = await focusIs(".left .list");
+    d.targetCleared = !(await has(".left .lbox .row.menu-target"));
+    d.focusBack = await focusIs(".left .lbox");
     await key("ContextMenu", 93);
     await sleep(100);
     d.menuKey = await has("#overlays .menu .mi.on");
     await key("ContextMenu", 93);
     d.menuKeyCloses = !(await has("#overlays .menu"));
-    d.focusBack2 = await focusIs(".left .list");
+    d.focusBack2 = await focusIs(".left .lbox");
     return d;
   });
   await attempt("keysWithMonaco", async () => {
@@ -527,7 +527,7 @@ try {
   const autoQ = (o) => `&auto=${encodeURIComponent(JSON.stringify(o))}`;
   const settingsQ = (o) => `&settings=${encodeURIComponent(JSON.stringify(o))}`;
   // Only the shell is held to the design system's rules here: the panes inside it move over in later phases.
-  const SHELL_REGIONS = [".rail", ".work-top", ".wc", ".ov-page"];
+  const SHELL_REGIONS = [".rail", ".work-top", ".wc", ".ov-page", ".left", ".commit-col"];
   const shellAudit = async () => {
     const r = { fails: [], overflow: [] };
     for (const region of SHELL_REGIONS) {
@@ -819,9 +819,8 @@ try {
     await sleep(200);
     return {
       railRowInFlow: (await ev(`getComputedStyle(document.querySelector(".rail .wt")).position`)) === "relative",
-      listRowAbsolute: (await ev(`getComputedStyle(document.querySelector(".left .list-row")).position`)) === "absolute",
-      noLegacyRow: !(await has(".left .row")),
-      noLegacyTab: !(await has(".tab-strip .tab")),
+      listRowAbsolute: (await ev(`getComputedStyle(document.querySelector(".left .lbox .row")).position`)) === "absolute",
+      noLegacyRow: !(await has(".list-row")),
     };
   });
   await attempt("widthBands", async () => {
@@ -846,7 +845,7 @@ try {
     d.opensWithWorktree = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "true";
     await sleep(240);
     d.overPage = (await box(".list-clip")).l === 48;
-    await click(".left .list .list-row");
+    await click(".left .lbox .row");
     await sleep(240);
     d.fileCloses = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "false" && (await has(".list-clip[inert]"));
     await key("b", 66, CTRL);
@@ -904,7 +903,7 @@ try {
     await openOverview();
     return {
       root: await has(".ov-page.ui-root"),
-      noInnerScopes: (await count(".ov-page .ui-root")) === 1 && (await has(".ov-page .base-select .ui-root")),
+      noInnerScopes: (await count(".ov-page .ui-root")) === 0,
       noCards: !(await has(".ov-card, .ov-body, .ov-section")),
       fullWidth: (await box(".ov-tbl table")).r === (await box(".ov-page")).r,
       dragBand: (await count('.ov-head[data-tauri-drag-region="deep"]')) === 1,

@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from "react";
+import type { InputHTMLAttributes, ReactNode, Ref } from "react";
 import { Icon } from "../components/Icon";
 import { cx } from "./classes";
 
@@ -12,16 +12,19 @@ export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   invalid?: boolean;
   /** The code font, for paths and SHAs. */
   mono?: boolean;
+  /** Only an outline until it is used: a filter at the top of a list. */
+  quiet?: boolean;
+  ref?: Ref<HTMLInputElement>;
 }
 
 /** Text field. Wrap it with a label when it has a visible one. */
-export function Field({ label, search, suffix, invalid, mono, className, type = "text", ...rest }: FieldProps) {
+export function Field({ label, search, suffix, invalid, mono, quiet, className, type = "text", ...rest }: FieldProps) {
   const wrapped = search || suffix;
   const input = (
     <input
       {...rest}
       type={type}
-      className={cx("field", mono && "mono", invalid && "invalid", !wrapped && className)}
+      className={cx("field", mono && "mono", invalid && "invalid", quiet && "quiet", !wrapped && className)}
       aria-label={label ?? rest.placeholder}
       aria-invalid={invalid ? true : undefined}
       spellCheck={false}

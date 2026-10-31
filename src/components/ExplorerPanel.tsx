@@ -5,9 +5,9 @@ import { ancestorFolders, childrenOf, containsPath, dirsWithChanges, type TreeEn
 import { useAt, useStore } from "../store";
 import { fileTab, revealPathOf } from "../tabs";
 import { currentWhere, menuEnv } from "../menuEnv";
+import { Checkbox, TreeChevron } from "../ui";
 import { FileTypeIcon, FolderTypeIcon } from "./FileTypeIcon";
-import { Icon } from "./Icon";
-import { ListView } from "./ListView";
+import { ListView, useListRowHeight } from "./ListView";
 
 interface Node extends TreeEntry {
   depth: number;
@@ -25,6 +25,7 @@ export function ExplorerPanel() {
   const openTab = useStore((s) => s.openTab);
   const cwd = useStore((s) => s.cwd);
   const at = useAt();
+  const rowHeight = useListRowHeight();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [ignoredChildren, setIgnoredChildren] = useState<Record<string, TreeEntry[]>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -131,27 +132,26 @@ export function ExplorerPanel() {
   };
 
   return (
-    <div className="panel">
+    <div className="pane-body">
       <div className="panel-toolbar">
-        <span className="muted ellipsis">{viewBranch ? `Files at the tip of ${viewBranch.name}` : `${fileList?.files.length ?? "…"} files`}</span>
+        <span className="muted ell">{viewBranch ? `Files at the tip of ${viewBranch.name}` : `${fileList?.files.length ?? "…"} files`}</span>
         {!viewBranch && (
-          <label className="check" title="Show files git ignores (node_modules, build output, …)">
-            <input
-              type="checkbox"
-              checked={showIgnored}
-              onChange={(e) => {
-                updateSettings({ showIgnored: e.target.checked });
-                void loadFileList();
-              }}
-            />
-            Ignored files
-          </label>
+          <Checkbox
+            text="Ignored files"
+            tip="Show files git ignores (node_modules, build output, …)"
+            checked={showIgnored}
+            onChange={(e) => {
+              updateSettings({ showIgnored: e.target.checked });
+              void loadFileList();
+            }}
+          />
         )}
       </div>
       <ListView<Node>
         label="Files"
         className="tree"
         items={rows}
+        rowHeight={rowHeight}
         getKey={(n) => n.path}
         selectedKey={selected}
         reveal={reveal}
@@ -171,16 +171,17 @@ export function ExplorerPanel() {
             if (parent) setSelected(parent);
           }
         }}
-        render={(n) => {
-          const cls = classFor(n);
-          return (
-            <span className={`tree-row ${cls}`} style={{ paddingLeft: 6 + n.depth * 14 }} title={n.path}>
-              <span className="tree-chevron">{n.isDir ? <Icon name={expanded.has(n.path) ? "chevron-down" : "chevron-right"} /> : null}</span>
-              <span className="tree-icon">{n.isDir ? <FolderTypeIcon name={n.name} open={expanded.has(n.path)} /> : <FileTypeIcon name={n.name} />}</span>
-              <span className={`tree-name ${cls}`}>{n.name}</span>
-            </span>
-          );
-        }}
+        render={(n) => ({
+          indent: n.depth,
+          title: n.path,
+          lead: (
+            <>
+              <TreeChevron folder={n.isDir} open={expanded.has(n.path)} />
+              {n.isDir ? <FolderTypeIcon name={n.name} open={expanded.has(n.path)} /> : <FileTypeIcon name={n.name} />}
+            </>
+          ),
+          main: <span className={`fname ${classFor(n)}`}>{n.name}</span>,
+        })}
         empty={fileList ? "No files." : "Loading…"}
       />
     </div>

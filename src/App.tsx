@@ -9,7 +9,7 @@ import { foldRail } from "./components/foldRail";
 import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
-import { dragWidth } from "./components/paneWidth";
+import { dragWidth, nudgeWidth } from "./components/paneWidth";
 import { Rail } from "./components/Rail";
 import { SettingsPage } from "./components/SettingsPage";
 import { WindowControls } from "./components/WindowControls";
@@ -22,7 +22,7 @@ import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
 import { bandOf, commitInList, isNarrow } from "./lib/shell";
 import { effectiveDark, setActionProgress, useStore, type LeftTab } from "./store";
-import { Banner, isKeyboardEcho, keepOverlaysOnBlur, OverlayHost, Spinner } from "./ui";
+import { Banner, isKeyboardEcho, keepOverlaysOnBlur, OverlayHost, Resizer, Spinner } from "./ui";
 import { topEntry } from "./ui/overlayStack";
 import "./shell.css";
 
@@ -162,9 +162,7 @@ export function App() {
     document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
   }, [uiFontSize]);
 
-  const startResize = (key: "leftWidth" | "commitPaneWidth") => (e: React.MouseEvent) => dragWidth(e, key, (w) => Math.max(220, Math.min(window.innerWidth - 400, w)));
-
-  const columns = narrow ? "minmax(0, 1fr)" : commitColumn ? `minmax(160px, ${leftWidth}px) 4px minmax(160px, ${commitWidth}px) 4px minmax(320px, 1fr)` : `minmax(160px, ${leftWidth}px) 4px minmax(320px, 1fr)`;
+  const columns = narrow ? "minmax(0, 1fr)" : commitColumn ? `minmax(160px, ${leftWidth}px) 0 minmax(160px, ${commitWidth}px) 0 minmax(320px, 1fr)` : `minmax(160px, ${leftWidth}px) 0 minmax(320px, 1fr)`;
   return (
     <>
       <div ref={appEl} className="app" data-size={bandOf(appWidth)} data-overlay-inert="">
@@ -178,13 +176,15 @@ export function App() {
                 <WorkHeader />
                 <div className="work-body" style={{ gridTemplateColumns: columns }}>
                   <div className="list-clip" data-open={!narrow || listOpen} inert={narrow && !listOpen}>
-                    {repo ? <LeftPane /> : <aside className="left" />}
+                    {repo ? <LeftPane /> : <aside className="ui-root left" />}
                   </div>
-                  {!narrow && <div className="resizer" onMouseDown={startResize("leftWidth")} />}
+                  {!narrow && <PaneEdge width="leftWidth" label="Resize the list pane" />}
                   {commitColumn && (
                     <>
-                      <CommitPane />
-                      <div className="resizer" onMouseDown={startResize("commitPaneWidth")} />
+                      <div className="ui-root commit-col">
+                        <CommitPane />
+                      </div>
+                      <PaneEdge width="commitPaneWidth" label="Resize the commit pane" />
                     </>
                   )}
                   <EditorArea />
@@ -200,6 +200,17 @@ export function App() {
       </div>
       <OverlayHost />
     </>
+  );
+}
+
+const clampPane = (w: number) => Math.max(220, Math.min(window.innerWidth - 400, w));
+
+/** The handle between two panes; it sits on the hairline and takes no room of its own. */
+function PaneEdge({ width, label }: { width: "leftWidth" | "commitPaneWidth"; label: string }) {
+  return (
+    <div className="ui-root pane-edge">
+      <Resizer label={label} onMouseDown={(e) => dragWidth(e, width, clampPane)} onKeyDown={(e) => nudgeWidth(e, width, clampPane)} />
+    </div>
   );
 }
 
@@ -284,7 +295,7 @@ async function runAutomation() {
   if (auto.historySearch) {
     // Typed into the search box, as a user would.
     useStore.getState().setLeftTab("history");
-    const input = await waitFor<HTMLInputElement>(".history-search");
+    const input = await waitFor<HTMLInputElement>(".history-search input");
     if (input) {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, auto.historySearch);
       input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -321,7 +332,7 @@ async function worktreesForTest(spec: string) {
 
 /** WV_LIST_KEYS=ArrowDown,ArrowLeft,Ctrl+3,…: presses the keys in the left pane's list, as typing them there would. */
 async function pressListKeysForTest(keys: string[]) {
-  const list = await waitFor<HTMLElement>(".left .list");
+  const list = await waitFor<HTMLElement>(".left .lbox");
   if (!list) return console.error("WV_LIST_KEYS: no list in the left pane");
   await new Promise((r) => setTimeout(r, 1000));
   list.focus();
@@ -409,7 +420,7 @@ async function openMenuForTest(spec: string) {
         el.click();
         await wait(300);
       }
-      const target = (el.closest(".list") as HTMLElement | null) ?? el;
+      const target = (el.closest(".lbox") as HTMLElement | null) ?? el;
       target.focus();
       target.dispatchEvent(new KeyboardEvent("keydown", { key: "F10", code: "F10", shiftKey: true, bubbles: true, cancelable: true }));
       return;
@@ -422,11 +433,11 @@ async function openMenuForTest(spec: string) {
     (await find(button)).click();
     return find(".picker .mi", (els) => els.find((e) => e.dataset.current) ?? els[0]);
   };
-  const isFolder = (e: HTMLElement) => !!e.querySelector(".tree-chevron svg");
+  const isFolder = (e: HTMLElement) => !!e.querySelector(".tchev svg");
   // Rows of a scrolled list are also rendered just outside its visible part.
   const shown = (e: HTMLElement) => {
     const r = e.getBoundingClientRect();
-    const box = (e.closest(".list") ?? document.body).getBoundingClientRect();
+    const box = (e.closest(".lbox") ?? document.body).getBoundingClientRect();
     return r.top >= box.top && r.bottom <= box.bottom;
   };
   const visibleRow = (pref?: (e: HTMLElement) => boolean) => (els: HTMLElement[]) => {
@@ -452,7 +463,7 @@ async function openMenuForTest(spec: string) {
         s.setLeftTab("changes");
         // Nothing uncommitted: the branch's own changes have rows.
         if (s.settings.changesMode === "uncommitted" && !s.status?.entries.some((e) => e.kind !== "ignored")) s.setChangesMode("base");
-        return open(await find(".left .list .list-row", visibleRow((e) => !!e.querySelector(".k-modified"))));
+        return open(await find(".left .lbox .row", visibleRow((e) => !!e.querySelector(".k-modified"))));
       case "commit":
       case "commitfile":
         if (!useStore.getState().selectedCommit) {
@@ -461,18 +472,18 @@ async function openMenuForTest(spec: string) {
           const sha = useStore.getState().commits[0]?.sha;
           if (sha) await s.selectCommit(sha);
         }
-        return open(await find(place === "commit" ? ".history .list .list-row" : ".commit-pane .list .list-row", visibleRow()));
+        return open(await find(place === "commit" ? ".history .lbox .row" : ".commit-pane .lbox .row", visibleRow()));
       case "explorer":
       case "folder":
         s.setLeftTab("explorer");
-        return open(await find(".tree .list-row", visibleRow((e) => isFolder(e) === (place === "folder"))));
+        return open(await find(".tree .row", visibleRow((e) => isFolder(e) === (place === "folder"))));
       case "search": {
         s.focusSearch();
         const input = await find(".search-form input");
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "import");
         input.dispatchEvent(new Event("input", { bubbles: true }));
         (input as HTMLInputElement).form!.requestSubmit();
-        return open(await find(".left .list .list-row", (els) => els.filter(shown)[1]));
+        return open(await find(".left .lbox .row", (els) => els.filter(shown)[1]));
       }
       case "quickopen":
         s.setQuickOpen(true);

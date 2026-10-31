@@ -101,8 +101,7 @@ select {
 }
 
 input:focus,
-select:focus,
-.list:focus-visible {
+select:focus {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
 }
@@ -187,91 +186,6 @@ button.primary {
   color: var(--fg);
 }
 
-.left {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-side);
-  min-width: 0;
-  min-height: 0;
-}
-
-.resizer {
-  cursor: col-resize;
-  background: var(--border);
-  width: 1px;
-  margin: 0 1.5px;
-}
-
-.resizer:hover {
-  background: var(--focus);
-  width: 4px;
-  margin: 0;
-}
-
-.left-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex: none;
-}
-
-/* Tabs share the width by content and shrink when the pane is narrow; a label gives way before a count does. */
-.left-tabs button {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  padding: 8px 4px 6px;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-}
-
-.left-tabs .tab-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.left-tabs button.on {
-  color: var(--fg-strong);
-  border-bottom-color: var(--accent);
-}
-
-.panel {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  gap: 6px;
-  padding-top: 8px;
-}
-
-.panel > .filter,
-.panel > .filter-row,
-.panel > .segmented,
-.panel > .base-row,
-.panel > .panel-toolbar,
-.panel > .search-form,
-.panel > .search-summary {
-  margin: 0 8px;
-}
-
-.panel-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.check {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  color: var(--muted);
-}
-
 .segmented {
   display: flex;
   border: 1px solid var(--border-strong);
@@ -316,322 +230,10 @@ button.primary {
   background: var(--bg-active);
 }
 
-.base-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.base-select {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Lists */
-.list {
-  flex: 1;
-  overflow: auto;
-  position: relative;
-  outline: none;
-  min-height: 0;
-}
-
-.list-empty {
-  padding: 12px;
-  color: var(--muted);
-  user-select: text;
-}
-
-.list-row {
-  position: absolute;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.list-row:hover {
-  background: var(--bg-hover);
-}
-
-.list .list-row.selected {
-  background: var(--bg-active);
-}
-
-.list:focus .list-row.selected {
-  background: var(--bg-selected);
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-
-.file-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-}
-
-.file-name {
-  flex: none;
-  max-width: 70%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.file-dir {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--muted);
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.status-letter {
-  flex: none;
-  width: 14px;
-  text-align: center;
-  font-weight: 600;
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.k-modified {
-  color: var(--k-modified);
-}
-.k-added,
-.k-copied {
-  color: var(--k-added);
-}
-.k-deleted {
-  color: var(--k-deleted);
-}
-.file-name.k-deleted,
-.tree-name.k-deleted {
-  text-decoration: line-through;
-}
-.k-renamed {
-  color: var(--k-renamed);
-}
-.k-untracked {
-  color: var(--k-untracked);
-}
-.k-conflicted {
-  color: var(--k-conflicted);
-}
-.k-ignored {
-  color: var(--k-ignored);
-}
-
-.file-row.k-modified,
-.file-row.k-added,
-.file-row.k-deleted,
-.file-row.k-renamed,
-.file-row.k-untracked,
-.file-row.k-conflicted,
-.file-row.k-copied {
-  color: inherit;
-}
-
-/* Explorer tree */
-.tree .list-row {
-  padding: 0;
-}
-
-.tree-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-  min-width: 0;
-}
-
-.tree-chevron svg {
-  width: 12px;
-  height: 12px;
-}
-
-.tree-chevron {
-  width: 14px;
-  display: flex;
-  justify-content: center;
-  color: var(--muted);
-  flex: none;
-}
-
-.tree-icon {
-  display: flex;
-  color: var(--muted);
-  margin-right: 4px;
-  flex: none;
-}
-
-.tree-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Changed files as a tree */
-.tree-row > .file-row {
-  min-width: 0;
-  padding-right: 8px;
-}
-
-/* Lines up with the status letters of the file rows. */
-.folder-count {
-  margin: 0 8px 0 auto;
-  padding-left: 8px;
-  min-width: 14px;
-  text-align: center;
-  flex: none;
-  color: var(--muted);
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filter-row > .filter {
-  flex: 1;
-  min-width: 0;
-}
-
-.view-toggle {
-  display: flex;
-  align-items: center;
-  height: 24px;
-  flex: none;
-}
-
-/* History */
-.history {
-  padding-top: 0;
-}
-
-.history > .filter,
-.history > .file-history-head {
-  margin-top: 8px;
-}
-
-.file-history-head {
-  min-height: 24px;
-}
-
-.commit-row .status-letter {
-  flex: none;
-}
-
 /* Blame: the margin holds "sha author date  line"; keep its spacing and show it is clickable. */
 .editor-host.blame-on .monaco-editor .margin-view-overlays .line-numbers {
   white-space: pre;
   cursor: pointer;
-}
-
-.commit-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  width: 100%;
-}
-
-.commit-subject {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.commit-meta {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--muted);
-  font-size: calc(var(--ui-font-size) - 2px);
-}
-
-.commit-author {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.commit-author > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-/* Commit pane (middle column in History) */
-.commit-pane {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  min-height: 0;
-  background: var(--bg-side);
-}
-
-.pane-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  height: 36px;
-  padding: 0 6px 0 10px;
-  border-bottom: 1px solid var(--border);
-  flex: none;
-}
-
-.pane-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: none;
-}
-
-.pane-title {
-  font-weight: 600;
-  color: var(--fg-strong);
-}
-
-.commit-pane > .filter {
-  margin: 0 8px;
-}
-
-.commit-head {
-  flex: none;
-  max-height: 45%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 10px;
-  border-top: 1px solid var(--border);
-  user-select: text;
-}
-
-.commit-message {
-  margin: 0 0 8px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-  color: var(--fg-strong);
-}
-
-.commit-info {
-  font-size: calc(var(--ui-font-size) - 1px);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .selectable {
@@ -655,7 +257,6 @@ button.primary {
   height: 16px;
 }
 
-.file-row .ficon,
 .qo-item .ficon,
 .ed-tab .ficon {
   align-self: center;
@@ -768,71 +369,12 @@ button.primary {
   margin-right: 6px;
 }
 
-/* Search */
-.search-form {
-  display: flex;
-  gap: 4px;
-}
-
-.search-form .filter {
-  flex: 1;
-  min-width: 0;
-}
-
-.search-summary {
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
-.search-file {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  width: 100%;
-  min-width: 0;
-}
-
-.search-hit {
-  display: flex;
-  gap: 8px;
-  padding-left: 14px;
-  min-width: 0;
-  width: 100%;
-}
-
-.line-no {
-  color: var(--muted);
-  font-size: calc(var(--ui-font-size) - 2px);
-  min-width: 28px;
-  text-align: right;
-  flex: none;
-}
-
-.hit-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: Consolas, monospace;
-  font-size: calc(var(--ui-font-size) - 1px);
-}
-
 .pill {
   margin-left: auto;
   background: var(--bg-active);
   border-radius: 8px;
   padding: 0 6px;
   font-size: calc(var(--ui-font-size) - 2px);
-}
-
-/* Uncommitted change counts beside worktrees and branches, and on the Changes tab. */
-.change-badge {
-  flex: none;
-  align-self: center;
-  margin-left: 8px;
-  color: var(--fg-strong);
-}
-
-.left-tabs .tab-count {
-  flex: none;
-  margin-left: 5px;
 }
 
 /* Editor area */
@@ -1212,11 +754,6 @@ kbd {
   white-space: nowrap;
 }
 
-.list-row.menu-target {
-  outline: 1px solid var(--focus);
-  outline-offset: -1px;
-}
-
 .ed-tab:focus-visible {
   outline: 1px solid var(--focus);
   outline-offset: -1px;
@@ -1330,10 +867,6 @@ kbd {
   color: var(--muted);
   font-size: 11px;
   pointer-events: none;
-}
-
-.image-tag.left {
-  left: 6px;
 }
 
 .image-tag.right {

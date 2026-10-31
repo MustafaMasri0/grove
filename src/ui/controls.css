@@ -651,6 +651,11 @@
     pointer-events: none;
   }
 
+  & .field.quiet:not(:hover, :focus) {
+    background: none;
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+
   & .field.mono {
     font-family: var(--mono);
     font-size: var(--fs-sm);
@@ -914,6 +919,22 @@
     display: block;
     width: 16px;
     height: 16px;
+  }
+
+  & .tchev {
+    flex: none;
+    width: 14px;
+    display: grid;
+    place-items: center;
+    color: var(--icon);
+  }
+
+  & .tchev .icon {
+    transition: transform var(--t) ease;
+  }
+
+  & .tchev[data-open="true"] .icon {
+    transform: rotate(90deg);
   }
 
   /* Folds. Opening and closing is instant; only the chevron turns. */
@@ -1730,12 +1751,6 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-}
-
-.ui-root.ui-inline {
-  display: inline-flex;
-  background: none;
-  color: inherit;
 }
 
 /* Reduced motion: nothing moves, end states apply at once. */

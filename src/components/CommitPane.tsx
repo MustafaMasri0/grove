@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangedFile } from "../api";
 import { commitItems, fileItems } from "../lib/contextMenus";
+import { isMenuKey } from "../lib/menu";
 import { shortSha } from "../lib/format";
 import { useStore } from "../store";
 import { commitFileTab, fileTab } from "../tabs";
 import { currentWhere, menuEnv } from "../menuEnv";
-import { menuAtPointer } from "../ui";
+import { Button, Field, menuAtElement, menuAtPointer } from "../ui";
 import { Avatar } from "./Avatar";
 import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 
@@ -35,21 +36,21 @@ export function CommitPane() {
   const files = filter ? selected.files.filter((f) => f.path.toLowerCase().includes(filter.toLowerCase())) : selected.files;
 
   const openFile = (f: ChangedFile, pin: boolean) => openTab(commitFileTab(f, detail, parent), pin);
+  // The same options as the commit's row in History.
+  const commitMenu = () => commitItems(menuEnv, { sha: detail.sha, subject: detail.message.split("\n")[0], message: () => detail.message, github: useStore.getState().githubRepo });
 
   return (
-    <section className="commit-pane">
+    <section className="commit-pane" aria-label="Commit">
       <div className="pane-head">
-        <span className="pane-title ellipsis" title={detail.message}>
+        <span className="pane-title ell" title={detail.message}>
           {selected.files.length} changed file{selected.files.length === 1 ? "" : "s"}
         </span>
         <span className="pane-actions">
           <ChangesViewToggle />
-          <button className="icon-button" title="Close" onClick={close}>
-            ×
-          </button>
+          <Button kind="ghost" size="sm" icon="close" label="Close" tip="Close" onClick={close} />
         </span>
       </div>
-      <input className="filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
+      <Field quiet className="cp-filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
       <ChangedFilesView<ChangedFile>
         label="Files in commit"
         items={files}
@@ -74,10 +75,13 @@ export function CommitPane() {
       />
       <div
         className="commit-head"
-        onContextMenu={(e) => {
-          // The same options as the commit's row in History.
-          const { githubRepo } = useStore.getState();
-          menuAtPointer(e, commitItems(menuEnv, { sha: detail.sha, subject: detail.message.split("\n")[0], message: () => detail.message, github: githubRepo }));
+        tabIndex={0}
+        aria-label="Commit details"
+        onContextMenu={(e) => menuAtPointer(e, commitMenu())}
+        onKeyDown={(e) => {
+          if (!isMenuKey(e)) return;
+          e.preventDefault();
+          menuAtElement(e.currentTarget, commitMenu());
         }}
       >
         <div className="commit-author">

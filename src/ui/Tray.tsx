@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
 import { cx, thumbInsets } from "./classes";
 
@@ -59,14 +59,17 @@ export function Tray<K extends string>({ label, value, items, role = "group", sm
   );
 }
 
-/** Icon tabs: only the active tab shows its label; the rest name themselves in a tooltip. */
-export function IconTabs<K extends string>({ label, value, items, onChange }: { label: string; value: K; items: readonly (readonly [key: K, label: string, icon: IconName])[]; onChange?: (key: K) => void }) {
+export type IconTabItem<K extends string> = readonly [key: K, label: string, icon: IconName, tip?: string, trailing?: ReactNode];
+
+/** Icon tabs: only the active tab shows its label; the rest name themselves in a tooltip (`tip`, which also goes on the active tab, can add a shortcut). */
+export function IconTabs<K extends string>({ label, value, items, onChange }: { label: string; value: K; items: readonly IconTabItem<K>[]; onChange?: (key: K) => void }) {
   return (
     <div className="itabs" role="tablist" aria-label={label}>
-      {items.map(([key, text, icon]) => (
-        <button key={key} type="button" role="tab" aria-selected={value === key} aria-label={text} data-tip={value === key ? undefined : text} onClick={() => onChange?.(key)}>
+      {items.map(([key, text, icon, tip, trailing]) => (
+        <button key={key} type="button" role="tab" aria-selected={value === key} aria-label={text} data-tip={tip ?? (value === key ? undefined : text)} onClick={() => onChange?.(key)}>
           <Icon name={icon} size={14} />
           {value === key && <span>{text}</span>}
+          {trailing}
         </button>
       ))}
     </div>

@@ -5,7 +5,9 @@ import { splitPath } from "../lib/format";
 import { useAt, useStore } from "../store";
 import { fileTab } from "../tabs";
 import { currentWhere, menuEnv } from "../menuEnv";
-import { ListView } from "./ListView";
+import { Count, Field, Toggle } from "../ui";
+import { FileTypeIcon } from "./FileTypeIcon";
+import { ListView, useListRowHeight } from "./ListView";
 
 type Row = { type: "file"; path: string; count: number } | { type: "hit"; hit: GrepHit; key: string };
 
@@ -23,6 +25,7 @@ export function SearchPanel() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const rowHeight = useListRowHeight();
 
   useEffect(() => {
     input.current?.focus();
@@ -60,7 +63,7 @@ export function SearchPanel() {
 
   const files = new Set(result?.hits.map((h) => h.path)).size;
   return (
-    <div className="panel">
+    <div className="pane-body">
       <form
         className="search-form"
         onSubmit={(e) => {
@@ -68,20 +71,17 @@ export function SearchPanel() {
           void run();
         }}
       >
-        <input ref={input} className="filter" placeholder={viewBranch ? `Search ${viewBranch.name}` : "Search this worktree"} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <button type="button" className={`toggle${caseSensitive ? " on" : ""}`} title="Match case" onClick={() => setCaseSensitive((v) => !v)}>
-          Aa
-        </button>
-        <button type="button" className={`toggle${regex ? " on" : ""}`} title="Use regular expression" onClick={() => setRegex((v) => !v)}>
-          .*
-        </button>
+        <Field ref={input} quiet placeholder={viewBranch ? `Search ${viewBranch.name}` : "Search this worktree"} value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Toggle size="sm" text="Aa" aria-label="Match case" tip="Match case" on={caseSensitive} onClick={() => setCaseSensitive((v) => !v)} />
+        <Toggle size="sm" text=".*" aria-label="Use regular expression" tip="Use regular expression" on={regex} onClick={() => setRegex((v) => !v)} />
       </form>
-      <div className="muted search-summary">
-        {busy ? "Searching…" : error ? <span className="error-text">{error}</span> : result ? `${result.hits.length}${result.truncated ? "+" : ""} results in ${files} files${result.truncated ? " (showing the first 2000)" : ""}` : "Press Enter to search (git grep)."}
+      <div className="muted pane-note">
+        {busy ? "Searching…" : error ? <span className="err-text">{error}</span> : result ? `${result.hits.length}${result.truncated ? "+" : ""} results in ${files} files${result.truncated ? " (showing the first 2000)" : ""}` : "Press Enter to search (git grep)."}
       </div>
       <ListView<Row>
         label="Search results"
         items={rows}
+        rowHeight={rowHeight}
         getKey={(r) => (r.type === "file" ? `f:${r.path}` : r.key)}
         selectedKey={selected}
         onSelect={(r, pin) => {
@@ -100,17 +100,24 @@ export function SearchPanel() {
           });
         }}
         render={(r) =>
-          r.type === "file" ? (
-            <span className="search-file">
-              <b>{splitPath(r.path).name}</b> {showDir && <span className="file-dir">{splitPath(r.path).dir}</span>}
-              <span className="pill">{r.count}</span>
-            </span>
-          ) : (
-            <span className="search-hit">
-              <span className="line-no">{r.hit.line}</span>
-              <span className="hit-text">{r.hit.text.trim()}</span>
-            </span>
-          )
+          r.type === "file"
+            ? {
+                title: r.path,
+                lead: <FileTypeIcon name={splitPath(r.path).name} />,
+                main: (
+                  <>
+                    <span className="fname">{splitPath(r.path).name}</span>
+                    {showDir && <span className="fdir">{splitPath(r.path).dir}</span>}
+                  </>
+                ),
+                trail: <Count n={r.count} />,
+              }
+            : {
+                indent: 1,
+                title: `${r.hit.path}:${r.hit.line}`,
+                lead: <span className="line-no">{r.hit.line}</span>,
+                main: <span className="hit-text">{r.hit.text.trim()}</span>,
+              }
         }
         empty={result ? "No results." : ""}
       />

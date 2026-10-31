@@ -8,6 +8,7 @@ import { fileTab, revisionTab, uncommittedTab } from "../tabs";
 import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 import { BaseSelect } from "./BaseSelect";
 import { currentWhere, menuEnv } from "../menuEnv";
+import { Field, Tray } from "../ui";
 
 interface Row {
   path: string;
@@ -80,14 +81,14 @@ export function ChangesPanel() {
           <b>{viewBranch.name}</b> is not checked out in any worktree, so it has no uncommitted changes. Its files are in Explorer and its commits in History.
         </>
       ) : statusError ? (
-        <span className="error-text">{statusError}</span>
+        <span className="err-text">{statusError}</span>
       ) : status ? (
         "No uncommitted changes in this worktree."
       ) : (
         "Loading…"
       )
     ) : baseError ? (
-      <span className="error-text">{baseError}</span>
+      <span className="err-text">{baseError}</span>
     ) : baseDiff ? (
       `${branchLabel} has no changes since it split from ${base}.`
     ) : (
@@ -95,23 +96,27 @@ export function ChangesPanel() {
     );
 
   return (
-    <div className="panel">
-      <div className="segmented" role="tablist">
-        <button role="tab" aria-selected={mode === "uncommitted"} className={mode === "uncommitted" ? "on" : ""} onClick={() => setMode("uncommitted")}>
-          Uncommitted{status && !viewBranch ? ` (${uncommittedCount(status)})` : ""}
-        </button>
-        <button role="tab" aria-selected={mode === "base"} className={mode === "base" ? "on" : ""} onClick={() => setMode("base")}>
-          Branch vs base
-        </button>
+    <div className="pane-body">
+      <div className="pane-seg">
+        <Tray
+          role="tablist"
+          small
+          label="Changes"
+          value={mode}
+          items={[
+            ["uncommitted", `Uncommitted${status && !viewBranch ? ` (${uncommittedCount(status)})` : ""}`],
+            ["base", "Branch vs base"],
+          ]}
+          onChange={setMode}
+        />
+        {mode === "base" && (
+          <span className="base-in" data-tip={`Base${baseDiff ? ` · ${baseDiff.files.length} files · since ${shortSha(baseDiff.mergeBase)}` : ""}`}>
+            <BaseSelect labelled={false} />
+          </span>
+        )}
       </div>
-      {mode === "base" && (
-        <div className="base-row">
-          <BaseSelect />
-          {baseDiff && <span className="muted">{baseDiff.files.length} files · since {shortSha(baseDiff.mergeBase)}</span>}
-        </div>
-      )}
       <div className="filter-row">
-        <input className="filter" placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <Field quiet placeholder="Filter files" value={filter} onChange={(e) => setFilter(e.target.value)} />
         <ChangesViewToggle />
       </div>
       <ChangedFilesView

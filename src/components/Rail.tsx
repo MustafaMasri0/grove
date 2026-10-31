@@ -191,7 +191,7 @@ export function Rail() {
         {icons && <Nav icon="search" label="Search" tip="Search files (Ctrl+P)" onClick={() => hasRepo && setQuickOpen(true)} />}
       </div>
       <div className="rail-filter">
-        <Field placeholder="Filter worktrees" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <Field quiet placeholder="Filter worktrees" value={query} onChange={(e) => setQuery(e.target.value)} />
         <Toggle icon="diff" label="Show only worktrees with changes" tip="Has changes" tone="changes" on={changesOnly} onClick={() => setChangesOnly(!changesOnly)} />
       </div>
       {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} query={query} changesOnly={changesOnly} onClear={clear} />}
