@@ -1,6 +1,8 @@
 import { changeCountTitle, uncommittedCount } from "../lib/changes";
+import { commitInList } from "../lib/shell";
 import { useStore, type LeftTab } from "../store";
 import { ChangesPanel } from "./ChangesPanel";
+import { CommitPane } from "./CommitPane";
 import { ExplorerPanel } from "./ExplorerPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { SearchPanel } from "./SearchPanel";
@@ -18,6 +20,8 @@ export function LeftPane() {
   const focusSearch = useStore((s) => s.focusSearch);
   // Only a worktree has uncommitted changes; a branch shown read-only does not.
   const changes = useStore((s) => (s.viewBranch ? null : uncommittedCount(s.status)));
+  // Too narrow for a column of its own: the commit's files take the list's place.
+  const commitHere = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null && commitInList(s.appWidth));
   return (
     <aside className="left">
       <nav className="left-tabs" role="tablist">
@@ -32,7 +36,7 @@ export function LeftPane() {
           >
             <span className="tab-label">{t.label}</span>
             {t.id === "changes" && !!changes && (
-              <span className="badge tab-count" title={changeCountTitle(changes)}>
+              <span className="pill tab-count" title={changeCountTitle(changes)}>
                 {changes}
               </span>
             )}
@@ -40,7 +44,7 @@ export function LeftPane() {
         ))}
       </nav>
       {tab === "changes" && <ChangesPanel />}
-      {tab === "history" && <HistoryPanel />}
+      {tab === "history" && (commitHere ? <CommitPane /> : <HistoryPanel />)}
       {tab === "explorer" && <ExplorerPanel />}
       {tab === "search" && <SearchPanel />}
     </aside>

@@ -900,26 +900,7 @@
     font-size: var(--fs-sm);
   }
 
-  /* The app's own Avatar and Charmed file icons, as they look here */
-  & .avatar {
-    position: relative;
-    flex: none;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    color: #fff;
-    font-weight: 600;
-    overflow: hidden;
-  }
-
-  & .avatar img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
+  /* The app's Charmed file icons, as they look here */
   & .ficon {
     flex: none;
     display: inline-flex;
@@ -1610,6 +1591,29 @@
   & > .tip {
     pointer-events: none;
   }
+}
+
+/* Author avatars: initials on a colour per author, covered by the picture once it loads. They show on panes in and out of the design system, so this one rule sits outside its scope. */
+.avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  user-select: none;
+}
+
+.avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .ui-root.ui-inline {

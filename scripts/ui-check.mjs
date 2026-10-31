@@ -1,5 +1,5 @@
-// Checks the design system against the harness page (harness/) in headless Edge: text contrast, layout at the window's smallest size,
-// the motion allow-list, reduced motion, forbidden wording, and that nothing of it reaches the production bundle.
+// Checks the design system against the harness page (harness/), and the shell on the real App on mocked IPC, in headless Edge: text contrast,
+// layout at the window's smallest size, the motion allow-list, reduced motion, forbidden wording, and that nothing of it reaches the production bundle.
 // No window opens and no OS input is sent. Runs at below-normal priority. Screenshots and report.json go to target/ui-check.
 //   node scripts/ui-check.mjs          everything except the bundle check
 //   pnpm build && node scripts/ui-check.mjs --bundle
@@ -25,7 +25,8 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness"))].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
+const SHELL = ["src/shell.css", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
+const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
 const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
 // ---- Static checks ----
@@ -37,6 +38,10 @@ check("noScriptedAnimation", !scripted.length, scripted);
 const WORDING = [["Needs review", /Needs review/], ["review as a state", /\breview\b/i], ["Next file", /Next file/], ["Done, next worktree", /Done, next worktree/], ["Open in terminal", /Open in terminal/], ["Compare", /\bCompare\b(?! images)/], ["Try again", /Try again/], ["viewed", /\bviewed\b/]];
 const forbidden = (text) => WORDING.filter(([, r]) => r.test(text)).map(([n]) => n);
 check("noForbiddenWording", !forbidden(sourceText).length, forbidden(sourceText));
+// The kit's class names belong to the kit: a bare rule for one in the app's stylesheet would reach every control that mounts.
+const legacy = readFileSync(join(root, "src", "styles.css"), "utf8");
+const collisions = [...legacy.matchAll(/(?<![\w-])\.(row|tab|badge|banner|spin|setting|avatar)(?![\w-])/g)].map((m) => m[0]);
+check("noKitClassesInAppStyles", !collisions.length, [...new Set(collisions)]);
 
 if (process.argv.includes("--bundle")) {
   const dist = join(root, "dist");
@@ -58,7 +63,7 @@ const lin=v=>{v/=255;return v<=.03928?v/12.92:((v+.055)/1.055)**2.4};
 const L=c=>.2126*lin(c.r)+.7152*lin(c.g)+.0722*lin(c.b);
 const ratio=(a,b)=>{const x=L(a),y=L(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05)};
 const bgOf=e=>{const st=[];for(let n=e;n;n=n.parentElement){const c=norm(getComputedStyle(n).backgroundColor);if(c.a>0){st.push(c);if(c.a>=1)break}}let b={r:0,g:0,b:0,a:1};for(const c of st.reverse())b=over(c,b);return b};
-const app=document.querySelector("#app"),fails=[],sizes={};let n=0;
+const app=document.querySelector(__ROOT__),fails=[],sizes={};let n=0;
 const w=document.createTreeWalker(app,NodeFilter.SHOW_TEXT);
 while(w.nextNode()){const t=w.currentNode;if(!t.nodeValue.trim())continue;const e=t.parentElement;if(e.closest(".sr,svg"))continue;const r=e.getBoundingClientRect();if(!r.width||!r.height)continue;const c=getComputedStyle(e);if(c.visibility==="hidden"||c.opacity==="0")continue;
  let op=1;for(let p=e;p;p=p.parentElement)op*=+getComputedStyle(p).opacity;
@@ -66,22 +71,24 @@ while(w.nextNode()){const t=w.currentNode;if(!t.nodeValue.trim())continue;const 
  const bg=bgOf(e),fg=norm(c.color);fg.a*=op;const q=ratio(over(fg,bg),bg);n++;const fs=parseFloat(c.fontSize);sizes[fs]=(sizes[fs]||0)+1;
  if(q<4.5)fails.push({t:t.nodeValue.trim().slice(0,28),q:+q.toFixed(2),fs,cls:String(e.className).slice(0,24),par:String(e.parentElement.className).slice(0,24)})}
 const a=app.getBoundingClientRect(),clip=[];
-app.querySelectorAll("*").forEach(e=>{if(e.closest("svg,.sr,.glide,.tabs"))return;const r=e.getBoundingClientRect();if(!r.width)return;if((r.right>a.right+1||r.left<a.left-1)&&getComputedStyle(e).visibility!=="hidden")clip.push(String(e.className).slice(0,30))});
+app.querySelectorAll("*").forEach(e=>{if(e.closest("svg,.sr,.glide,.tabs,.resize"))return;const r=e.getBoundingClientRect();if(!r.width)return;if((r.right>a.right+1||r.left<a.left-1)&&getComputedStyle(e).visibility!=="hidden")clip.push(String(e.className).slice(0,30))});
 app.querySelectorAll(".badge,.badge *,.count,.btn,kbd,.tray>button").forEach(e=>{if(e.closest(".sr,svg")||!e.offsetWidth)return;if(e.scrollWidth>e.clientWidth+1)clip.push("TRUNCATED "+e.textContent.trim().slice(0,20))});
 app.querySelectorAll(".btn:not(.link),.field,.row,.badge,.count,.tray>button").forEach(e=>{if(e.closest(".sr,svg")||!e.offsetWidth||!e.textContent.trim()||e.tagName==="INPUT")return;const s=document.createRange();s.selectNodeContents(e);const t=s.getBoundingClientRect();if(t.height>e.getBoundingClientRect().height+1)clip.push("TALL "+e.textContent.trim().slice(0,20))});
 return{texts:n,fails:fails.slice(0,30),failCount:fails.length,sizes,overflow:[...new Set(clip)].slice(0,12),docW:app.scrollWidth,win:app.clientWidth,font:getComputedStyle(app).fontFamily.slice(0,20)}})()`;
 
-const KEEP_ANIM = ["fade-in", "pie", "turn"], COLOUR = ["background-color", "color", "box-shadow", "opacity"];
+const audit = (root = "#app") => AUDIT.replace("__ROOT__", JSON.stringify(root));
+const KEEP_ANIM = ["fade-in", "pie", "turn"], FOLD_ANIM = ["blur-in", "blur-out", "rail-slide"], COLOUR = ["background-color", "color", "box-shadow", "opacity"];
 // Timing comes from the stylesheet: a reversed transition runs shorter, so getTiming() can't tell.
 const CLASSIFY = `(()=>{const out=[];for(const a of document.getAnimations()){const t=a.effect&&a.effect.target,cs=getComputedStyle(t);
  const spec=(kind,names,name)=>{const i=Math.max(0,cs[names].split(", ").indexOf(name));return{dur:Math.round(parseFloat(cs[kind+"Duration"].split(", ")[i])*1000),ease:cs[kind+"TimingFunction"].split(/, (?![^(]*[)])/)[i]}};
  const where=e=>!e?"?":(e.tagName||"")+"."+String(e.className&&e.className.baseVal!==undefined?e.className.baseVal:e.className).split(" ")[0];
  let key,bad=null;
- if(a instanceof CSSAnimation){const {dur,ease}=spec("animation","animationName",a.animationName);key="animation:"+a.animationName;if(!${JSON.stringify(KEEP_ANIM)}.includes(a.animationName))bad=key;else if(a.animationName==="fade-in"&&(dur!==120||ease!=="ease"))bad=key+" "+dur+" "+ease}
+ if(a instanceof CSSAnimation){const {dur,ease}=spec("animation","animationName",a.animationName);key="animation:"+a.animationName;if(${JSON.stringify(FOLD_ANIM)}.includes(a.animationName)){if(dur!==160||ease!=="ease"||!t.closest(".rail,#main"))bad=key+" "+where(t)+" "+dur}else if(!${JSON.stringify(KEEP_ANIM)}.includes(a.animationName))bad=key;else if(a.animationName==="fade-in"&&(dur!==120||ease!=="ease"))bad=key+" "+dur+" "+ease}
  else if(a instanceof CSSTransition){const p=a.transitionProperty,{dur,ease}=spec("transition","transitionProperty",p);key="transition:"+p;
   if(${JSON.stringify(COLOUR)}.includes(p)||p==="fill"){if(dur!==120||ease!=="ease")bad=key+" "+dur+" "+ease}
   else if(p==="left"||p==="right"){if(!t.matches(".tray>.glide")||dur!==160||ease!=="ease")bad=key+" "+where(t)+" "+dur}
-  else if(p==="transform"){if(!t.closest(".sec")||dur!==120||ease!=="ease")bad=key+" "+where(t)+" "+dur}
+  else if(p==="transform"){const drawer=t.matches(".list-clip");if(drawer?dur!==160:!t.closest(".sec")||dur!==120)bad=key+" "+where(t)+" "+dur;else if(ease!=="ease")bad=key+" "+where(t)+" "+ease}
+  else if(p==="visibility"){if(!t.matches(".list-clip"))bad=key+" "+where(t)}
   else bad=key}
  else{key="waapi";bad=key}
  out.push({key,bad,where:where(t)})}return out})()`;
@@ -129,7 +136,13 @@ try {
     if (d.method === "Runtime.exceptionThrown") report.errors.push(d.params.exceptionDetails.exception?.description ?? d.params.exceptionDetails.text);
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") report.errors.push(d.params.args.map((a) => a.value ?? a.description).join(" "));
   };
-  const send = (method, params = {}) => new Promise((r) => { const i = ++id; pend.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
+  // A command the page never answers fails its check instead of hanging the run.
+  const send = (method, params = {}) => new Promise((r, x) => {
+    const i = ++id;
+    const t = setTimeout(() => { pend.delete(i); x(new Error(`no answer to ${method} in 30s: ${String(params.expression ?? "").slice(0, 80)}`)); }, 30000);
+    pend.set(i, (d) => { clearTimeout(t); r(d); });
+    ws.send(JSON.stringify({ id: i, method, params }));
+  });
   const ev = async (expression) => {
     const r = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
     if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description ?? r.result.exceptionDetails.text);
@@ -150,7 +163,7 @@ try {
   const mouse = (x, y, type = "mouseMoved") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", clickCount: type === "mouseMoved" ? 0 : 1 });
   const hover = async (sel) => { const c = await center(sel); if (!c) throw new Error(`no ${sel}`); await mouse(c.x, c.y); return c; };
   const click = async (sel) => { const c = await hover(sel); await mouse(c.x, c.y, "mousePressed"); await mouse(c.x, c.y, "mouseReleased"); };
-  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", p: "KeyP", w: "KeyW" };
+  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", p: "KeyP", w: "KeyW", b: "KeyB", o: "KeyO" };
   // mods: 2 is Ctrl, 8 is Shift.
   const key = async (k, vk, mods = 0) => {
     const base = { key: k, code: CODES[k], windowsVirtualKeyCode: vk, modifiers: mods };
@@ -185,7 +198,7 @@ try {
     const name = `${theme}-${w}x${h}-${font}px`;
     await size(w, h);
     await open(`theme=${theme}&font=${font}`);
-    const a = await ev(AUDIT);
+    const a = await ev(audit());
     report.pages[name] = a;
     const text = await ev(`document.querySelector("#app").innerText`);
     report.pages[name].wording = forbidden(text);
@@ -352,41 +365,37 @@ try {
   const openApp = async (q = "") => {
     await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark${q}` });
     await sleep(300);
-    const ok = await waitFor(".topbar .tb-switcher", 60000);
+    const ok = await waitFor(q.includes("none=1") ? ".rail .empty, .ov-page .empty" : ".rail .wt:not(.skel)", 60000);
     await sleep(500);
     return ok;
   };
+  const toWork = async (n = 1) => { await click(`.rail .wt:nth-child(${n})`); await sleep(250); };
+  const text = (sel) => ev(`document.querySelector(${JSON.stringify(sel)})?.textContent ?? null`);
+  const count = (sel) => ev(`document.querySelectorAll(${JSON.stringify(sel)}).length`);
+  const width = (sel) => ev(`document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect().width ?? null`);
+  const box = (sel) => ev(`(()=>{const r=document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect();return r?{l:r.left,r:r.right,t:r.top,b:r.bottom}:null})()`);
+  const lastSaved = () => ev(`[...window.__ipc].reverse().find(c=>c.cmd==="save_settings")?.args.settings ?? null`);
   const ipc = (name) => ev(`window.__ipc.filter(c=>c.cmd===${JSON.stringify(name)}).length`);
-  const switcher = (n) => `.topbar .tb-switcher:nth-of-type(${n}) .tb-button`;
-  const toWork = async () => { await ev(`document.querySelectorAll(".tab-strip .tab, .left-tabs button")[0]?.click();1`); };
   await attempt("appStarts", async () => ({ opened: await openApp(), host: await has("#overlays.ui-root"), inert: !(await has(".app[inert]")) }));
-  await attempt("worktreePicker", async () => {
-    await click(".topbar .tb-switcher:nth-child(2) .tb-button");
-    await sleep(160);
-    const d = { open: await has(".picker .mi"), current: await has('.picker .mi[data-current]'), noCollisions: !(await has("#overlays .row, #overlays .tab, #overlays .banner, #overlays .setting, #overlays .avatar, #overlays .badge, #overlays .spin")) };
-    const before = await ipc("status");
-    await key("ArrowDown", 40);
-    await key("Enter", 13);
-    await sleep(400);
-    d.switched = (await ipc("status")) > before;
-    d.closed = !(await has(".picker"));
-    d.value = (await ev(`document.querySelectorAll(".topbar .tb-value")[1].textContent`)) === "agent-02";
-    return d;
-  });
   await attempt("branchPicker", async () => {
-    await click(".topbar .tb-switcher:nth-child(4) .tb-button");
+    await toWork(2);
+    await click(".br-btn");
     await sleep(160);
     const d = { sections: (await ev(`document.querySelectorAll(".picker .sec-l").length`)) === 2 };
     await type("origin/");
     d.filtered = (await ev(`document.querySelectorAll(".picker .mi").length`)) === 1;
     await key("Enter", 13);
     await sleep(300);
-    d.viewOnly = await ev(`[...document.querySelectorAll(".topbar .tb-caption")].some(e=>e.textContent==="Branch (view only)")`);
+    d.viewOnly = (await text(".head .badge")) === "View only";
+    d.banner = (await text(".work-top .banner b")) === "Viewing origin/main";
+    await click(".work-top .banner .btn.link");
+    await sleep(300);
+    d.back = !(await has(".head .badge"));
     return d;
   });
   await attempt("repoPickerSshForm", async () => {
     await openApp();
-    await click(".topbar .tb-switcher:nth-child(1) .tb-button");
+    await click(".t-repo");
     await sleep(160);
     const d = { listed: (await ev(`document.querySelectorAll(".picker .mi").length`)) === 1 };
     await click(".picker-f .btn:nth-of-type(2)");
@@ -406,7 +415,7 @@ try {
   });
   await attempt("repoRemoveButton", async () => {
     await openApp();
-    await click(".topbar .tb-switcher:nth-child(1) .tb-button");
+    await click(".t-repo");
     await sleep(160);
     await hover(".picker .mi");
     const visible = await ev(`getComputedStyle(document.querySelector(".picker .mi-x")).opacity==="1"`);
@@ -449,23 +458,23 @@ try {
   });
   await attempt("contextMenuKeys", async () => {
     await openApp();
-    await ev(`document.querySelector(".tab-strip .tab")?.click();1`);
+    await toWork(2);
     await ev(`[...document.querySelectorAll(".left-tabs button")][0].click();1`);
     await sleep(300);
-    const d = { list: await waitFor(".left .list .row", 8000) };
-    await click(".left .list .row");
+    const d = { list: await waitFor(".left .list .list-row", 8000) };
+    await click(".left .list .list-row");
     await ev(`document.querySelector(".left .list").focus();1`);
     await key("F10", 121, 8);
     await sleep(100);
     d.shiftF10 = await has("#overlays .menu .mi.on");
-    d.target = await has(".left .list .row.menu-target");
+    d.target = await has(".left .list .list-row.menu-target");
     await ev(`document.querySelector(".left .list").dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true}));1`);
     d.echoIgnored = (await ev(`document.querySelectorAll("#overlays .menu").length`)) === 1;
     await key("ArrowDown", 40);
     d.arrow = await ev(`document.querySelector("#overlays .menu").getAttribute("aria-activedescendant")!=="mi-0"`);
     await key("Escape", 27);
     d.closed = !(await has("#overlays .menu"));
-    d.targetCleared = !(await has(".left .list .row.menu-target"));
+    d.targetCleared = !(await has(".left .list .list-row.menu-target"));
     d.focusBack = await focusIs(".left .list");
     await key("ContextMenu", 93);
     await sleep(100);
@@ -478,11 +487,11 @@ try {
   await attempt("keysWithMonaco", async () => {
     await openApp(`&auto=${encodeURIComponent(JSON.stringify({ openFile: "src/server/orders/create.ts" }))}`);
     const d = { editor: await waitFor(".monaco-editor textarea, .monaco-editor .native-edit-context", 15000) };
-    await ev(`document.querySelector(".tab-strip .tab")?.click();1`);
+    await ev(`document.querySelector(".tab-strip .ed-tab")?.click();1`);
     await sleep(600);
     await ev(`document.querySelector(".editor-host:not([hidden]) .monaco-editor textarea, .monaco-editor textarea, .monaco-editor .native-edit-context").focus();1`);
     d.inMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
-    const tabs = `document.querySelectorAll(".tab-strip .tab").length`;
+    const tabs = `document.querySelectorAll(".tab-strip .ed-tab").length`;
     const before = await ev(tabs);
     await key("p", 80, 2);
     await sleep(200);
@@ -502,6 +511,373 @@ try {
     d.closed = !(await has("#overlays .quick-open"));
     d.inertGone = !(await has(".app[inert]"));
     d.focusBackInMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
+    return d;
+  });
+
+  // ---- The shell, on the real App. ----
+  const CTRL = 2, CTRL_SHIFT = 10;
+  const autoQ = (o) => `&auto=${encodeURIComponent(JSON.stringify(o))}`;
+  const settingsQ = (o) => `&settings=${encodeURIComponent(JSON.stringify(o))}`;
+  // Only the shell is held to the design system's rules here: the panes inside it move over in later phases.
+  const SHELL_REGIONS = [".rail", ".work-top", ".wc"];
+  const shellAudit = async () => {
+    const r = { fails: [], overflow: [] };
+    for (const region of SHELL_REGIONS) {
+      if (!(await has(region))) continue;
+      const a = await ev(audit(region));
+      r.fails.push(...a.fails);
+      r.overflow.push(...a.overflow);
+    }
+    r.pageW = await ev(`document.documentElement.scrollWidth`);
+    r.appW = await ev(`document.querySelector(".app").scrollWidth`);
+    r.win = await ev(`window.innerWidth`);
+    return r;
+  };
+  const SHELL_PAGES = [["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 1100, 700, 13], ["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 800, 500, 10], ["dark", 800, 500, 18], ["light", 800, 500, 18]];
+  for (const [theme, w, h, font] of SHELL_PAGES) {
+    const name = `shell-${theme}-${w}x${h}-${font}px`;
+    await size(w, h);
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=${theme}&font=${font}&states=1` });
+    await waitFor(".rail .wt:not(.skel)", 60000);
+    await sleep(500);
+    const views = {};
+    views.overview = await shellAudit();
+    await shot(`${name}-overview`);
+    await toWork(2);
+    views.work = await shellAudit();
+    await shot(`${name}-work`);
+    if (w < 1100) {
+      await sleep(260); // Opening a worktree brings the drawer out.
+      await shot(`${name}-drawer`);
+    }
+    const bad = Object.fromEntries(Object.entries(views).filter(([, v]) => v.fails.length || v.overflow.length || v.pageW > v.win || v.appW > v.win));
+    check(name, !Object.keys(bad).length, Object.keys(bad).length ? bad : undefined);
+  }
+  await size(1440, 900);
+
+  await attempt("railContents", async () => {
+    await openApp("&states=1");
+    const y = async (sel) => (await box(sel))?.t;
+    const d = {};
+    const order = [await y(".rail-top"), await y(".rail-nav"), await y(".rail-filter"), await y(".rail-list"), await y(".rail-foot")];
+    d.order = order.every((v, i) => !i || v > order[i - 1]);
+    d.top = (await count(".rail-top .t-repo")) === 1 && (await count(".rail-top .btn.only")) === 2;
+    d.noTitleBar = (await box(".rail")).t === 0 && !(await has(".topbar"));
+    d.rows = (await count(".rail .wt")) === 5;
+    d.branch = (await text(".rail .wt:nth-child(2) .d")) === "agent/orders-refund";
+    d.time = /^(now|\d+[mhd])$/.test((await text(".rail .wt:nth-child(2) .wt-time")) ?? "");
+    d.count = (await text(".rail .wt:nth-child(2) .count")) === "2";
+    d.delta = /\+12\s*−3/.test((await text(".rail .wt:nth-child(2) .delta")) ?? "");
+    d.mark = (await ev(`document.querySelector(".rail .wt:nth-child(2) .mark").dataset.s`)) === "changes";
+    d.clean = (await ev(`document.querySelector(".rail .wt:nth-child(3) .mark").dataset.s`)) === "idle";
+    d.missing = await has('.rail .wt.off[aria-disabled="true"][data-tip^="Missing or prunable"]');
+    d.bare = await has('.rail .wt.off[aria-disabled="true"][data-tip="Bare repository"]');
+    const before = await ipc("status");
+    await click(".rail .wt.off");
+    await sleep(200);
+    d.offDoesNotOpen = (await ipc("status")) === before && (await has(".ov-page"));
+    await shot("shell-rail-states");
+    return d;
+  });
+  await attempt("railSurvivesOverviewReset", async () => {
+    await openApp("&states=1");
+    await ev(`window.__store.setState({overview:null});1`);
+    await sleep(100);
+    const d = { rows: (await count(".rail .wt")) === 5, counts: (await text(".rail .wt:nth-child(2) .count")) === "2" };
+    await ev(`window.__store.getState().updateSettings({possibleConflicts:false});1`);
+    await sleep(60);
+    d.afterSetting = (await count(".rail .wt")) === 5;
+    await sleep(400);
+    d.reloaded = (await text(".rail .wt:nth-child(2) .delta")) !== null;
+    return d;
+  });
+  await attempt("railStates", async () => {
+    await openApp();
+    const mark = (n) => ev(`document.querySelector(".rail .wt:nth-child(${n}) .mark").dataset.s`);
+    await ev(`(()=>{const s=window.__store;const p=s.getState().worktrees;s.setState({lastChange:{[p[2].path]:Date.now()/1000},actions:{[p[1].path]:{running:false,label:"",progress:"",error:null,rejected:true}}});})();1`);
+    await sleep(100);
+    return { changing: (await mark(3)) === "active", rejected: (await mark(2)) === "error", replacesBranch: (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected" };
+  });
+  await attempt("railFilter", async () => {
+    await openApp();
+    await click(".rail-filter input");
+    await type("agent-02");
+    await sleep(60);
+    const d = { byName: (await count(".rail .wt")) === 1 };
+    await ev(`document.querySelector(".rail-filter input").select();1`);
+    await type("nothing here");
+    await sleep(60);
+    d.none = (await text(".rail .empty-line"))?.startsWith("No worktrees match.");
+    await click(".rail .empty-line .btn");
+    await sleep(60);
+    d.cleared = (await count(".rail .wt")) === 3 && (await focusIs(".rail-filter input"));
+    await click(".rail-filter .btn");
+    await sleep(60);
+    d.hasChanges = (await count(".rail .wt")) === 1 && (await has('.rail-filter .btn[aria-pressed="true"]'));
+    await toWork(1);
+    await click(".rail-filter .btn");
+    return d;
+  });
+  await attempt("railKeys", async () => {
+    await openApp();
+    await ev(`document.querySelector(".rail .wt").focus();1`);
+    await key("ArrowDown", 40);
+    await key("ArrowDown", 40);
+    const d = { arrows: await focusIs(".rail .wt:nth-child(3)") };
+    await key("Enter", 13);
+    await sleep(300);
+    d.opened = (await text(".head h1 .ell")) === "agent-02" && (await has(".rail .wt:nth-child(3).on"));
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.menu = await has("#overlays .menu .mi.on");
+    d.target = await has(".rail .wt.menu-target");
+    await key("Escape", 27);
+    d.focusBack = await focusIs(".rail .wt:nth-child(3)");
+    return d;
+  });
+  await attempt("railResize", async () => {
+    await openApp();
+    const drag = async (to) => {
+      const b = await box(".rail > .resize");
+      await mouse(b.l + 2, 400);
+      await mouse(b.l + 2, 400, "mousePressed");
+      await mouse(to, 400);
+      await mouse(to, 400, "mouseReleased");
+      await sleep(40);
+    };
+    await drag(300);
+    const d = { follows: (await width(".rail")) === 300 };
+    await sleep(400);
+    d.saved = (await lastSaved())?.railWidth === 300;
+    await drag(900);
+    d.max = (await width(".rail")) === 420;
+    await drag(40);
+    d.min = (await width(".rail")) === 220;
+    await ev(`document.querySelector(".rail > .resize").focus();1`);
+    await key("ArrowRight", 39);
+    d.key = (await width(".rail")) === 228;
+    d.instant = (await ev(`document.getAnimations().filter(a=>a.effect.target.closest?.(".rail")&&a.transitionProperty==="width").length`)) === 0 && (await ev(`getComputedStyle(document.querySelector(".rail")).transitionDuration`)) === "0s";
+    await openApp(settingsQ({ railWidth: 300 }));
+    d.restored = (await width(".rail")) === 300;
+    await openApp(settingsQ({ railCollapsed: true }));
+    d.restoredCollapsed = (await width(".rail")) === 48;
+    return d;
+  });
+  await attempt("railFold", async () => {
+    await openApp(autoQ({ openFile: "src/server/orders/create.ts" }));
+    await sleep(800);
+    const seen = new Map(), bad = new Map();
+    const grab = async () => { for (const a of await ev(CLASSIFY)) { seen.set(a.key, 1); if (a.bad) bad.set(a.bad, a.where); } };
+    const d = {};
+    await ev(`document.querySelector(".rail-filter input").focus();1`);
+    await key("b", 66, CTRL);
+    d.width = (await width(".rail")) === 48;
+    d.ghost = (await count("#rail-fold > .rail-ghost")) === 1 && (await width(".rail-ghost")) === 264;
+    d.ghostInert = !(await has("#rail-fold [id]")) && !(await has("#rail-fold [data-tip]")) && !(await has("#rail-fold [tabindex]"));
+    d.slides = (await ev(`document.querySelector("#main").dataset.fold`)) === "" && !!(await ev(`getComputedStyle(document.querySelector("#main")).getPropertyValue("--fold-x")`));
+    const widths = [];
+    for (let i = 0; i < 5; i++) { await grab(); widths.push(await width(".main")); await sleep(20); }
+    d.noReflow = new Set(widths).size === 1;
+    await sleep(280);
+    d.ghostGone = (await count("#rail-fold > *")) === 0 && !(await has("#main[data-fold]")) && !(await has(".rail[data-fold]"));
+    d.topOnlyRepo = (await count(".rail-top .btn")) === 1;
+    d.navSearch = (await count(".rail .rail-nav")) === 4;
+    d.noFilter = (await width(".rail-filter")) === 0;
+    d.badge = await ev(`(()=>{const c=document.querySelector(".rail .wt:nth-child(2) .count").getBoundingClientRect(),m=document.querySelector(".rail .wt:nth-child(2) .mark").getBoundingClientRect();return c.left>=m.left&&c.left<m.right+6&&c.bottom>m.top})()`);
+    d.noBadgeAtZero = !(await has(".rail .wt:nth-child(3) .count"));
+    d.tooltip = /Has changes\n2 changed files/.test(await ev(`document.querySelector(".rail .wt:nth-child(2)").title`));
+    await shot("shell-rail-collapsed");
+    await sleep(400);
+    d.saved = (await lastSaved())?.railCollapsed === true;
+    await click('.rail-foot .btn[aria-label="Expand sidebar"]');
+    d.expanded = (await width(".rail")) === 264;
+    for (let i = 0; i < 5; i++) { await grab(); await sleep(20); }
+    await sleep(280);
+    await key("b", 66, CTRL);
+    await key("b", 66, CTRL);
+    await sleep(320);
+    d.twiceReturns = (await width(".rail")) === 264 && (await count("#rail-fold > *")) === 0;
+    d.allowed = !bad.size;
+    d.bad = bad.size ? [...bad.keys()].join() : true;
+    d.motions = ["animation:blur-in", "animation:blur-out", "animation:rail-slide"].filter((k) => !seen.has(k)).join() || true;
+    return d;
+  });
+  await attempt("railFoldReducedMotion", async () => {
+    await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+    await openApp();
+    await key("b", 66, CTRL);
+    const d = { folded: (await width(".rail")) === 48, noGhost: !(await has("#rail-fold > *")), noMotion: !(await has("#main[data-fold]")) };
+    await send("Emulation.setEmulatedMedia", { features: [] });
+    return d;
+  });
+  await attempt("routingKeepsEditor", async () => {
+    await openApp(autoQ({ openFile: "src/server/orders/create.ts" }));
+    const d = { editor: await waitFor(".monaco-editor .view-lines", 15000) };
+    await sleep(600);
+    d.work = !(await has(".ov-page")) && !(await has(".work[data-covered]"));
+    await ev(`document.querySelector(".monaco-editor").__keep=1;1`);
+    const before = await box(".monaco-editor");
+    await key("o", 79, CTRL_SHIFT);
+    await sleep(200);
+    d.overview = await has(".ov-page");
+    d.hidden = (await ev(`getComputedStyle(document.querySelector(".work")).visibility`)) === "hidden" && (await has(".work[inert]"));
+    d.mounted = (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
+    d.sameSize = JSON.stringify(await box(".monaco-editor")) === JSON.stringify(before);
+    d.navOn = await has('.rail-nav[aria-label="Overview"][aria-pressed="true"]');
+    d.noneSelected = !(await has(".rail .wt.on"));
+    await shot("shell-overview");
+    await toWork(2);
+    d.back = !(await has(".ov-page")) && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
+    d.visible = (await ev(`[...document.querySelectorAll(".monaco-editor")].some(e=>getComputedStyle(e).visibility==="visible")`));
+    await shot("shell-work");
+    await click('.rail-nav[aria-label="Settings"]');
+    await sleep(160);
+    d.settings = (await has(".settings-page")) && (await has('.rail-nav[aria-label="Settings"][aria-pressed="true"]')) && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
+    return d;
+  });
+  await attempt("pageHeader", async () => {
+    await openApp();
+    await toWork(2);
+    const d = {};
+    d.name = (await text(".head h1 .ell")) === "agent-01";
+    d.branch = (await text(".br-btn .btn-l")) === "agent/orders-refund";
+    d.aheadBehind = (await text(".head-ab")) === "↑1" && (await ev(`document.querySelector(".head-ab").dataset.tip`)) === "1 ahead, 0 behind main";
+    d.split = (await text(".head .split .btn:first-child .btn-l")) === "Publish branch" && (await has('.head .split .btn[aria-label="More actions"]'));
+    const c = await box(".wc"), p = await box(".head .split");
+    d.controlsTopRight = c.r === (await ev(`innerWidth`)) && c.t === 0 && p.r <= c.l;
+    d.dragBands = (await count('.rail-top[data-tauri-drag-region="deep"]')) === 1 && (await count('.head[data-tauri-drag-region="deep"]')) === 1;
+    await click('.head .split .btn[aria-label="More actions"]');
+    await sleep(140);
+    d.menu = (await text("#overlays .menu .mi-l")) === "Fetch origin";
+    const before = await ipc("run_action");
+    await key("Enter", 13);
+    await sleep(200);
+    d.fetchRan = (await ipc("run_action")) === before + 1;
+    await click(".head .split .btn:first-child");
+    await sleep(200);
+    d.pushRan = (await ev(`[...window.__ipc].reverse().find(c=>c.cmd==="run_action").args.action ?? [...window.__ipc].reverse().find(c=>c.cmd==="run_action").args.kind`)) === "publish";
+    for (const [label, cmd] of [["Minimize", "plugin:window|minimize"], ["Maximize", "plugin:window|toggle_maximize"], ["Close", "plugin:window|close"]]) {
+      await ev(`document.querySelector('.wc [aria-label="${label}"]').click();1`);
+      d[label] = (await ipc(cmd)) === 1;
+    }
+    return d;
+  });
+  await attempt("pushRejected", async () => {
+    await openApp("&reject=1");
+    await toWork(2);
+    await click(".head .split .btn:first-child");
+    await sleep(250);
+    const d = { banner: (await text(".work-top .banner pre"))?.includes("[rejected]"), rail: (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected" };
+    await click('.work-top .banner [aria-label="Dismiss"]');
+    d.dismissed = !(await has(".work-top .banner"));
+    d.stays = (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected";
+    return d;
+  });
+  await attempt("notices", async () => {
+    await openApp();
+    await toWork(2);
+    await ev(`window.__store.setState({connectionLost:"dev-box",notice:"Could not copy"});1`);
+    await sleep(120);
+    const d = { neutral: (await text(".notices .banner.neutral"))?.startsWith("Connection to dev-box lost. Reconnecting…"), noReconnect: !/Reconnect\b(?!ing)/.test(await text(".notices")) };
+    d.pushOff = (await ev(`document.querySelector(".head .split .btn:first-child").dataset.tip`)) === "Not available while reconnecting";
+    const b = await box(".notices .banner.error [aria-label='Dismiss']"), c = await box(".wc");
+    d.dismissClearOfControls = b.r <= c.l;
+    await click(".notices .banner.error [aria-label='Dismiss']");
+    d.dismissed = !(await has(".notices .banner.error"));
+    await shot("shell-notices");
+    return d;
+  });
+  await attempt("noRepository", async () => {
+    await openApp("&none=1");
+    const d = { welcome: (await text(".rail .empty h2")) === "No repository open", noFilter: !(await has(".rail[data-bare]")) ? false : (await width(".rail-filter")) === 0, repo: (await text(".t-repo .btn-l")) === "Add a repository" };
+    await size(800, 500);
+    await openApp("&none=1");
+    d.onPage = (await text(".ov-page .empty h2")) === "No repository open";
+    await size(1440, 900);
+    return d;
+  });
+  await attempt("windowBackground", async () => {
+    const colour = () => ev(`[...window.__ipc].reverse().find(c=>c.cmd==="plugin:window|set_background_color")?.args?.value ?? null`);
+    await openApp();
+    const d = { dark: JSON.stringify(await colour()).includes("08090a") };
+    await ev(`window.__store.getState().updateSettings({theme:"light"});1`);
+    await sleep(120);
+    d.light = JSON.stringify(await colour()).includes("f2f2f3");
+    return d;
+  });
+  await attempt("noCollisions", async () => {
+    await openApp();
+    await toWork(2);
+    await sleep(200);
+    return {
+      railRowInFlow: (await ev(`getComputedStyle(document.querySelector(".rail .wt")).position`)) === "relative",
+      listRowAbsolute: (await ev(`getComputedStyle(document.querySelector(".left .list-row")).position`)) === "absolute",
+      noLegacyRow: !(await has(".left .row")),
+      noLegacyTab: !(await has(".tab-strip .tab")),
+    };
+  });
+  await attempt("widthBands", async () => {
+    const d = {};
+    await openApp();
+    for (const [w, band] of [[1500, "xl"], [1499, "l"], [1100, "l"], [1099, "m"], [800, "m"]]) {
+      await size(w, 700);
+      await sleep(120);
+      d[`band${w}`] = (await ev(`document.querySelector(".app").dataset.size`)) === band;
+    }
+    await size(1440, 900);
+    await sleep(120);
+    return d;
+  });
+  await attempt("listDrawer", async () => {
+    await size(1000, 600);
+    await openApp();
+    const d = { rail: (await width(".rail")) === 48, noExpand: !(await has('.rail [aria-label="Expand sidebar"]')) };
+    await toWork(2);
+    const seen = new Map(), bad = new Map();
+    const grab = async () => { for (const a of await ev(CLASSIFY)) { seen.set(a.key, 1); if (a.bad) bad.set(a.bad, a.where); } };
+    d.opensWithWorktree = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "true";
+    await sleep(240);
+    d.overPage = (await box(".list-clip")).l === 48;
+    await click(".left .list .list-row");
+    await sleep(240);
+    d.fileCloses = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "false" && (await has(".list-clip[inert]"));
+    await key("b", 66, CTRL);
+    for (let i = 0; i < 3; i++) { await grab(); await sleep(30); }
+    d.keyToggles = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "true";
+    await sleep(240);
+    await click(".head .btn.tgl");
+    for (let i = 0; i < 3; i++) { await grab(); await sleep(30); }
+    await sleep(240);
+    d.buttonToggles = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "false";
+    d.slideAllowed = !bad.size && seen.has("transition:transform");
+    await key("o", 79, CTRL_SHIFT);
+    await size(1440, 900);
+    await sleep(160);
+    d.backOut = (await ev(`document.querySelector(".list-clip").dataset.open`)) === "true";
+    return d;
+  });
+  await attempt("commitAtNarrowWidths", async () => {
+    await size(1200, 700);
+    await openApp(autoQ({ showHistory: "1" }));
+    await waitFor(".commit-pane", 5000);
+    await sleep(200);
+    const d = { inList: await has(".left .commit-pane") };
+    await size(1400, 700);
+    await sleep(200);
+    d.column = (await has(".commit-pane")) && !(await has(".left .commit-pane"));
+    await size(1440, 900);
+    return d;
+  });
+  await attempt("smallestWindow", async () => {
+    await size(800, 500);
+    await openApp();
+    await toWork(2);
+    const d = {};
+    const c = await box(".wc"), p = await box(".head .split");
+    d.pushFits = p.r <= c.l && p.l > (await box(".head")).l;
+    d.noPageScroll = (await ev(`document.documentElement.scrollWidth<=innerWidth&&document.querySelector(".app").scrollWidth<=innerWidth`));
+    d.rowsFit = (await box(".rail-foot")).b <= 500;
+    await size(1440, 900);
     return d;
   });
 

@@ -6,6 +6,12 @@ const WT = [
   { path: "/home/user/src/agent-02", branch: "agent/cart-rounding", isMain: false },
 ];
 const HEAD = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
+const query = new URLSearchParams(location.search);
+// ?states=1 adds a worktree that is gone and the bare repository, ?none=1 opens no repository, ?settings=<JSON> adds saved settings, ?reject=1 refuses pushes.
+const UNUSUAL = [
+  { path: "/home/user/src/agent-09", branch: "agent/old-spike", isMain: false, missing: true, prunable: "gitdir file points to non-existent location", bare: false },
+  { path: "/home/user/src/shop-platform.git", branch: null, isMain: false, missing: false, prunable: null, bare: true },
+];
 const OTHER = "1b2c3d4e5f60718293a4b5c6d7e8f90123456789";
 const CHANGED = [
   { path: "src/server/orders/create.ts", origPath: null, kind: "modified", staged: ".", unstaged: "M" },
@@ -49,7 +55,7 @@ export function respondApp(cmd: string, args?: unknown): unknown {
   const a = (args ?? {}) as Record<string, never>;
   switch (cmd) {
     case "load_settings":
-      return { repos: [ROOT], lastRepo: ROOT, theme: new URLSearchParams(location.search).get("theme") ?? "dark", lastWorktree: { [ROOT]: WT[1].path } };
+      return { ...(query.has("none") ? {} : { repos: [ROOT], lastRepo: ROOT, lastWorktree: { [ROOT]: WT[1].path } }), theme: query.get("theme") ?? "dark", uiFontSize: Number(query.get("font")) || 13, ...JSON.parse(query.get("settings") ?? "{}") };
     case "save_settings":
     case "watch":
     case "copy_text":
@@ -61,7 +67,7 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "open_repo":
       return repoInfo(a.path);
     case "worktrees":
-      return WT.map((w) => ({ path: w.path, head: HEAD, branch: w.branch, detached: false, bare: false, locked: null, prunable: null, isMain: w.isMain, displayPath: w.path, missing: false }));
+      return [...WT.map((w) => ({ ...w, missing: false, prunable: null, bare: false })), ...(query.has("states") ? UNUSUAL : [])].map((w) => ({ path: w.path, head: w.bare ? null : HEAD, branch: w.branch, detached: false, bare: w.bare, locked: null, prunable: w.prunable, isMain: w.isMain, displayPath: w.path, missing: w.missing }));
     case "branches":
       return [...WT.map((w) => ({ name: w.branch, fullRef: `refs/heads/${w.branch}`, kind: "local", oid: HEAD, upstream: null, ahead: 0, behind: 0, upstreamGone: false, committerUnix: 1_790_000_000, isHead: false })), { name: "origin/main", fullRef: "refs/remotes/origin/main", kind: "remote", oid: HEAD, upstream: null, ahead: 0, behind: 0, upstreamGone: false, committerUnix: 1_790_000_000, isHead: false }];
     case "status":
@@ -101,7 +107,7 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "avatar":
       return null;
     case "run_action":
-      return { ok: true, rejected: false, text: "" };
+      return query.has("reject") ? { ok: false, rejected: true, text: "! [rejected] agent/orders-refund -> agent/orders-refund (fetch first)" } : { ok: true, rejected: false, text: "" };
     default:
       if (cmd.startsWith("plugin:")) return null;
       throw new Error(`The harness has no answer for ${cmd}`);

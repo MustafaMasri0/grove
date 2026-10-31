@@ -11,6 +11,8 @@ mockIPC(respondApp, { shouldMockEvents: true });
 // App and Monaco come after the mocks, as the page's first invoke must find them.
 await import("../src/monaco");
 const { App } = await import("../src/App");
+const { useStore } = await import("../src/store");
+(window as unknown as { __store: typeof useStore }).__store = useStore;
 await import("../src/styles.css");
 await import("../src/ui");
 

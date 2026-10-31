@@ -10,6 +10,8 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
+    "core:window:allow-set-background-color",
+    "core:webview:allow-set-webview-background-color",
     "dialog:allow-open",
     "dialog:allow-ask",
     "opener:default"

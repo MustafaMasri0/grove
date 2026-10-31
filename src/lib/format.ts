@@ -19,6 +19,12 @@ export function relativeTime(unixSeconds: number, now = Date.now() / 1000): stri
   return "just now";
 }
 
+/** "now", "5m", "3h", "2d": for the rail's narrow rows. */
+export function shortTime(unixSeconds: number, now = Date.now() / 1000): string {
+  const m = Math.round((now - unixSeconds) / 60);
+  return m < 1 ? "now" : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+}
+
 export function isoToUnix(iso: string): number {
   return Date.parse(iso) / 1000;
 }

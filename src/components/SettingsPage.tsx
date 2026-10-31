@@ -42,7 +42,7 @@ export function SettingsPage() {
         else closeSettings();
       }}
     >
-      <div className="settings-head">
+      <div className="settings-head" data-tauri-drag-region="deep">
         <input
           ref={search}
           className="settings-search"
@@ -145,7 +145,7 @@ function SettingRow({ def }: { def: SettingDef }) {
   const c = def.control;
 
   return (
-    <div className={`setting${changed ? " modified" : ""}`}>
+    <div className={`pref${changed ? " modified" : ""}`}>
       <div className="setting-title">
         <label htmlFor={id}>
           <span className="muted">{sectionTitle(def.section)}: </span>
@@ -266,10 +266,10 @@ function RepoRow({ id }: { id: string }) {
   const listId = `branches-${id}`;
 
   return (
-    <div className={`setting repo-setting${saved ? " modified" : ""}`}>
+    <div className={`pref repo-setting${saved ? " modified" : ""}`}>
       <div className="setting-title">
         <b>{name}</b>
-        {isCurrent && <span className="badge repo-open">open</span>}
+        {isCurrent && <span className="pill repo-open">open</span>}
         <span className="spacer" />
         <button className="link" title="Take this repository off the list (nothing on disk changes)" onClick={() => removeRepo(id)}>
           Remove

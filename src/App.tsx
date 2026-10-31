@@ -1,20 +1,29 @@
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { useEffect, useRef } from "react";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { CommitPane } from "./components/CommitPane";
 import { EditorArea, editorCommands } from "./components/EditorArea";
 import { previewForTest } from "./components/HtmlPreview";
+import { foldRail } from "./components/foldRail";
 import { imageCommands } from "./components/ImageView";
 import { LeftPane } from "./components/LeftPane";
 import { QuickOpen } from "./components/QuickOpen";
-import { TopBar } from "./components/TopBar";
+import { dragWidth } from "./components/paneWidth";
+import { Rail } from "./components/Rail";
+import { SettingsPage } from "./components/SettingsPage";
+import { WindowControls } from "./components/WindowControls";
+import { WorkHeader } from "./components/WorkHeader";
+import { WorktreesPage } from "./components/WorktreesPage";
 import { api, type WorktreeChanged } from "./api";
 import { ZOOM_STEPS } from "./lib/settingsSchema";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
+import { bandOf, commitInList, isNarrow } from "./lib/shell";
 import { effectiveDark, setActionProgress, useStore, type LeftTab } from "./store";
-import { isKeyboardEcho, keepOverlaysOnBlur, OverlayHost } from "./ui";
+import { Banner, isKeyboardEcho, keepOverlaysOnBlur, OverlayHost, Spinner } from "./ui";
 import { topEntry } from "./ui/overlayStack";
+import "./shell.css";
 
 function setZoom(z: number) {
   useStore.getState().updateSettings({ zoom: z });
@@ -51,6 +60,7 @@ function onKeyDown(e: KeyboardEvent) {
     if (atWork) s.cycleTab(e.shiftKey ? -1 : 1);
   }
   else if (ctrl && !e.shiftKey && tabs[key]) s.setLeftTab(tabs[key]);
+  else if (ctrl && !e.shiftKey && key === "b") isNarrow(s.appWidth) ? s.toggleList() : foldRail();
   else if (ctrl && !e.shiftKey && key === ",") s.settingsOpen ? s.closeSettings() : s.openSettings();
   else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) void s.refresh();
   // While an image is shown these zoom the image, not the window.
@@ -69,16 +79,28 @@ export function App() {
   const settingsLoaded = useStore((s) => s.settingsLoaded);
   const quickOpen = useStore((s) => s.quickOpen);
   const repo = useStore((s) => s.repo);
-  const repoError = useStore((s) => s.repoError);
-  const notice = useStore((s) => s.notice);
-  const connectionLost = useStore((s) => s.connectionLost);
   const leftWidth = useStore((s) => s.settings.leftWidth);
   const commitWidth = useStore((s) => s.settings.commitPaneWidth);
-  const showCommit = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null);
+  const appWidth = useStore((s) => s.appWidth);
+  const narrow = isNarrow(appWidth);
+  const listOpen = useStore((s) => s.listOpen);
+  const commitColumn = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null && !commitInList(s.appWidth));
+  const page = useStore((s) => (s.settingsOpen ? "settings" : s.view === "overview" ? "overview" : null));
   const dark = useStore(effectiveDark);
   const zoom = useStore((s) => s.settings.zoom);
   const uiFontSize = useStore((s) => s.settings.uiFontSize);
   const lastFocusRefresh = useRef(0);
+  const appEl = useRef<HTMLDivElement>(null);
+
+  // The bands follow the app's own width, so the first paint already has the right one.
+  useLayoutEffect(() => {
+    const el = appEl.current!;
+    const measure = () => useStore.getState().setAppWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   useEffect(() => {
     void useStore
@@ -124,6 +146,9 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    // What the window shows behind the page: while it opens, and in the strip a fast resize uncovers.
+    const shell = getComputedStyle(document.getElementById("rail")!).getPropertyValue("--shell").trim();
+    void getCurrentWebviewWindow().setBackgroundColor(shell).catch(() => {});
   }, [dark]);
 
   useEffect(() => {
@@ -134,57 +159,59 @@ export function App() {
     document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
   }, [uiFontSize]);
 
-  const startResize = (key: "leftWidth" | "commitPaneWidth") => (e: React.MouseEvent) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = useStore.getState().settings[key];
-    const move = (m: MouseEvent) => {
-      const w = Math.max(220, Math.min(window.innerWidth - 400, startW + m.clientX - startX));
-      useStore.setState((s) => ({ settings: { ...s.settings, [key]: w } }));
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      useStore.getState().updateSettings({ [key]: useStore.getState().settings[key] });
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
+  const startResize = (key: "leftWidth" | "commitPaneWidth") => (e: React.MouseEvent) => dragWidth(e, key, (w) => Math.max(220, Math.min(window.innerWidth - 400, w)));
 
-  const columns = showCommit ? `${leftWidth}px 4px ${commitWidth}px 4px 1fr` : `${leftWidth}px 4px 1fr`;
+  const columns = narrow ? "minmax(0, 1fr)" : commitColumn ? `minmax(160px, ${leftWidth}px) 4px minmax(160px, ${commitWidth}px) 4px minmax(320px, 1fr)` : `minmax(160px, ${leftWidth}px) 4px minmax(320px, 1fr)`;
   return (
     <>
-    <div className="app" data-overlay-inert="">
-      <TopBar />
-      {repoError && <div className="banner error">{repoError}</div>}
-      {connectionLost && (
-        <div className="banner" role="status">
-          <span className="banner-text">Connection to {connectionLost} lost. Reconnecting…</span>
+      <div ref={appEl} className="app" data-size={bandOf(appWidth)} data-overlay-inert="">
+        <div className="shell-body">
+          <Rail />
+          <div className="fold-host" id="rail-fold" aria-hidden="true" />
+          <main className="main" id="main">
+            <Notices />
+            <div className="page-stack">
+              <div className="work" data-covered={page ? "" : undefined} inert={!!page}>
+                <WorkHeader />
+                <div className="work-body" style={{ gridTemplateColumns: columns }}>
+                  <div className="list-clip" data-open={!narrow || listOpen} inert={narrow && !listOpen}>
+                    {repo ? <LeftPane /> : <aside className="left" />}
+                  </div>
+                  {!narrow && <div className="resizer" onMouseDown={startResize("leftWidth")} />}
+                  {commitColumn && (
+                    <>
+                      <CommitPane />
+                      <div className="resizer" onMouseDown={startResize("commitPaneWidth")} />
+                    </>
+                  )}
+                  <EditorArea />
+                </div>
+              </div>
+              {page === "overview" && <WorktreesPage />}
+              {page === "settings" && <SettingsPage />}
+            </div>
+          </main>
         </div>
-      )}
-      {notice && (
-        <div className="banner error" role="alert">
-          <span className="banner-text">{notice}</span>
-          <button className="icon-button" onClick={() => useStore.getState().setNotice(null)} title="Dismiss">
-            ×
-          </button>
-        </div>
-      )}
-      <main className="body" style={{ gridTemplateColumns: columns }}>
-        {repo ? <LeftPane /> : <aside className="left welcome">{settingsLoaded && <Welcome />}</aside>}
-        <div className="resizer" onMouseDown={startResize("leftWidth")} />
-        {showCommit && (
-          <>
-            <CommitPane />
-            <div className="resizer" onMouseDown={startResize("commitPaneWidth")} />
-          </>
-        )}
-        <EditorArea />
-      </main>
-      {quickOpen && repo && <QuickOpen />}
-    </div>
-    <OverlayHost />
+        <WindowControls />
+        {quickOpen && repo && <QuickOpen />}
+      </div>
+      <OverlayHost />
     </>
+  );
+}
+
+function Notices() {
+  const repoError = useStore((s) => s.repoError);
+  const notice = useStore((s) => s.notice);
+  const lost = useStore((s) => s.connectionLost);
+  const setNotice = useStore((s) => s.setNotice);
+  if (!repoError && !notice && !lost) return null;
+  return (
+    <div className="ui-root notices">
+      {repoError && <Banner flush tone="error" text={repoError} />}
+      {lost && <Banner flush lead={<Spinner size={12} />} text={`Connection to ${lost} lost. Reconnecting…`} />}
+      {notice && <Banner flush tone="error" text={notice} onDismiss={() => setNotice(null)} />}
+    </div>
   );
 }
 
@@ -214,6 +241,7 @@ async function runAutomation() {
   if (auto.runAction) await useStore.getState().runAction(auto.runAction);
   if (auto.leftTab) useStore.getState().setLeftTab(auto.leftTab);
   const { cwd } = useStore.getState();
+  if (auto.leftTab || auto.showHistory || auto.listKeys || auto.historySearch || auto.fileHistory) useStore.getState().setView("work");
   if (auto.openFile && cwd) useStore.getState().openTab(fileTab(cwd, auto.openFile, null), true);
   if (auto.openRevFile && cwd) {
     const at = auto.openRevFile.indexOf(":");
@@ -387,8 +415,8 @@ async function openMenuForTest(spec: string) {
     el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, clientX: r.left + Math.min(80, r.width / 2), clientY: r.top + r.height / 2 }));
   };
   const s = useStore.getState();
-  const dropdown = async (n: number) => {
-    (await find(".topbar .tb-switcher > .tb-button", (els) => els[n])).click();
+  const dropdown = async (button: string) => {
+    (await find(button)).click();
     return find(".picker .mi", (els) => els.find((e) => e.dataset.current) ?? els[0]);
   };
   const isFolder = (e: HTMLElement) => !!e.querySelector(".tree-chevron svg");
@@ -415,12 +443,13 @@ async function openMenuForTest(spec: string) {
   }
 
   async function openPlace(place: string) {
+    if (place !== "repo" && place !== "worktree") s.setView("work");
     switch (place) {
       case "changes":
         s.setLeftTab("changes");
         // Nothing uncommitted: the branch's own changes have rows.
         if (s.settings.changesMode === "uncommitted" && !s.status?.entries.some((e) => e.kind !== "ignored")) s.setChangesMode("base");
-        return open(await find(".left .list .row", visibleRow((e) => !!e.querySelector(".k-modified"))));
+        return open(await find(".left .list .list-row", visibleRow((e) => !!e.querySelector(".k-modified"))));
       case "commit":
       case "commitfile":
         if (!useStore.getState().selectedCommit) {
@@ -429,18 +458,18 @@ async function openMenuForTest(spec: string) {
           const sha = useStore.getState().commits[0]?.sha;
           if (sha) await s.selectCommit(sha);
         }
-        return open(await find(place === "commit" ? ".history .list .row" : ".commit-pane .list .row", visibleRow()));
+        return open(await find(place === "commit" ? ".history .list .list-row" : ".commit-pane .list .list-row", visibleRow()));
       case "explorer":
       case "folder":
         s.setLeftTab("explorer");
-        return open(await find(".tree .row", visibleRow((e) => isFolder(e) === (place === "folder"))));
+        return open(await find(".tree .list-row", visibleRow((e) => isFolder(e) === (place === "folder"))));
       case "search": {
         s.focusSearch();
         const input = await find(".search-form input");
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "import");
         input.dispatchEvent(new Event("input", { bubbles: true }));
         (input as HTMLInputElement).form!.requestSubmit();
-        return open(await find(".left .list .row", (els) => els.filter(shown)[1]));
+        return open(await find(".left .list .list-row", (els) => els.filter(shown)[1]));
       }
       case "quickopen":
         s.setQuickOpen(true);
@@ -452,23 +481,13 @@ async function openMenuForTest(spec: string) {
         }
         return open(await find(".qo-item", (els) => els[1] ?? els[0]));
       case "tab":
-        s.setView("work");
-        return open(await find(".tab-strip .tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
+        return open(await find(".tab-strip .ed-tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
       case "repo":
-        return open(await dropdown(0), false);
+        return open(await dropdown(".t-repo"), false);
       case "worktree":
-        return open(await dropdown(1), false);
+        return open(await find(".rail .wt:not(.off)", (els) => els[1] ?? els[0]));
       case "branch":
-        return open(await dropdown(2), false);
+        return open(await dropdown(".br-btn"), false);
     }
   }
-}
-
-function Welcome() {
-  return (
-    <div className="welcome-text">
-      <h2>No repository open</h2>
-      <p>Use the Repository menu at the top left to add a folder. Windows paths and WSL paths (\\wsl.localhost\…) both work.</p>
-    </div>
-  );
 }

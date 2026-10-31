@@ -103,7 +103,7 @@ export function SearchPanel() {
           r.type === "file" ? (
             <span className="search-file">
               <b>{splitPath(r.path).name}</b> {showDir && <span className="file-dir">{splitPath(r.path).dir}</span>}
-              <span className="badge">{r.count}</span>
+              <span className="pill">{r.count}</span>
             </span>
           ) : (
             <span className="search-hit">

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { isMenuKey, type MenuItem } from "../lib/menu";
+import { useStore } from "../store";
 import { menuAtElement, menuAtPointer } from "../ui";
 
 export const ROW_HEIGHT = 24;
@@ -61,6 +62,7 @@ export function ListView<T>(p: Props<T>) {
     if (p.items.length === 0) return;
     const i = Math.max(0, Math.min(p.items.length - 1, to));
     p.onSelect(p.items[i], false, "key");
+    useStore.setState({ listOpen: true }); // A preview by arrow key keeps the drawer out: the keys are still in it.
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -70,7 +72,7 @@ export function ListView<T>(p: Props<T>) {
       if (!items) return;
       const key = p.getKey(p.items[index]);
       setMenuKey(key);
-      menuAtElement(ref.current?.querySelector(".row.selected") ?? ref.current, items, () => setMenuKey(null));
+      menuAtElement(ref.current?.querySelector(".list-row.selected") ?? ref.current, items, () => setMenuKey(null));
       return;
     }
     const page = Math.max(1, Math.floor(height / ROW_HEIGHT) - 1);
@@ -128,7 +130,7 @@ export function ListView<T>(p: Props<T>) {
                 key={p.getKey(item)}
                 role="option"
                 aria-selected={selected}
-                className={`row${selected ? " selected" : ""}${menuKey === p.getKey(item) ? " menu-target" : ""}`}
+                className={`list-row${selected ? " selected" : ""}${menuKey === p.getKey(item) ? " menu-target" : ""}`}
                 style={{ top: i * ROW_HEIGHT, height: ROW_HEIGHT }}
                 onContextMenu={(e) => {
                   const items = p.menu?.(item);

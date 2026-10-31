@@ -59,22 +59,26 @@ paste a path, or use **Connect over SSH…**.
 
 ## Features
 
-- **Top bar**: repository, worktree and branch switchers, and one action button
-  (Fetch origin / Push origin ↑N / Publish branch). Picking a branch never checks
-  it out. If a worktree has it, the app switches to that worktree. Otherwise the
-  branch is shown read-only (the files and history of its tip). Worktrees, local
-  branches checked out in one, and the Changes tab show how many files have
-  uncommitted changes.
-- **Worktrees overview** (the grid button next to the worktree switcher, or
+- **Rail**: the repository, Overview, the worktrees with what each one is doing
+  (Changing, Has changes, Clean, Push rejected), and Settings. Filter it, or show
+  only worktrees with changes. Ctrl+B folds it to icons, its edge resizes it, and
+  below 1100px wide it is icons on its own, with the left pane as a drawer that
+  Ctrl+B opens.
+- **Page header**: the worktree, its branch selector, commits ahead of and behind
+  the base, and one action button (Fetch origin / Push origin ↑N / Publish
+  branch), with Fetch origin behind its chevron. Picking a branch never checks it
+  out. If a worktree has it, the app switches to that worktree. Otherwise the
+  branch is shown read-only (the files and history of its tip).
+- **Worktrees overview** (Overview in the rail, or
   Ctrl+Shift+O): every worktree of the repository side by side, with its
   branch, uncommitted files, commits ahead of and behind the base branch and
   origin, and its last commit. Grove watches all worktrees while it is open: a
-  worktree whose files are changing pulses green (also in the worktree list),
+  worktree whose files are changing pulses green (and reads Changing in the rail),
   and an activity feed lists commits, branch switches and file edits in any of
   them. **Possible conflicts** lists files that two worktrees both
   change, committed since the base or not committed yet. A file committed on
   both sides only counts when the two versions differ and neither branch
-  already contains the other. The count shows on the grid button. A checkbox on
+  already contains the other. The rail counts them per worktree. A checkbox on
   the overview (also in Settings) turns this off, and Grove then skips the git
   commands behind it. The overview uses only read commands (`status`, `diff`,
   `rev-list`, `merge-base`, `log`).
@@ -115,12 +119,12 @@ paste a path, or use **Connect over SSH…**.
 - **Context menus** on files, folders, tabs, commits and the top-bar lists:
   copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in
   File Explorer (not for SSH repositories), open a commit on GitHub, and more.
-- **Settings** (gear in the top bar, or Ctrl+,): theme, zoom, editor and diff
+- **Settings** (gear at the foot of the rail, or Ctrl+,): theme, zoom, editor and diff
   options, the repository list and each repository's base branch, and a list of
   shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
 
 Shortcuts: Ctrl+, settings, Ctrl+P quick open, Ctrl+Shift+F search,
-Ctrl+Shift+O worktrees overview, Ctrl+F find,
+Ctrl+Shift+O worktrees overview, Ctrl+B fold the rail, Ctrl+F find,
 Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0
 zoom.

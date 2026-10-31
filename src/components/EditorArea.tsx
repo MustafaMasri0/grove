@@ -17,8 +17,6 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
-import { SettingsPage } from "./SettingsPage";
-import { WorktreesPage } from "./WorktreesPage";
 
 type Editor = monaco.editor.IStandaloneCodeEditor;
 type DiffEditor = monaco.editor.IStandaloneDiffEditor;
@@ -447,8 +445,8 @@ export function EditorArea() {
           <div
             key={t.id}
             role="tab"
-            aria-selected={t.id === activeId && !page}
-            className={`tab${t.id === activeId && !page ? " active" : ""}${t.preview ? " preview" : ""}`}
+            aria-selected={t.id === activeId}
+            className={`ed-tab${t.id === activeId ? " active" : ""}${t.preview ? " preview" : ""}`}
             title={`${t.spec.path}\n${t.description}`}
             tabIndex={t.id === activeId ? 0 : -1}
             onContextMenu={(e) => menuAtPointer(e, tabMenu(t))}
@@ -467,7 +465,7 @@ export function EditorArea() {
             onDoubleClick={() => pinTab(t.id)}
           >
             <FileTypeIcon name={t.title} />
-            {t.spec.type === "diff" && <span className="tab-kind">±</span>}
+            {t.spec.type === "diff" && <span className="ed-tab-kind">±</span>}
             <span className="tab-title">{t.title}</span>
             <button
               className="tab-close"
@@ -482,7 +480,7 @@ export function EditorArea() {
           </div>
         ))}
       </div>
-      {spec && !page && (
+      {spec && (
         <div className="editor-toolbar">
           <span className="crumb" title={spec.path}>
             {spec.type === "diff" && spec.origPath && spec.origPath !== spec.path ? `${spec.origPath} → ` : ""}
@@ -577,10 +575,8 @@ export function EditorArea() {
         </div>
       )}
       <div className="editor-stack">
-        <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "visible" : "hidden" }} />
-        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !page && ready && !rendered ? "visible" : "hidden" }} />
-        {page === "settings" && <SettingsPage />}
-        {page === "overview" && <WorktreesPage />}
+        <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "inherit" : "hidden" }} />
+        <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && ready && !rendered ? "inherit" : "hidden" }} />
         {showPreview && active && activeDoc?.modified && <MarkdownPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showHtml && active && activeDoc?.modified && <HtmlPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showImage && spec && activeDoc?.images && (
@@ -590,14 +586,14 @@ export function EditorArea() {
             mode={imageDiff}
           />
         )}
-        {!active && !page && (
+        {!active && (
           <div className="editor-empty">
             <p>Select a changed file, a commit file or a file in Explorer.</p>
             <p className="muted">Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings</p>
           </div>
         )}
-        {active && !page && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
-        {active && !page && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
+        {active && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
+        {active && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
       </div>
     </section>
   );

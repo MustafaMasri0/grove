@@ -5,10 +5,12 @@ import { isoToUnix, relativeTime, shortSha, splitPath } from "../lib/format";
 import { useNow } from "../lib/useNow";
 import { isActive, sharedFiles, worktreeName, type ActivityEvent, type SharedFile } from "../lib/worktrees";
 import { useStore } from "../store";
+import { Banner, Empty, Spinner } from "../ui";
 import { BaseSelect } from "./BaseSelect";
 import { FileRow } from "./FileRow";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
+import { railIcons, WELCOME } from "./Rail";
 
 /** At first, the conflicts list shows this many files. */
 const SHOWN_FILES = 12;
@@ -33,6 +35,7 @@ export function WorktreesPage() {
   const possibleConflicts = useStore((s) => s.settings.possibleConflicts);
   const updateSettings = useStore((s) => s.updateSettings);
   const loadOverview = useStore((s) => s.loadOverview);
+  const icons = useStore(railIcons);
   const now = useNow(1000);
   const [loading, setLoading] = useState(false);
   const [allShared, setAllShared] = useState(false);
@@ -46,7 +49,13 @@ export function WorktreesPage() {
   if (!repo)
     return (
       <div className="ov-page">
-        <div className="editor-empty">Add a repository to see its worktrees.</div>
+        {icons ? (
+          <div className="ui-root ui-inline ov-welcome">
+            <Empty {...WELCOME} />
+          </div>
+        ) : (
+          <div className="editor-empty">Add a repository to see its worktrees.</div>
+        )}
       </div>
     );
 
@@ -58,7 +67,7 @@ export function WorktreesPage() {
 
   return (
     <div className="ov-page">
-      <div className="ov-head">
+      <div className="ov-head" data-tauri-drag-region="deep">
         <div>
           <h1>Worktrees</h1>
           <div className="muted">
@@ -77,12 +86,23 @@ export function WorktreesPage() {
             <BaseSelect />
           </span>
           <button className="ov-refresh" onClick={() => void refresh()} disabled={loading} title="Refresh (F5)">
-            <Icon name="sync" className={loading ? "spin" : undefined} /> Refresh
+            {loading ? (
+              <span className="ui-root ui-inline">
+                <Spinner />
+              </span>
+            ) : (
+              <Icon name="sync" />
+            )}{" "}
+            Refresh
           </button>
         </div>
       </div>
       <div className="ov-body">
-        {overviewError && <div className="banner error">{overviewError}</div>}
+        {overviewError && (
+          <div className="ui-root ui-inline ov-banner">
+            <Banner tone="error" text={overviewError} />
+          </div>
+        )}
         {!overview && !overviewError && <div className="muted ov-none">Loading…</div>}
         {overview && (
           <>

@@ -194,3 +194,45 @@ describe("what fills the window", () => {
     expect(titles()).toEqual(["settings.json"]);
   });
 });
+
+describe("list drawer", () => {
+  const tab = { id: "a", title: "a.ts", description: "", spec: { type: "file" as const, path: "a.ts", source: { kind: "head" } as never } };
+
+  beforeEach(() => {
+    useStore.setState({ repo: { id: "r" } as RepoInfo, cwd: "/w", tabs: [], activeTab: null, appWidth: 1440, listOpen: true });
+  });
+
+  it("tucks away on crossing into a narrow band and comes back on leaving it", () => {
+    useStore.getState().setAppWidth(1000);
+    expect(useStore.getState().listOpen).toBe(false);
+    useStore.getState().toggleList();
+    useStore.getState().setAppWidth(900);
+    expect(useStore.getState().listOpen).toBe(true); // Same band: left as it was.
+    useStore.getState().toggleList();
+    useStore.getState().setAppWidth(1200);
+    expect(useStore.getState().listOpen).toBe(true);
+  });
+
+  it("closes when a file opens, only on narrow windows", () => {
+    useStore.getState().openTab(tab, false);
+    expect(useStore.getState().listOpen).toBe(true);
+    useStore.setState({ appWidth: 1000, tabs: [] });
+    useStore.getState().openTab(tab, false);
+    expect(useStore.getState().listOpen).toBe(false);
+  });
+
+  it("opens for a pane", () => {
+    useStore.setState({ appWidth: 1000, listOpen: false });
+    useStore.getState().setLeftTab("changes");
+    expect(useStore.getState().listOpen).toBe(true);
+    useStore.setState({ listOpen: false });
+    useStore.getState().focusSearch();
+    expect(useStore.getState().listOpen).toBe(true);
+  });
+
+  it("removing the open repository goes back to the overview", () => {
+    useStore.setState({ view: "work" });
+    useStore.getState().removeRepo("r");
+    expect(useStore.getState()).toMatchObject({ view: "overview", repo: null, overview: null });
+  });
+});

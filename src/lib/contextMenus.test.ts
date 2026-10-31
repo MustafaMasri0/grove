@@ -174,7 +174,7 @@ describe("commitItems", () => {
   });
 });
 
-describe("top bar items", () => {
+describe("rail and header items", () => {
   it("repository: copy path and name, reveal, remove", async () => {
     const { e, copied } = env();
     const remove = vi.fn();

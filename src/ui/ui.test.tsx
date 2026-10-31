@@ -118,4 +118,15 @@ describe("Row", () => {
   test("is selectable as an option", () => expect(html(<Row on>a</Row>)).toContain('aria-selected="true"'));
   test("other roles carry no selection", () => expect(html(<Row role="presentation">a</Row>)).not.toContain("aria-selected"));
   test("tree depth indents", () => expect(html(<Row indent={2}>a</Row>)).toContain("padding-left:34px"));
+  test("a disabled row keeps its reason and does not run", () => {
+    const run = vi.fn();
+    const out = html(
+      <Row disabled="Bare repository" onClick={run}>
+        a
+      </Row>,
+    );
+    expect(out).toContain('aria-disabled="true"');
+    expect(out).toContain('data-tip="Bare repository"');
+    expect((Row({ disabled: "no", onClick: run }) as { props: { onClick?: () => void } }).props.onClick).toBeUndefined();
+  });
 });

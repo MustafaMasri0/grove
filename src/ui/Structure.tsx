@@ -42,17 +42,22 @@ export interface RowProps extends Omit<HTMLAttributes<HTMLDivElement>, "role"> {
   /** Tree depth. */
   indent?: number;
   role?: string;
+  /** Why it cannot be chosen: the row stays focusable, for its menu and its reason. */
+  disabled?: string;
 }
 
 /** The one row of every list. */
-export function Row({ lead, trail, on, menu, indent, role = "option", className, style, tabIndex = -1, children, ...rest }: RowProps) {
+export function Row({ lead, trail, on, menu, indent, role = "option", disabled, className, style, tabIndex = -1, onClick, children, ...rest }: RowProps) {
   return (
     <div
       {...rest}
       className={cx("row", on && "on", menu && "menu-target", className)}
       role={role}
       aria-selected={role === "option" ? !!on : undefined}
+      aria-disabled={disabled ? true : undefined}
+      data-tip={disabled}
       tabIndex={tabIndex}
+      onClick={disabled ? undefined : onClick}
       style={indent ? { ...style, paddingLeft: 6 + indent * 14 } : style}
     >
       {lead}

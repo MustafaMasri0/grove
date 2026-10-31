@@ -19,6 +19,7 @@ import {
 import { uncommittedCount } from "./lib/changes";
 import { coalesce } from "./lib/coalesce";
 import { shortSha } from "./lib/format";
+import { bandOf, isNarrow } from "./lib/shell";
 import { activityBetween, addActivity, editsOf, readablePaths, type ActivityEvent } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
@@ -156,6 +157,10 @@ interface State {
   notice: string | null;
   /** The host whose connection was lost, while reconnecting. */
   connectionLost: string | null;
+  /** The app's width in CSS pixels; the shell's bands follow it. */
+  appWidth: number;
+  /** Below 1100px: whether the list drawer is out. */
+  listOpen: boolean;
 
   init(): Promise<void>;
   updateSettings(patch: Partial<Settings>): void;
@@ -203,6 +208,8 @@ interface State {
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
+  setAppWidth(width: number): void;
+  toggleList(): void;
   /** A helper went away (`name` says which): its watches are gone, so reconnect and watch again. */
   reconnect: (name: string) => Promise<void>;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
@@ -442,6 +449,8 @@ export const useStore = create<State>()((set, get) => {
     githubRepo: null,
     notice: null,
     connectionLost: null,
+    appWidth: 1440,
+    listOpen: true,
 
     async init() {
       let saved: unknown = null;
@@ -489,7 +498,7 @@ export const useStore = create<State>()((set, get) => {
     removeRepo(path) {
       const { settings, repo } = get();
       get().updateSettings({ repos: settings.repos.filter((r) => r !== path), lastRepo: settings.lastRepo === path ? null : settings.lastRepo });
-      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, ...keepAppTabs() });
+      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, view: "overview", overview: null, ...keepAppTabs() });
     },
 
     async selectRepo(id) {
@@ -546,6 +555,7 @@ export const useStore = create<State>()((set, get) => {
       const { repo, cwd, viewBranch } = get();
       if (!repo) return;
       showWork();
+      set({ listOpen: true });
       if (path === cwd && !viewBranch) return;
       await showWorktree(path, path === cwd);
     },
@@ -587,7 +597,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     setLeftTab(t) {
-      set({ leftTab: t });
+      set({ leftTab: t, listOpen: true });
       loadForLeftTab();
     },
 
@@ -775,6 +785,8 @@ export const useStore = create<State>()((set, get) => {
       const { tabs, repo, cwd } = get();
       if (!repo || !cwd) return;
       showWork();
+      // Below 1100px the file covers the drawer it was picked from; ListView keeps it out while arrow keys preview.
+      if (isNarrow(get().appWidth)) set({ listOpen: false });
       const existing = tabs.find((t) => t.id === tab.id);
       if (existing) {
         set({
@@ -841,7 +853,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     focusSearch() {
-      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1 }));
+      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1, listOpen: true }));
     },
 
     setSystemDark(dark) {
@@ -875,6 +887,17 @@ export const useStore = create<State>()((set, get) => {
 
     setNotice(n) {
       set({ notice: n });
+    },
+
+    setAppWidth(width) {
+      const { appWidth } = get();
+      if (width === appWidth) return;
+      // Crossing a band resets the drawer: out on wide windows, tucked away on narrow ones.
+      set(bandOf(width) === bandOf(appWidth) ? { appWidth: width } : { appWidth: width, listOpen: !isNarrow(width) });
+    },
+
+    toggleList() {
+      set((s) => ({ listOpen: !s.listOpen }));
     },
 
     async reconnect(name) {

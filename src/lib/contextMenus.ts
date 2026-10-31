@@ -124,7 +124,7 @@ export function commitItems(env: MenuEnv, c: CommitTarget): MenuItem[] {
   return items;
 }
 
-/** A repository in the top bar list; `path` is null when it could not be opened. */
+/** A repository in the repository picker; `path` is null when it could not be opened. */
 export function repoItems(env: MenuEnv, r: { name: string; path: string | null; reveal: boolean; remove: () => void }): MenuItem[] {
   const path = r.path;
   return [
@@ -137,7 +137,7 @@ export function repoItems(env: MenuEnv, r: { name: string; path: string | null; 
   ];
 }
 
-/** A worktree in the top bar list; `path` is as its machine shows it. */
+/** A worktree in the rail; `path` is as its machine shows it. */
 export function worktreeItems(env: MenuEnv, w: { path: string; branch: string | null; missing: boolean; reveal: boolean }): MenuItem[] {
   const branch = w.branch;
   return [
