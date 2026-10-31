@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSummary, WorktreeInfo, WorktreeSummary } from "../api";
-import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, MERGE_SECS, readablePaths, sharedFiles, worktreeName, type ActivityEvent } from "./worktrees";
+import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, lastActivity, MERGE_SECS, readablePaths, sharedFiles, worktreeName, worktreeState, type ActivityEvent } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -22,6 +22,9 @@ const wt = (path: string, over: Partial<WorktreeSummary> = {}): WorktreeSummary 
   upstreamAhead: 0,
   upstreamBehind: 0,
   lastCommit: commit("h1", ["h0"], "first"),
+  changedFiles: 0,
+  linesAdded: 0,
+  linesRemoved: 0,
   ...over,
 });
 
@@ -167,5 +170,35 @@ describe("editsOf", () => {
     const a = wt("a", { uncommitted: [{ path: "new.ts", origPath: "old.ts", kind: "renamed" }] });
     const b = wt("b", { uncommitted: dirty("x.ts") });
     expect(editsOf(seen({ b: ["x.ts"], a: ["old.ts"] }), [a, b], 0).map((e) => e.path)).toEqual(["a", "b"]);
+  });
+});
+
+describe("worktreeState", () => {
+  const now = 1000;
+  const idle = { rejected: false, lastChange: undefined, changedFiles: 0 };
+
+  it("puts a refused push first, then live edits, then changes", () => {
+    expect(worktreeState({ rejected: true, lastChange: now, changedFiles: 3 }, now)).toBe("rejected");
+    expect(worktreeState({ ...idle, lastChange: now - 1, changedFiles: 3 }, now)).toBe("changing");
+    expect(worktreeState({ ...idle, changedFiles: 3 }, now)).toBe("changes");
+    expect(worktreeState(idle, now)).toBe("clean");
+  });
+
+  it("calls a worktree clean again once its edits are old", () => {
+    expect(worktreeState({ ...idle, lastChange: now - 60 }, now)).toBe("clean");
+  });
+
+  it("reads a worktree the overview has not reached as clean", () => {
+    expect(worktreeState({ ...idle, changedFiles: undefined }, now)).toBe("clean");
+  });
+});
+
+describe("lastActivity", () => {
+  const commit = { authorDate: "1970-01-01T00:01:40Z" } as CommitSummary;
+
+  it("prefers file changes, then the last commit", () => {
+    expect(lastActivity(500, commit)).toBe(500);
+    expect(lastActivity(undefined, commit)).toBe(100);
+    expect(lastActivity(undefined, null)).toBeNull();
   });
 });

@@ -37,6 +37,8 @@ export interface Settings {
   zoom: number;
   uiFontSize: number;
   leftWidth: number;
+  railWidth: number;
+  railCollapsed: boolean;
   changesMode: ChangesMode;
   /** Changed files (Changes and the commit pane) as a flat list or a folder tree. */
   changesView: ChangesView;
@@ -68,6 +70,8 @@ export const defaultSettings: Settings = {
   zoom: 1,
   uiFontSize: 13,
   leftWidth: 340,
+  railWidth: 264,
+  railCollapsed: false,
   changesMode: "uncommitted",
   changesView: "list",
   showIgnored: false,
@@ -117,6 +121,7 @@ export const RANGES: Partial<Record<SettingPath, readonly [number, number, boole
   zoom: [0.5, 2, false],
   uiFontSize: [10, 18, true],
   leftWidth: [160, 4000, true],
+  railWidth: [220, 420, true],
   commitPaneWidth: [160, 4000, true],
   historyPageSize: [20, 1000, true],
   "editor.fontSize": [8, 32, true],
