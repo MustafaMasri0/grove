@@ -1,8 +1,9 @@
 // Monaco, bundled locally. Only the editor core, the diff editor and the
 // features a read-only viewer needs are imported, plus the lightweight
-// tokenizers for every language. The TypeScript/JSON/CSS/HTML language
-// services (and their large workers) are left out on purpose: they add
-// IntelliSense, not highlighting, and cost a lot of memory.
+// tokenizers for every language, which lib/grammars.ts replaces for the common
+// ones. The TypeScript/JSON/CSS/HTML language services (and their large
+// workers) are left out on purpose: they add IntelliSense, not highlighting,
+// and cost a lot of memory.
 import * as monaco from "monaco-esm/editor/editor.api.js";
 import "monaco-esm/editor/browser/coreCommands.js";
 import "monaco-esm/editor/browser/widget/codeEditor/codeEditorWidget.js";
@@ -31,45 +32,36 @@ import "monaco-esm/base/browser/ui/codicons/codicon/codicon-modifiers.css";
 import "monaco-esm/languages/definitions/register.all.js";
 import EditorWorker from "monaco-esm/editor/editor.worker.js?worker";
 import { editorTheme } from "./lib/editorTheme";
+import { GRAMMAR_LANGUAGES, grammarTokenizer } from "./lib/grammars";
 
 // The diff computation runs in the editor worker; nothing else needs one.
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
   getWorker: () => new EditorWorker(),
 };
 
-// Monaco ships no JSON tokenizer outside the JSON language service.
+// Monaco ships no JSON language outside the JSON language service, and reads JSX as plain script.
 monaco.languages.register({
   id: "json",
   extensions: [".json", ".jsonc", ".json5", ".jsonl", ".webmanifest", ".code-workspace", ".babelrc", ".eslintrc"],
   filenames: [".prettierrc", "composer.lock"],
   aliases: ["JSON", "json"],
 });
-monaco.languages.setLanguageConfiguration("json", {
+monaco.languages.register({ id: "tsx", aliases: ["TSX", "tsx"] });
+monaco.languages.register({ id: "jsx", aliases: ["JSX", "jsx"] });
+monaco.languages.register({ id: "dotenv", extensions: [".env"], filenames: [".env"], aliases: ["dotenv", ".env"] });
+monaco.languages.setLanguageConfiguration("dotenv", { comments: { lineComment: "#" } });
+const CURLY_LANGUAGE: monaco.languages.LanguageConfiguration = {
   brackets: [
     ["{", "}"],
     ["[", "]"],
+    ["(", ")"],
   ],
   comments: { lineComment: "//", blockComment: ["/*", "*/"] },
-});
-monaco.languages.setMonarchTokensProvider("json", {
-  tokenizer: {
-    root: [
-      [/"(?:[^"\\]|\\.)*"(?=\s*:)/, "string.key.json"],
-      [/"(?:[^"\\]|\\.)*"/, "string.value.json"],
-      [/-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/, "number"],
-      [/\b(?:true|false|null)\b/, "keyword"],
-      [/\/\/.*$/, "comment"],
-      [/\/\*/, "comment", "@comment"],
-      [/[{}[\]]/, "delimiter.bracket"],
-      [/[,:]/, "delimiter"],
-    ],
-    comment: [
-      [/[^*/]+/, "comment"],
-      [/\*\//, "comment", "@pop"],
-      [/[*/]/, "comment"],
-    ],
-  },
-});
+};
+for (const id of ["json", "tsx", "jsx"]) monaco.languages.setLanguageConfiguration(id, CURLY_LANGUAGE);
+
+// Replaces Monarch for these languages; Markdown and the rarer ones stay on it.
+for (const id of GRAMMAR_LANGUAGES) monaco.languages.registerTokensProviderFactory(id, { create: () => grammarTokenizer(id) });
 
 /** Builds the theme from the design tokens as they resolve now, so call it after the page's theme changed. */
 export function applyEditorTheme(dark: boolean) {
@@ -82,6 +74,10 @@ export function applyEditorTheme(dark: boolean) {
 /** Monaco's language id for a path, from registered extensions and file names. */
 export function languageFor(path: string): string {
   const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  // Monaco's typescript and javascript claim these extensions too.
+  if (name.endsWith(".tsx")) return "tsx";
+  if (name.endsWith(".jsx")) return "jsx";
+  if (name.startsWith(".env.")) return "dotenv";
   const langs = monaco.languages.getLanguages();
   for (const l of langs) if (l.filenames?.some((f) => f.toLowerCase() === name)) return l.id;
   let best = "";

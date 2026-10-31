@@ -147,6 +147,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 ## Other components
 
 - Monaco Editor (MIT, Microsoft) — editor and diff view.
+- Shiki (MIT) — TextMate grammars for syntax highlighting; each grammar keeps the license of its source, listed in `@shikijs/langs`.
 - Tauri (MIT/Apache-2.0) — application shell.
 - React (MIT), zustand (MIT), marked (MIT), DOMPurify (Apache-2.0 / MPL-2.0).
 - notify, serde, serde_json, base64 (MIT/Apache-2.0) — Rust crates.

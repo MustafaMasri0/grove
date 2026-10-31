@@ -1,5 +1,6 @@
 // Monaco's colours, from the design tokens. Monaco cannot read CSS variables, so a theme is built
 // from the tokens' resolved values whenever the app's theme changes; tokens.css stays the one source.
+import type { SyntaxRole } from "./grammars";
 
 interface Rgba {
   r: number;
@@ -56,28 +57,37 @@ export function editorTheme(token: (name: string) => string, dark: boolean): Edi
   /** Opaque, as on the page: token rules take no alpha, and a sticky row must hide the code under it. */
   const solid = (name: string) => hexOf(over(parseColour(token(`--${name}`)), sheet));
   const ink = solid("ink");
+  const comment = solid("tok-com");
   const keyword = solid("tok-key");
-  const text = solid("tok-str");
-  const quiet = solid("tok-com");
-  const strong = solid("tok-fn");
+  const fn = solid("tok-fn");
+  const type = solid("tok-type");
+  const string = solid("tok-str");
+  const constant = solid("tok-num");
+  const macro = solid("tok-macro");
+  const property = solid("tok-prop");
+  const punctuation = solid("tok-punct");
 
+  // The roles from lib/grammars.ts, then what Monarch's tokenizers call the same things.
+  const roles: Record<SyntaxRole, string> = { comment, keyword, function: fn, type, string, constant, macro, property, delimiter: punctuation };
   const syntax: [string, string][] = [
-    ["comment", quiet],
-    ["annotation", quiet],
-    ["metatag", quiet],
-    ["keyword", keyword],
-    ["key", keyword],
+    ...Object.entries(roles),
+    ["metatag", comment],
+    ["key", property],
     ["tag", keyword],
-    ["constant", keyword],
-    ["string.key.json", keyword],
-    ["string", text],
-    ["regexp", text],
-    ["attribute.value", text],
-    ["number", strong],
-    ["type", strong],
-    ["attribute.name", strong],
-    ["variable.predefined", strong],
-    ["delimiter", ink],
+    ["tag.python", macro],
+    ["annotation", macro],
+    ["keyword.type", type],
+    ["regexp", macro],
+    ["attribute.name", property],
+    ["attribute.value", string],
+    ["attribute.value.number", constant],
+    ["attribute.value.unit", constant],
+    ["attribute.value.hex", constant],
+    ["number", constant],
+    ["variable.predefined", constant],
+    ["variable.md", string],
+    ["operator", punctuation],
+    ["operators", punctuation],
     ["variable", ink],
     ["identifier", ink],
     ["invalid", solid("err")],
@@ -110,7 +120,7 @@ export function editorTheme(token: (name: string) => string, dark: boolean): Edi
     "editor.findRangeHighlightBackground": c("wash"),
     "editorBracketMatch.background": c("fill"),
     "editorBracketMatch.border": c("line-strong"),
-    ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`editorBracketHighlight.foreground${n}`, ink])),
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [`editorBracketHighlight.foreground${n}`, punctuation])),
     "editorBracketHighlight.unexpectedBracket.foreground": c("err"),
     "editorIndentGuide.background1": c("line"),
     "editorIndentGuide.activeBackground1": c("line-strong"),
@@ -231,6 +241,7 @@ export function editorTheme(token: (name: string) => string, dark: boolean): Edi
     rules: [
       { token: "", foreground: ink.slice(1) },
       ...syntax.map(([t, colour]) => ({ token: t, foreground: colour.slice(1) })),
+      { token: "comment", foreground: comment.slice(1), fontStyle: "italic" },
       { token: "emphasis", fontStyle: "italic" },
       { token: "strong", fontStyle: "bold" },
     ],

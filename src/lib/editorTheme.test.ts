@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import css from "../ui/tokens.css?raw";
 import { contrast, editorTheme, parseColour } from "./editorTheme";
+import { SYNTAX_ROLES } from "./grammars";
 
 const block = (selector: string) => css.slice(css.indexOf(selector)).split("}")[0];
 const tokensOf = (selector: string) => {
@@ -45,6 +46,16 @@ describe.each(themes)("the $name editor theme", ({ read, dark }) => {
   it("keeps code readable", () => {
     for (const r of theme.rules) if (r.foreground) expect(contrast(hex(r.foreground), sheet), r.token || "text").toBeGreaterThanOrEqual(4.5);
   });
+  it("colours every role the grammars give, each apart from the plain text", () => {
+    const plain = theme.rules.find((r) => r.token === "")!.foreground;
+    for (const role of SYNTAX_ROLES) {
+      const rule = theme.rules.findLast((r) => r.token === role);
+      expect(rule?.foreground, role).toBeTruthy();
+      expect(rule?.foreground, role).not.toBe(plain);
+    }
+    expect(new Set(SYNTAX_ROLES.map((role) => theme.rules.find((r) => r.token === role)!.foreground)).size).toBe(SYNTAX_ROLES.length);
+  });
+  it("sets comments in italics", () => expect(theme.rules.findLast((r) => r.token === "comment")?.fontStyle).toBe("italic"));
   it("covers the surfaces that vs and vs-dark would otherwise show", () => {
     for (const k of ["diffEditor.insertedLineBackground", "diffEditor.removedLineBackground", "diffEditor.diagonalFill", "editorLineNumber.foreground", "editorStickyScroll.border", "minimapSlider.background", "diffEditorOverview.insertedForeground", "editorWidget.background", "menu.background"]) expect(theme.colors[k], k).toBeTruthy();
   });
