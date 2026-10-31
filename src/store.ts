@@ -20,7 +20,7 @@ import { uncommittedCount } from "./lib/changes";
 import { coalesce } from "./lib/coalesce";
 import { shortSha } from "./lib/format";
 import { bandOf, isNarrow } from "./lib/shell";
-import { activityBetween, addActivity, editsOf, readablePaths, type ActivityEvent } from "./lib/worktrees";
+import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readablePaths, type ActivityEvent, type OverviewSort } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
@@ -119,6 +119,8 @@ interface State {
   /** Every worktree of the repository side by side, and the files they both change. */
   overview: Overview | null;
   overviewError: string | null;
+  /** The overview table's order. It outlives the page, so opening a worktree and coming back keeps it. */
+  overviewSort: OverviewSort;
   /** Worktree path → when its files last changed (unix seconds), from the watcher; this session only. */
   lastChange: Record<string, number>;
   /** What happened in the worktrees, newest first; this session only. */
@@ -214,6 +216,7 @@ interface State {
   reconnect: (name: string) => Promise<void>;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
+  setOverviewSort(sort: OverviewSort): void;
   /** A watcher event: refreshes what it affects and records the activity. */
   noteChange(change: WorktreeChanged): void;
   /**
@@ -421,6 +424,7 @@ export const useStore = create<State>()((set, get) => {
     changeCounts: {},
     overview: null,
     overviewError: null,
+    overviewSort: DEFAULT_OVERVIEW_SORT,
     lastChange: {},
     activity: [],
     leftTab: "changes",
@@ -926,6 +930,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     loadOverview: coalesce(loadOverviewOnce),
+    setOverviewSort: (overviewSort) => set({ overviewSort }),
 
     async openWorktreeChange(cwd, path) {
       const a = (await enterWorktree(cwd)) ? at() : null;
