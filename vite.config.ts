@@ -21,5 +21,6 @@ export default defineConfig({
     // hundreds of data URLs held in the bundle.
     assetsInlineLimit: (file: string) => (file.replace(/\\/g, "/").includes("/assets/charmed/") ? false : undefined),
   },
-  test: { environment: "node" },
+  // Only this checkout's tests: other worktrees live under .claude.
+  test: { environment: "node", dir: "src" },
 });
