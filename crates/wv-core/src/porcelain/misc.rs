@@ -20,9 +20,49 @@ pub fn parse_path_list(out: &[u8]) -> Vec<String> {
     paths
 }
 
+/// One file of `git diff --numstat -z`: lines added and removed (0 for a binary file), under its new name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileLines {
+    pub path: String,
+    pub added: u32,
+    pub removed: u32,
+}
+
+/// `git diff --numstat -z`: `added\tremoved\tpath\0`, or for a rename `added\tremoved\t\0old\0new\0`.
+pub fn parse_numstat(out: &[u8]) -> Result<Vec<FileLines>, String> {
+    let mut files = vec![];
+    let mut fields = out.split(|&b| b == 0);
+    while let Some(field) = fields.next().filter(|f| !f.is_empty()) {
+        let text = lossy(field);
+        let mut parts = text.splitn(3, '\t');
+        let (Some(added), Some(removed), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            return Err(format!("unexpected numstat line: {text:?}"));
+        };
+        let path = if path.is_empty() {
+            fields.next().ok_or("numstat rename without an old name")?;
+            lossy(fields.next().filter(|n| !n.is_empty()).ok_or("numstat rename without a new name")?)
+        } else {
+            path.to_string()
+        };
+        let lines = |n: &str| if n == "-" { Ok(0) } else { n.parse().map_err(|_| format!("unexpected numstat line: {text:?}")) };
+        files.push(FileLines { added: lines(added)?, removed: lines(removed)?, path });
+    }
+    Ok(files)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn numstat_reads_plain_binary_and_renamed_files() {
+        let out = b"3\t1\tsrc/a.ts\0-\t-\tlogo.png\x002\t0\t\0old name.ts\0new name.ts\0";
+        let f = |path: &str, added, removed| FileLines { path: path.into(), added, removed };
+        assert_eq!(parse_numstat(out).unwrap(), [f("src/a.ts", 3, 1), f("logo.png", 0, 0), f("new name.ts", 2, 0)]);
+        assert_eq!(parse_numstat(b"").unwrap(), []);
+        assert!(parse_numstat(b"nope\0").is_err());
+        assert!(parse_numstat(b"1\t1\t\0only-old\0").is_err());
+    }
 
     #[test]
     fn left_right() {

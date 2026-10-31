@@ -466,10 +466,46 @@ pub enum Action {
 pub fn run_action(h: &dyn GitHost, cwd: &str, action: Action, branch: &str, progress: Option<Progress>) -> Result<GitOutput, String> {
     let a = match action {
         Action::Fetch => args(&["fetch", "--progress", "origin"]),
-        Action::Push => args(&["push", "--progress"]),
-        Action::Publish => args(&["push", "--progress", "-u", "origin", branch]),
+        Action::Push => args(&["push", "--progress", "--porcelain"]),
+        Action::Publish => args(&["push", "--progress", "--porcelain", "-u", "origin", branch]),
     };
     h.git(cwd, &a, progress)
+}
+
+/// How a fetch, push or publish ended, for the UI.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionResult {
+    pub ok: bool,
+    /// The remote refused a ref. A failure to reach it, or to log in, is not this.
+    pub rejected: bool,
+    /// What git said: progress when it worked, why when it did not.
+    pub text: String,
+}
+
+/// Reads `run_action`'s output. `push --porcelain` marks each refused ref with a `!` flag on stdout
+/// in every language; git prints no ref lines when it cannot reach the remote.
+pub fn action_result(out: &GitOutput) -> ActionResult {
+    let stderr = out.stderr.trim();
+    if out.code == 0 {
+        return ActionResult { ok: true, rejected: false, text: stderr.to_string() };
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let refused: Vec<String> = stdout.lines().filter_map(refused_ref).collect();
+    let text = refused.iter().map(String::as_str).chain([stderr]).filter(|t| !t.is_empty()).collect::<Vec<_>>().join("\n");
+    ActionResult {
+        ok: false,
+        rejected: !refused.is_empty(),
+        text: if text.is_empty() { format!("git exited with code {}", out.code) } else { text },
+    }
+}
+
+/// A `push --porcelain` line `!\t<from>:<to>\t<why>`, as `! <branch> <why>`.
+fn refused_ref(line: &str) -> Option<String> {
+    let mut parts = line.strip_prefix("!\t")?.splitn(2, '\t');
+    let refs = parts.next()?;
+    let to = refs.rsplit(':').next()?;
+    Some(format!("! {} {}", to.strip_prefix("refs/heads/").unwrap_or(to), parts.next().unwrap_or("").trim()))
 }
 
 /// What to watch for one worktree: its files, its git dirs, minus worktrees nested inside it.
@@ -501,6 +537,26 @@ fn same_path(a: &str, b: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn output(code: i32, stdout: &str, stderr: &str) -> GitOutput {
+        GitOutput { code, stdout: stdout.as_bytes().to_vec(), stderr: stderr.to_string() }
+    }
+
+    #[test]
+    fn a_refused_ref_is_a_rejection() {
+        let out = output(1, "To example\n!\trefs/heads/main:refs/heads/main\t[rejected] (fetch first)\nDone\n", "error: failed to push\n");
+        assert_eq!(action_result(&out), ActionResult { ok: false, rejected: true, text: "! main [rejected] (fetch first)\nerror: failed to push".into() });
+        let hook = output(1, "To example\n!\trefs/heads/a:refs/heads/a\t[remote rejected] (pre-receive hook declined)\nDone\n", "");
+        assert!(action_result(&hook).rejected);
+    }
+
+    #[test]
+    fn other_failures_are_not_rejections() {
+        let out = output(128, "", "fatal: Could not read from remote repository.\n");
+        assert_eq!(action_result(&out), ActionResult { ok: false, rejected: false, text: "fatal: Could not read from remote repository.".into() });
+        assert_eq!(action_result(&output(1, "", "")).text, "git exited with code 1");
+        assert_eq!(action_result(&output(0, "To example\n", "done\n")), ActionResult { ok: true, rejected: false, text: "done".into() });
+    }
 
     #[test]
     fn decode_detects_binary_and_strips_bom() {

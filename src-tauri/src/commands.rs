@@ -196,25 +196,20 @@ pub async fn branch_status(state: State<'_, AppState>, repo: String, cwd: String
 
 #[derive(Clone, Serialize)]
 struct ProgressEvent {
+    cwd: String,
     line: String,
 }
 
 /// Fetch, push or publish. Progress lines are emitted as `action-progress`.
 #[tauri::command]
-pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwd: String, action: Action, branch: String) -> Res<String> {
+pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwd: String, action: Action, branch: String) -> Res<ops::ActionResult> {
     let app = state.inner().clone();
     blocking(move || {
         let host = app.hosts.host(&repo)?;
         let emit = |line: &str| {
-            let _ = app_handle.emit("action-progress", ProgressEvent { line: line.to_string() });
+            let _ = app_handle.emit("action-progress", ProgressEvent { cwd: cwd.clone(), line: line.to_string() });
         };
-        let out = ops::run_action(&*host, &cwd, action, &branch, Some(&emit))?;
-        if out.code == 0 {
-            Ok(out.stderr.trim().to_string())
-        } else {
-            let text = out.stderr.trim();
-            Err(if text.is_empty() { format!("git exited with code {}", out.code) } else { text.to_string() })
-        }
+        Ok(ops::action_result(&ops::run_action(&*host, &cwd, action, &branch, Some(&emit))?))
     })
     .await
 }

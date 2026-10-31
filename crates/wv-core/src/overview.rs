@@ -3,7 +3,7 @@
 
 use crate::host::GitHost;
 use crate::porcelain::log::{parse_log, CommitSummary, LOG_FORMAT};
-use crate::porcelain::misc::{parse_left_right, parse_path_list};
+use crate::porcelain::misc::{parse_left_right, parse_numstat, parse_path_list, FileLines};
 use crate::porcelain::name_status::ChangedFile;
 use crate::porcelain::ChangeKind;
 use crate::repo_ops::{run, run_text, status, succeeds};
@@ -32,6 +32,13 @@ pub struct WorktreeSummary {
     pub upstream_ahead: u32,
     pub upstream_behind: u32,
     pub last_commit: Option<CommitSummary>,
+    /// Files the worktree changes: uncommitted ones (untracked included) and, with a base, those
+    /// committed since it split from the base.
+    pub changed_files: u32,
+    /// Lines of those files, working tree against that same point. Untracked files have no line
+    /// counts: git does not diff them.
+    pub lines_added: u32,
+    pub lines_removed: u32,
 }
 
 impl WorktreeSummary {
@@ -88,19 +95,33 @@ pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>, find_overlaps: bo
         upstream_ahead: st.branch.ahead,
         upstream_behind: st.branch.behind,
         last_commit: None,
+        changed_files: 0,
+        lines_added: 0,
+        lines_removed: 0,
     };
+    s.changed_files = s.uncommitted.len() as u32;
     let Some(head) = head else { return Ok(s) };
     s.last_commit = parse_log(&run(h, cwd, &["log", LOG_FORMAT, "--max-count=1", &head, "--"])?)?.into_iter().next();
-    if let Some(base) = base {
-        // A base without a common ancestor (an unrelated history) has nothing to compare.
-        if let Ok(merge_base) = run_text(h, cwd, &["merge-base", base, &head]) {
-            if find_overlaps {
-                s.committed = parse_path_list(&run(h, cwd, &["diff", "--name-only", "-z", "--no-renames", &merge_base, &head, "--"])?);
-            }
-            (s.base_behind, s.base_ahead) = parse_left_right(&run(h, cwd, &["rev-list", "--left-right", "--count", &format!("{base}...{head}")])?)?;
+    // A base without a common ancestor (an unrelated history) has nothing to compare.
+    let merge_base = base.and_then(|base| Some((base, run_text(h, cwd, &["merge-base", base, &head]).ok()?)));
+    if let Some((base, merge_base)) = &merge_base {
+        if find_overlaps {
+            s.committed = parse_path_list(&run(h, cwd, &["diff", "--name-only", "-z", "--no-renames", merge_base, &head, "--"])?);
         }
+        (s.base_behind, s.base_ahead) = parse_left_right(&run(h, cwd, &["rev-list", "--left-right", "--count", &format!("{base}...{head}")])?)?;
     }
+    let since = merge_base.as_ref().map_or(head.as_str(), |(_, m)| m.as_str());
+    count_changes(&mut s, &parse_numstat(&run(h, cwd, &["diff", "--numstat", "-z", since, "--"])?)?);
     Ok(s)
+}
+
+/// Adds the files of a diff to the uncommitted ones: each file once, whichever side lists it.
+fn count_changes(s: &mut WorktreeSummary, diff: &[FileLines]) {
+    let mut files: BTreeSet<&str> = s.uncommitted.iter().map(|f| f.path.as_str()).collect();
+    files.extend(diff.iter().map(|f| f.path.as_str()));
+    s.changed_files = files.len() as u32;
+    s.lines_added = diff.iter().map(|f| f.added).sum();
+    s.lines_removed = diff.iter().map(|f| f.removed).sum();
 }
 
 /// Every worktree in `cwds` side by side and, for `find_overlaps`, the files they both change.
@@ -187,6 +208,9 @@ mod tests {
             upstream_ahead: 0,
             upstream_behind: 0,
             last_commit: None,
+            changed_files: 0,
+            lines_added: 0,
+            lines_removed: 0,
         }
     }
 
