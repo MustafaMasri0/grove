@@ -470,6 +470,65 @@ fn summary_compares_with_the_base_and_the_upstream() {
 }
 
 #[test]
+fn summary_counts_uncommitted_and_committed_files_once_each() {
+    let r = branched_repo();
+    let wt = r.dir.path().join("feature-wt");
+    git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
+    let cwd = wt.to_str().unwrap();
+    let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
+    assert_eq!(s.changed_files, 2, "committed since the base");
+    assert!(s.lines_added > 0);
+
+    // a.txt is already among the branch's files; the untracked one adds a file but no lines.
+    let lines = s.lines_added;
+    std::fs::write(wt.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+    std::fs::write(wt.join("untracked.txt"), "one\ntwo\n").unwrap();
+    let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
+    assert_eq!(s.changed_files, 3);
+    assert_eq!(s.lines_added, lines + 1);
+
+    // Without a base only the uncommitted changes count.
+    let s = overview::summary(&h(), cwd, None, false).unwrap();
+    assert_eq!((s.changed_files, s.lines_added, s.lines_removed), (2, 1, 0));
+}
+
+#[test]
+fn summary_of_a_repository_without_commits_counts_its_files() {
+    let dir = tempfile::tempdir().unwrap();
+    git(dir.path(), &["init", "-q"]);
+    std::fs::write(dir.path().join("a.txt"), "a\n").unwrap();
+    let s = overview::summary(&h(), dir.path().to_str().unwrap(), Some("main"), false).unwrap();
+    assert_eq!((s.changed_files, s.lines_added), (1, 0));
+}
+
+#[test]
+fn a_push_the_remote_refuses_is_rejected_and_an_unreachable_remote_is_not() {
+    let r = temp_repo();
+    let bare = r.dir.path().join("remote.git");
+    git(r.dir.path(), &["init", "-q", "--bare", bare.to_str().unwrap()]);
+    git(&r.path, &["remote", "add", "origin", bare.to_str().unwrap()]);
+    let lines = Mutex::new(vec![]);
+    let progress = |l: &str| lines.lock().unwrap().push(l.to_string());
+    let published = ops::action_result(&ops::run_action(&h(), r.path_str(), Action::Publish, "main", Some(&progress)).unwrap());
+    assert!(published.ok && !published.rejected, "{published:?}");
+    assert!(!lines.lock().unwrap().is_empty(), "progress still arrives with --porcelain");
+
+    // Another clone moves the branch on, so this one's next push is refused.
+    let other = r.dir.path().join("other");
+    git(r.dir.path(), &["clone", "-q", "-b", "main", bare.to_str().unwrap(), other.to_str().unwrap()]);
+    git(&other, &["-c", "user.name=Dev Example", "-c", "user.email=dev@example.com", "commit", "-q", "--allow-empty", "-m", "theirs"]);
+    git(&other, &["push", "-q", "origin", "HEAD:main"]);
+    git(&r.path, &["commit", "-q", "--allow-empty", "-m", "ours"]);
+    let refused = ops::action_result(&ops::run_action(&h(), r.path_str(), Action::Push, "main", None).unwrap());
+    assert!(!refused.ok && refused.rejected, "{refused:?}");
+    assert!(refused.text.starts_with("! main "), "{}", refused.text);
+
+    git(&r.path, &["remote", "set-url", "origin", r.dir.path().join("gone.git").to_str().unwrap()]);
+    let unreachable = ops::action_result(&ops::run_action(&h(), r.path_str(), Action::Push, "main", None).unwrap());
+    assert!(!unreachable.ok && !unreachable.rejected, "{unreachable:?}");
+}
+
+#[test]
 fn overview_finds_files_two_worktrees_both_change() {
     let r = temp_repo();
     let add = |name: &str, from: &str| {
@@ -512,12 +571,12 @@ fn overview_runs_no_overlap_commands_unless_asked() {
     let off = RecordingHost::new();
     let o = off.overview(&cwds, Some("main"), false).unwrap();
     assert!(o.overlaps.is_empty());
-    assert!(!off.ran("diff"));
+    assert!(!off.ran("--name-only"));
     assert!(o.worktrees.iter().all(|w| w.committed.is_empty()));
     assert_eq!((o.worktrees[1].base_ahead, o.worktrees[1].base_behind), (1, 1), "the cards keep their numbers");
 
     let on = RecordingHost::new();
     let o = on.overview(&cwds, Some("main"), true).unwrap();
     assert_eq!(o.overlaps[0].files, ["f.txt"]);
-    assert!(on.ran("diff"));
+    assert!(on.ran("--name-only"));
 }

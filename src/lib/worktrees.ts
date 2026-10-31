@@ -1,7 +1,7 @@
 // The Worktrees overview: names, live activity and overlaps between worktrees.
 // Times are unix seconds, like the rest of the app.
 import type { ChangedFile, Overlap, WorktreeInfo, WorktreeSummary } from "../api";
-import { shortSha } from "./format";
+import { isoToUnix, shortSha } from "./format";
 
 /** A worktree counts as active this long after its files last changed. */
 export const ACTIVE_SECS = 15;
@@ -21,6 +21,22 @@ export function readablePaths(worktrees: readonly WorktreeInfo[]): string[] {
 
 export function isActive(lastChange: number | undefined, now: number): boolean {
   return lastChange !== undefined && now - lastChange < ACTIVE_SECS;
+}
+
+export type WorktreeState = "rejected" | "changing" | "changes" | "clean";
+
+export const STATE_LABEL: Record<WorktreeState, string> = { rejected: "Push rejected", changing: "Changing", changes: "Has changes", clean: "Clean" };
+
+/** A worktree's state, the most pressing one first. `changedFiles` is unknown until the overview loads. */
+export function worktreeState(w: { rejected: boolean; lastChange: number | undefined; changedFiles: number | undefined }, now: number): WorktreeState {
+  if (w.rejected) return "rejected";
+  if (isActive(w.lastChange, now)) return "changing";
+  return w.changedFiles ? "changes" : "clean";
+}
+
+/** When a worktree last moved: its files this session, else its last commit; null for neither. */
+export function lastActivity(lastChange: number | undefined, lastCommit: WorktreeSummary["lastCommit"] | undefined): number | null {
+  return lastChange ?? (lastCommit ? isoToUnix(lastCommit.authorDate) : null);
 }
 
 /** The paths a change touches: its own, and a rename's old one. */

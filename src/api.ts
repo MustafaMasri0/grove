@@ -168,6 +168,14 @@ export interface BranchStatus {
 
 export type Action = "fetch" | "push" | "publish";
 
+/** How a fetch, push or publish ended. */
+export interface ActionResult {
+  ok: boolean;
+  /** The remote refused a ref; failing to reach it is not this. */
+  rejected: boolean;
+  text: string;
+}
+
 export interface WorktreeSummary {
   path: string;
   branch: string | null;
@@ -180,6 +188,11 @@ export interface WorktreeSummary {
   upstreamAhead: number;
   upstreamBehind: number;
   lastCommit: CommitSummary | null;
+  /** Uncommitted files, plus those committed since the worktree split from the base. */
+  changedFiles: number;
+  /** Lines of those files; untracked files have none. */
+  linesAdded: number;
+  linesRemoved: number;
 }
 
 /** Files two worktrees both change (`a` and `b` are worktree paths). */
@@ -228,7 +241,7 @@ export const api = {
   listDir: (a: At, rel: string) => invoke<DirEntry[]>("list_dir", { ...a, rel }),
   grep: (a: At, rev: string | null, query: GrepQuery) => invoke<GrepResult>("grep", { ...a, rev, query }),
   branchStatus: (a: At, branch: string) => invoke<BranchStatus>("branch_status", { ...a, branch }),
-  runAction: (a: At, action: Action, branch: string) => invoke<string>("run_action", { ...a, action, branch }),
+  runAction: (a: At, action: Action, branch: string) => invoke<ActionResult>("run_action", { ...a, action, branch }),
   /** Watches these worktrees of `repo` (and stops watching anything else): `worktree-changed` events. */
   watch: (repo: string, cwds: string[]) => invoke<void>("watch", { repo, cwds }),
   loadSettings: () => invoke<unknown>("load_settings"),

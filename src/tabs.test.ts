@@ -68,7 +68,7 @@ describe("revealPathOf", () => {
   });
 
   it("is nothing for Settings, for no tab and for a tab of another worktree", () => {
-    const settings: Tab = { id: "app:settings", title: "Settings", description: "", preview: false, repo: "", cwd: "", spec: { type: "settings", path: "Settings" } };
+    const settings: Tab = { id: "app:settings.json", title: "settings.json", description: "", preview: false, repo: "", cwd: "", spec: { type: "settingsJson", path: "settings.json" } };
     expect(revealPathOf(settings, cwd)).toBeNull();
     expect(revealPathOf({ ...settings, id: "app:settings.json", spec: { type: "settingsJson", path: "C:\\x\\settings.json" } }, cwd)).toBeNull();
     expect(revealPathOf(null, cwd)).toBeNull();

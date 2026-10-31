@@ -32,19 +32,22 @@ function onKeyDown(e: KeyboardEvent) {
   const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   const inEditor = !!(document.activeElement as HTMLElement | null)?.closest?.(".monaco-editor");
+  const atWork = s.view === "work" && !s.settingsOpen;
   const tabs: Record<string, LeftTab> = { "1": "changes", "2": "history", "3": "explorer" };
 
   if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
-  else if (ctrl && e.shiftKey && key === "o") s.openWorktrees();
+  else if (ctrl && e.shiftKey && key === "o") s.setView("overview");
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
   else if (key === "F7" && !e.ctrlKey && !e.altKey && !inEditor) editorCommands.goToDiff(e.shiftKey ? "previous" : "next");
   else if (ctrl && !e.shiftKey && key === "w") {
-    if (s.activeTab) s.closeTab(s.activeTab);
-  } else if (ctrl && key === "Tab") s.cycleTab(e.shiftKey ? -1 : 1);
+    if (atWork && s.activeTab) s.closeTab(s.activeTab);
+  } else if (ctrl && key === "Tab") {
+    if (atWork) s.cycleTab(e.shiftKey ? -1 : 1);
+  }
   else if (ctrl && !e.shiftKey && tabs[key]) s.setLeftTab(tabs[key]);
-  else if (ctrl && !e.shiftKey && key === ",") s.openSettings();
+  else if (ctrl && !e.shiftKey && key === ",") s.settingsOpen ? s.closeSettings() : s.openSettings();
   else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) void s.refresh();
   // While an image is shown these zoom the image, not the window.
   else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);
@@ -64,6 +67,7 @@ export function App() {
   const repo = useStore((s) => s.repo);
   const repoError = useStore((s) => s.repoError);
   const notice = useStore((s) => s.notice);
+  const connectionLost = useStore((s) => s.connectionLost);
   const leftWidth = useStore((s) => s.settings.leftWidth);
   const commitWidth = useStore((s) => s.settings.commitPaneWidth);
   const showCommit = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null);
@@ -102,8 +106,8 @@ export function App() {
 
     const unlisten = [
       listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
-      listen<{ line: string }>("action-progress", (e) => setActionProgress(e.payload.line)),
-      listen<string>("connection-lost", (e) => void useStore.getState().connectionLost(e.payload)),
+      listen<{ cwd: string; line: string }>("action-progress", (e) => setActionProgress(e.payload.cwd, e.payload.line)),
+      listen<string>("connection-lost", (e) => void useStore.getState().reconnect(e.payload)),
     ];
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
@@ -148,6 +152,11 @@ export function App() {
     <div className="app">
       <TopBar />
       {repoError && <div className="banner error">{repoError}</div>}
+      {connectionLost && (
+        <div className="banner" role="status">
+          <span className="banner-text">Connection to {connectionLost} lost. Reconnecting…</span>
+        </div>
+      )}
       {notice && (
         <div className="banner error" role="alert">
           <span className="banner-text">{notice}</span>
@@ -258,7 +267,7 @@ async function runAutomation() {
  * the shared files, or the n-th link in Activity (waiting up to a minute for one to appear).
  */
 async function worktreesForTest(spec: string) {
-  useStore.getState().openWorktrees();
+  useStore.getState().setView("overview");
   const [what, n] = spec.split(":");
   if (what !== "chip" && what !== "feed") return;
   const sel = what === "chip" ? ".ov-shared .ov-who-chip" : ".ov-feed button.link, .ov-feed .ov-file-link";
@@ -437,6 +446,7 @@ async function openMenuForTest(spec: string) {
         }
         return open(await find(".qo-item", (els) => els[1] ?? els[0]));
       case "tab":
+        s.setView("work");
         return open(await find(".tab-strip .tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
       case "repo":
         return open(await dropdown(0), false);

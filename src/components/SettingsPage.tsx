@@ -8,13 +8,14 @@ import { useStore } from "../store";
 const sectionTitle = (id: string) => SECTIONS.find((s) => s.id === id)!.title;
 const ALL_PATHS = SETTINGS.map((d) => d.path);
 
-/** VS Code-style Settings, shown as an editor tab. Every change applies and saves at once. */
+/** VS Code-style Settings. Every change applies and saves at once. */
 export function SettingsPage() {
   const settings = useStore((s) => s.settings);
   const query = useStore((s) => s.settingsQuery);
   const setQuery = useStore((s) => s.setSettingsQuery);
   const updateSettings = useStore((s) => s.updateSettings);
   const openSettingsFile = useStore((s) => s.openSettingsFile);
+  const closeSettings = useStore((s) => s.closeSettings);
   const [confirmReset, setConfirmReset] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const search = useRef<HTMLInputElement>(null);
@@ -33,7 +34,14 @@ export function SettingsPage() {
   const nothing = groups.length === 0 && repos.length === 0 && shortcuts.length === 0;
 
   return (
-    <div className="settings-page">
+    <div
+      className="settings-page"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        if (query) setQuery("");
+        else closeSettings();
+      }}
+    >
       <div className="settings-head">
         <input
           ref={search}
@@ -42,12 +50,6 @@ export function SettingsPage() {
           placeholder="Search settings"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && query) {
-              e.stopPropagation();
-              setQuery("");
-            }
-          }}
         />
         <div className="settings-actions">
           <span className="muted">{modified === 0 ? "All settings are at their defaults" : `${modified} changed`}</span>
@@ -61,6 +63,9 @@ export function SettingsPage() {
             }}
           >
             Open settings.json
+          </button>
+          <button className="icon-button" title="Close (Esc)" onClick={closeSettings}>
+            ×
           </button>
           <button
             className={`toggle${confirmReset ? " on" : ""}`}

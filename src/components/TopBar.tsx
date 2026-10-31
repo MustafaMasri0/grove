@@ -7,7 +7,7 @@ import { relativeTime, shortSha } from "../lib/format";
 import { canReveal, displayPath, sshAddress } from "../lib/hostPaths";
 import { useNow } from "../lib/useNow";
 import { isActive, sharedFiles, worktreeName } from "../lib/worktrees";
-import { useStore } from "../store";
+import { actionOf, useStore } from "../store";
 import { menuEnv } from "./ContextMenu";
 import { Dropdown, type DropdownItem } from "./Dropdown";
 import { WindowControls } from "./WindowControls";
@@ -221,7 +221,7 @@ function BranchSwitcher() {
 
 function ActionButton() {
   const bs = useStore((s) => s.branchStatus);
-  const action = useStore((s) => s.action);
+  const action = useStore(actionOf);
   const viewBranch = useStore((s) => s.viewBranch);
   const runAction = useStore((s) => s.runAction);
   const now = useNow(30_000);
@@ -289,12 +289,12 @@ function ActionButton() {
 
 /** Opens the Worktrees overview; shows how many files more than one worktree changes. */
 function OverviewButton() {
-  const openWorktrees = useStore((s) => s.openWorktrees);
+  const setView = useStore((s) => s.setView);
   const shared = useStore((s) => (s.overview ? sharedFiles(s.overview.overlaps, s.overview.worktrees).length : 0));
   const repo = useStore((s) => s.repo);
   const title = `Worktrees overview (Ctrl+Shift+O)${shared ? ` · ${shared} file${shared === 1 ? "" : "s"} changed in more than one worktree` : ""}`;
   return (
-    <button className="tb-button tb-settings tb-overview" title={title} aria-label={title} onClick={openWorktrees} disabled={!repo}>
+    <button className="tb-button tb-settings tb-overview" title={title} aria-label={title} onClick={() => setView("overview")} disabled={!repo}>
       <Icon name="extensions" />
       {shared > 0 && <span className="tb-warn">{shared}</span>}
     </button>
@@ -302,7 +302,7 @@ function OverviewButton() {
 }
 
 export function TopBar() {
-  const actionError = useStore((s) => s.action.error);
+  const actionError = useStore((s) => actionOf(s).error);
   const clear = useStore((s) => s.clearActionError);
   const openSettings = useStore((s) => s.openSettings);
   return (

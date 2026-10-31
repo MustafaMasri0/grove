@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type Overview, type RepoInfo } from "./api";
-import { useStore } from "./store";
+import { actionOf, useStore, type Tab } from "./store";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -10,6 +10,14 @@ vi.mock("./api", async (original) => ({
     worktreesOverview: vi.fn(),
     watch: vi.fn(async () => {}),
     saveSettings: vi.fn(async () => {}),
+    status: vi.fn(async () => ({ branch: {}, entries: [] })),
+    branches: vi.fn(async () => []),
+    resolveBase: vi.fn(async () => "main"),
+    branchStatus: vi.fn(async () => ({})),
+    log: vi.fn(async () => []),
+    commit: vi.fn(),
+    runAction: vi.fn(),
+    settingsFile: vi.fn(async () => ({ path: "settings.json", text: null })),
   },
 }));
 
@@ -72,5 +80,117 @@ describe("the possibleConflicts setting", () => {
     useStore.getState().updateSettings({ showIgnored: true });
     expect(useStore.getState().overview).toBe(before);
     expect(answer).toHaveBeenCalledTimes(1);
+  });
+});
+
+const REPO = { id: "r", root: "/r", name: "r", kind: "local" } as RepoInfo;
+const tab = (id: string): Omit<Tab, "preview" | "repo" | "cwd"> => ({ id, title: id, description: "", spec: { type: "file", path: id, source: { kind: "worktree", path: id } } });
+const titles = () => useStore.getState().tabs.map((t) => t.title);
+
+describe("worktrees", () => {
+  beforeEach(() => {
+    vi.mocked(api.worktreesOverview).mockResolvedValue(overview([]));
+    vi.mocked(api.log).mockReset().mockResolvedValue([]);
+    vi.mocked(api.runAction).mockReset();
+    useStore.setState({ ...useStore.getInitialState(), repo: REPO, cwd: "/a" }, true);
+  });
+
+  it("each keeps its tabs, pane and viewed branch", async () => {
+    const s = useStore.getState();
+    s.openTab(tab("one"), true);
+    s.setLeftTab("explorer");
+    await s.selectBranch({ name: "other", fullRef: "refs/heads/other", kind: "remote" } as never);
+    await s.selectWorktree("/b");
+    expect(useStore.getState()).toMatchObject({ tabs: [], activeTab: null, leftTab: "changes", viewBranch: null });
+
+    useStore.getState().openTab(tab("two"), true);
+    await useStore.getState().selectWorktree("/a");
+    expect(titles()).toEqual(["one"]);
+    expect(useStore.getState()).toMatchObject({ activeTab: "one", leftTab: "explorer", viewBranch: { name: "other" } });
+
+    await useStore.getState().selectWorktree("/b");
+    expect(titles()).toEqual(["two"]);
+  });
+
+  it("share settings.json, which stays active when it was", async () => {
+    useStore.getState().openTab(tab("one"), true);
+    await useStore.getState().openSettingsFile();
+    await useStore.getState().selectWorktree("/b");
+    expect(useStore.getState().activeTab).toBe("app:settings.json");
+    expect(titles()).toEqual(["settings.json"]);
+    await useStore.getState().selectWorktree("/a");
+    expect(titles()).toEqual(["one", "settings.json"]);
+  });
+
+  it("dropping a viewed branch needs no other worktree", async () => {
+    await useStore.getState().selectBranch({ name: "other", fullRef: "refs/remotes/other", kind: "remote" } as never);
+    await useStore.getState().selectWorktree("/a");
+    expect(useStore.getState().viewBranch).toBeNull();
+  });
+
+  it("ignore a late answer for the worktree they left", async () => {
+    let finish = (_: never[]) => {};
+    vi.mocked(api.log).mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    const loading = useStore.getState().loadMoreCommits();
+    await useStore.getState().selectWorktree("/b");
+    finish([{ sha: "late" }] as never);
+    await loading;
+    expect(useStore.getState().commits).toEqual([]);
+  });
+
+  it("run their pushes apart, and a refusal lasts until a push succeeds", async () => {
+    const ran = vi.mocked(api.runAction);
+    ran.mockResolvedValueOnce({ ok: false, rejected: true, text: "! main [rejected]" });
+    await useStore.getState().runAction("push");
+    expect(actionOf(useStore.getState())).toMatchObject({ rejected: true, error: "! main [rejected]" });
+
+    await useStore.getState().selectWorktree("/b");
+    expect(actionOf(useStore.getState())).toMatchObject({ rejected: false, error: null });
+    await useStore.getState().selectWorktree("/a");
+
+    useStore.getState().clearActionError();
+    ran.mockResolvedValueOnce({ ok: true, rejected: false, text: "" });
+    await useStore.getState().runAction("fetch");
+    ran.mockResolvedValueOnce({ ok: false, rejected: false, text: "fatal: no network" });
+    await useStore.getState().runAction("push");
+    expect(actionOf(useStore.getState())).toMatchObject({ rejected: true, error: "fatal: no network" });
+
+    ran.mockResolvedValueOnce({ ok: true, rejected: false, text: "" });
+    await useStore.getState().runAction("push");
+    expect(actionOf(useStore.getState())).toMatchObject({ rejected: false, error: null, running: false });
+  });
+
+  it("a failed push that was never refused is no rejection", async () => {
+    vi.mocked(api.runAction).mockResolvedValueOnce({ ok: false, rejected: false, text: "fatal: no network" });
+    await useStore.getState().runAction("push");
+    expect(actionOf(useStore.getState())).toMatchObject({ rejected: false, error: "fatal: no network" });
+  });
+});
+
+describe("what fills the window", () => {
+  beforeEach(() => useStore.setState({ ...useStore.getInitialState(), repo: REPO, cwd: "/a" }, true));
+
+  it("starts on the overview and goes to work when a file or worktree opens", async () => {
+    expect(useStore.getState().view).toBe("overview");
+    useStore.getState().openTab(tab("one"), true);
+    expect(useStore.getState().view).toBe("work");
+    useStore.getState().setView("overview");
+    await useStore.getState().selectWorktree("/a");
+    expect(useStore.getState().view).toBe("work");
+  });
+
+  it("settings close when something else is opened", async () => {
+    useStore.getState().openSettings();
+    useStore.getState().setView("overview");
+    expect(useStore.getState().settingsOpen).toBe(false);
+    useStore.getState().openSettings();
+    await useStore.getState().openSettingsFile();
+    expect(useStore.getState()).toMatchObject({ settingsOpen: false, view: "work", activeTab: "app:settings.json" });
+  });
+
+  it("settings.json opens with no repository", async () => {
+    useStore.setState({ repo: null, cwd: null });
+    await useStore.getState().openSettingsFile();
+    expect(titles()).toEqual(["settings.json"]);
   });
 });

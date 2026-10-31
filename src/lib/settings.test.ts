@@ -180,3 +180,11 @@ describe("withRunScripts", () => {
     expect(off.runScripts).toEqual([]);
   });
 });
+
+describe("the rail", () => {
+  it("keeps its width within 220 to 420", () => {
+    expect(normalizeSettings({ railWidth: 100 }).railWidth).toBe(220);
+    expect(normalizeSettings({ railWidth: 900 }).railWidth).toBe(420);
+    expect(normalizeSettings({ railWidth: 300, railCollapsed: true })).toMatchObject({ railWidth: 300, railCollapsed: true });
+  });
+});

@@ -53,7 +53,7 @@ pub fn check(args: &[String]) -> Result<Access, String> {
             [remote] if valid_name(remote) => Ok(Access::Network),
             _ => Err("only `git fetch <remote>` is allowed".into()),
         },
-        "push" => match strip_progress(rest) {
+        "push" => match strip_flag(strip_progress(rest), "--porcelain") {
             [] => Ok(Access::Network),
             [u, remote, branch] if u == "-u" && valid_name(remote) && valid_name(branch) => Ok(Access::Network),
             _ => Err("only `git push` and `git push -u <remote> <branch>` are allowed".into()),
@@ -63,8 +63,12 @@ pub fn check(args: &[String]) -> Result<Access, String> {
 }
 
 fn strip_progress(rest: &[String]) -> &[String] {
+    strip_flag(rest, "--progress")
+}
+
+fn strip_flag<'a>(rest: &'a [String], flag: &str) -> &'a [String] {
     match rest.first() {
-        Some(p) if p == "--progress" => &rest[1..],
+        Some(p) if p == flag => &rest[1..],
         _ => rest,
     }
 }
@@ -144,6 +148,8 @@ mod tests {
         assert_eq!(c(&["fetch", "--progress", "origin"]), Ok(Access::Network));
         assert_eq!(c(&["push"]), Ok(Access::Network));
         assert_eq!(c(&["push", "--progress"]), Ok(Access::Network));
+        assert_eq!(c(&["push", "--progress", "--porcelain"]), Ok(Access::Network));
+        assert_eq!(c(&["push", "--progress", "--porcelain", "-u", "origin", "feature/x"]), Ok(Access::Network));
         assert_eq!(c(&["push", "--progress", "-u", "origin", "feature/x"]), Ok(Access::Network));
         assert_eq!(c(&["push", "-u", "origin", "feature/x"]), Ok(Access::Network));
     }

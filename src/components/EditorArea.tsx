@@ -10,11 +10,10 @@ import { displayPath, joinPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { languageFor, monaco } from "../monaco";
 import { effectiveDark, useStore, type Tab } from "../store";
-import { isLive, isPage, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
+import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
-import { Icon } from "./Icon";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
 import { SettingsPage } from "./SettingsPage";
@@ -62,12 +61,14 @@ function showsImage(t: Tab, preview: boolean): boolean {
   return viewKind(s.path) === "image" && (preview || !/\.svg$/i.test(s.path));
 }
 
-/** The file a tab shows, as a Windows path; null for pages (Settings, Worktrees). */
-function tabPath(t: Tab): string | null {
-  if (isPage(t.spec)) return null;
+/** Tabs of different worktrees may share an id, and `HEAD` differs between them. */
+const docKey = (t: Pick<Tab, "cwd" | "id">) => `${t.cwd}\n${t.id}`;
+
+/** The file a tab shows, as a Windows path. */
+function tabPath(t: Tab): string {
   if (t.spec.type === "settingsJson") return t.spec.path;
   const info = useStore.getState().repos[t.repo];
-  return info && "kind" in info ? displayPath(info, joinPath(t.cwd, t.spec.path)) : null;
+  return info && "kind" in info ? displayPath(info, joinPath(t.cwd, t.spec.path)) : t.spec.path;
 }
 
 /** The file and revision a tab's "View file history" walks from; null for app tabs. */
@@ -116,19 +117,23 @@ export function EditorArea() {
   const pinTab = useStore((s) => s.pinTab);
   const blameOn = useStore((s) => s.blame);
   const toggleBlame = useStore((s) => s.toggleBlame);
+  const page = useStore((s) => (s.settingsOpen ? "settings" : s.view === "overview" ? "overview" : null));
 
   const diffHost = useRef<HTMLDivElement>(null);
   const codeHost = useRef<HTMLDivElement>(null);
   const diffEditor = useRef<DiffEditor | null>(null);
   const codeEditor = useRef<Editor | null>(null);
   const docs = useRef(new Map<string, Doc>());
+  /** Where parked tabs were scrolled to: their models are gone until their worktree is shown again. */
+  const parkedViews = useRef(new Map<string, ViewState>());
   const shown = useRef<string | null>(null);
   /** The blame the file editor's margin shows, and the line count it was laid out for. */
   const blameShown = useRef<{ blame: Blame; lines: number } | null>(null);
   const [, rerender] = useState(0);
 
   const active = tabs.find((t) => t.id === activeId) ?? null;
-  const activeDoc = active ? docs.current.get(active.id) : undefined;
+  const activeKey = active ? docKey(active) : null;
+  const activeDoc = activeKey ? docs.current.get(activeKey) : undefined;
 
   // Create the two editors once; later setting changes go through updateOptions.
   useEffect(() => {
@@ -207,21 +212,25 @@ export function EditorArea() {
     }
   }, [editorSettings]);
 
-  // Dispose models of closed tabs.
+  // Dispose models of closed tabs, and of tabs parked with their worktree: an open worktree with
+  // many tabs costs memory only while shown. Parked tabs load again, where they were, on return.
   useEffect(() => {
-    const open = new Set(tabs.map((t) => t.id));
-    for (const [id, d] of docs.current) {
-      if (!open.has(id)) {
-        if (shown.current === id) {
-          diffEditor.current?.setModel(null);
-          codeEditor.current?.setModel(null);
-          shown.current = null;
-        }
-        d.original?.dispose();
-        d.modified?.dispose();
-        docs.current.delete(id);
+    const open = new Set(tabs.map(docKey));
+    const parked = new Set(Object.values(useStore.getState().parked).flatMap((v) => v.tabs.map(docKey)));
+    for (const [key, d] of docs.current) {
+      if (open.has(key)) continue;
+      if (shown.current === key) {
+        d.viewState = (d.original ? diffEditor.current : codeEditor.current)?.saveViewState() ?? d.viewState;
+        diffEditor.current?.setModel(null);
+        codeEditor.current?.setModel(null);
+        shown.current = null;
       }
+      if (parked.has(key) && d.viewState) parkedViews.current.set(key, d.viewState);
+      d.original?.dispose();
+      d.modified?.dispose();
+      docs.current.delete(key);
     }
+    for (const key of parkedViews.current.keys()) if (!parked.has(key) && !open.has(key)) parkedViews.current.delete(key);
   }, [tabs]);
 
   /** Line numbers of the file editor: the blame margin while one is shown, else as set. */
@@ -242,14 +251,19 @@ export function EditorArea() {
     } catch (e) {
       doc.blame = { tick, loading: false, error: errorText(e) };
     }
-    if (docs.current.get(tab.id) === doc) rerender((n) => n + 1);
+    if (docs.current.get(docKey(tab)) === doc) rerender((n) => n + 1);
   };
 
   const load = async (tab: Tab, existing?: Doc) => {
     const at = { repo: tab.repo, cwd: tab.cwd };
     const spec = tab.spec;
-    const doc: Doc = existing ?? { state: "loading", loadedTick: tick };
-    if (!existing) docs.current.set(tab.id, doc);
+    const key = docKey(tab);
+    const viewState = parkedViews.current.get(key);
+    const doc: Doc = existing ?? { state: "loading", loadedTick: tick, viewState, revealed: !!viewState };
+    if (!existing) {
+      docs.current.set(key, doc);
+      parkedViews.current.delete(key);
+    }
     const setText = (model: monaco.editor.ITextModel | undefined, text: string, language: string) => {
       if (!model) {
         model = monaco.editor.createModel(text, language);
@@ -259,11 +273,10 @@ export function EditorArea() {
       if (model.getValue() !== text) model.setValue(text);
       return model;
     };
-    if (isPage(spec)) return;
     if (spec.type === "settingsJson") {
       try {
         const file = await api.settingsFile();
-        if (!docs.current.has(tab.id)) return;
+        if (!docs.current.has(key)) return;
         doc.loadedTick = useStore.getState().settingsSaved;
         if (file.text === null) {
           doc.state = "message";
@@ -283,7 +296,7 @@ export function EditorArea() {
       // Only sizes and URLs here; the pictures load when the view shows them.
       try {
         const images = await api.imageSources(at, sources);
-        if (!docs.current.has(tab.id)) return;
+        if (!docs.current.has(key)) return;
         doc.loadedTick = useStore.getState().tick;
         doc.mode = "image";
         // The URLs change only when a file did (they carry its version), and with them the view.
@@ -300,7 +313,7 @@ export function EditorArea() {
     doc.images = undefined;
     try {
       const contents = await api.readSources(at, sources);
-      if (!docs.current.has(tab.id)) return;
+      if (!docs.current.has(key)) return;
       doc.loadedTick = useStore.getState().tick;
       const message = contents.map(describe).find(Boolean);
       if (spec.type === "file" && contents[0].kind === "missing") {
@@ -329,8 +342,8 @@ export function EditorArea() {
   // Load the active tab, and reload it when the worktree changed and it shows files from disk
   // (or, for settings.json, when the settings were saved again).
   useEffect(() => {
-    if (!active || isPage(active.spec)) return;
-    const doc = docs.current.get(active.id);
+    if (!active || !activeKey) return;
+    const doc = docs.current.get(activeKey);
     const json = active.spec.type === "settingsJson";
     const now = json ? settingsSaved : tick;
     // SVG switches between picture and text with the Preview/Source toggle.
@@ -341,18 +354,18 @@ export function EditorArea() {
       void load(active, doc);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, active?.spec, tick, settingsSaved, mdPreview]);
+  }, [activeKey, active?.spec, tick, settingsSaved, mdPreview]);
 
   // Attach the active tab's models to the right editor.
   useEffect(() => {
     const prev = shown.current ? docs.current.get(shown.current) : undefined;
     const prevTab = shown.current;
-    if (prev && prevTab !== active?.id) {
+    if (prev && prevTab !== activeKey) {
       prev.viewState = prev.original ? diffEditor.current?.saveViewState() : codeEditor.current?.saveViewState();
     }
     if (!active || !activeDoc || activeDoc.state !== "ready" || activeDoc.mode === "image") return;
     const isDiff = active.spec.type === "diff";
-    if (shown.current !== active.id || (isDiff ? diffEditor.current?.getModel()?.modified !== activeDoc.modified : codeEditor.current?.getModel() !== activeDoc.modified)) {
+    if (shown.current !== activeKey || (isDiff ? diffEditor.current?.getModel()?.modified !== activeDoc.modified : codeEditor.current?.getModel() !== activeDoc.modified)) {
       if (isDiff) {
         codeEditor.current?.setModel(null);
         diffEditor.current?.setModel({ original: activeDoc.original!, modified: activeDoc.modified! });
@@ -362,7 +375,7 @@ export function EditorArea() {
         codeEditor.current?.setModel(activeDoc.modified!);
         if (activeDoc.viewState) codeEditor.current?.restoreViewState(activeDoc.viewState as monaco.editor.ICodeEditorViewState);
       }
-      shown.current = active.id;
+      shown.current = activeKey;
     }
     if (active.spec.type === "file" && active.spec.line && !activeDoc.revealed) {
       const line = active.spec.line;
@@ -379,8 +392,7 @@ export function EditorArea() {
   }, [active?.spec.type === "file" ? active.spec.line : undefined]);
 
   const isDiff = active?.spec.type === "diff";
-  const page = active && isPage(active.spec) ? active.spec.type : null;
-  const ready = activeDoc?.state === "ready";
+  const ready = activeDoc?.state === "ready" && !page;
   const isMarkdown = active?.spec.type === "file" && languageFor(active.spec.path) === "markdown";
   const showPreview = isMarkdown && mdPreview && ready;
   const kind = active && (active.spec.type === "file" || active.spec.type === "diff") ? viewKind(active.spec.path) : "text";
@@ -414,7 +426,7 @@ export function EditorArea() {
     }
   });
 
-  // The Settings page has no editor; its hidden code editor must not take focus.
+  // Settings and the overview have no editor; the hidden code editor must not take focus.
   editorCommands.focus = () => !page && (isDiff ? diffEditor.current?.getModifiedEditor() : codeEditor.current)?.focus();
   editorCommands.run = (id) => {
     if (page) return;
@@ -434,8 +446,8 @@ export function EditorArea() {
           <div
             key={t.id}
             role="tab"
-            aria-selected={t.id === activeId}
-            className={`tab${t.id === activeId ? " active" : ""}${t.preview ? " preview" : ""}`}
+            aria-selected={t.id === activeId && !page}
+            className={`tab${t.id === activeId && !page ? " active" : ""}${t.preview ? " preview" : ""}`}
             title={`${t.spec.path}\n${t.description}`}
             tabIndex={t.id === activeId ? 0 : -1}
             onContextMenu={(e) => menuAtPointer(e, tabMenu(t))}
@@ -453,17 +465,7 @@ export function EditorArea() {
             onClick={() => activateTab(t.id)}
             onDoubleClick={() => pinTab(t.id)}
           >
-            {t.spec.type === "settings" ? (
-              <span className="ficon tab-gear">
-                <Icon name="gear" />
-              </span>
-            ) : t.spec.type === "worktrees" ? (
-              <span className="ficon tab-gear">
-                <Icon name="worktree" />
-              </span>
-            ) : (
-              <FileTypeIcon name={t.title} />
-            )}
+            <FileTypeIcon name={t.title} />
             {t.spec.type === "diff" && <span className="tab-kind">±</span>}
             <span className="tab-title">{t.title}</span>
             <button
@@ -577,7 +579,7 @@ export function EditorArea() {
         <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "visible" : "hidden" }} />
         <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && !page && ready && !rendered ? "visible" : "hidden" }} />
         {page === "settings" && <SettingsPage />}
-        {page === "worktrees" && <WorktreesPage />}
+        {page === "overview" && <WorktreesPage />}
         {showPreview && active && activeDoc?.modified && <MarkdownPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showHtml && active && activeDoc?.modified && <HtmlPreview tab={active} text={activeDoc.modified.getValue()} />}
         {showImage && spec && activeDoc?.images && (
@@ -587,13 +589,13 @@ export function EditorArea() {
             mode={imageDiff}
           />
         )}
-        {!active && (
+        {!active && !page && (
           <div className="editor-empty">
             <p>Select a changed file, a commit file or a file in Explorer.</p>
             <p className="muted">Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings</p>
           </div>
         )}
-        {active && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
+        {active && !page && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
         {active && !page && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
       </div>
     </section>
