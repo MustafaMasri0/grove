@@ -495,7 +495,7 @@ async function openMenuForTest(spec: string) {
         }
         return open(await find(".qo-item", (els) => els[1] ?? els[0]));
       case "tab":
-        return open(await find(".tab-strip .ed-tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
+        return open(await find(".tabs .tab", (els) => (els.length > 1 ? els[els.length - 2] : els[0])));
       case "repo":
         return open(await dropdown(".t-repo"), false);
       case "worktree":

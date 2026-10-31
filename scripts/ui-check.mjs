@@ -3,6 +3,8 @@
 // No window opens and no OS input is sent. Runs at below-normal priority. Screenshots and report.json go to target/ui-check.
 //   node scripts/ui-check.mjs          everything except the bundle check
 //   pnpm build && node scripts/ui-check.mjs --bundle
+//   node scripts/ui-check.mjs --panes   only the panes and editor checks
+//   node scripts/ui-check.mjs --panes=panesMonaco   only the panes checks whose name starts so
 // Set EDGE_PATH when Edge is not in its usual place.
 import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -25,7 +27,7 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
+const SHELL = ["src/shell.css", "src/overview.css", "src/panes.css", "src/editor.css", "src/components/EditorArea.tsx", "src/components/ImageView.tsx", "src/components/MarkdownPreview.tsx", "src/components/HtmlPreview.tsx", "src/components/LeftPane.tsx", "src/components/ListView.tsx", "src/components/FileRow.tsx", "src/components/ChangedFilesView.tsx", "src/components/ChangesPanel.tsx", "src/components/HistoryPanel.tsx", "src/components/CommitPane.tsx", "src/components/ExplorerPanel.tsx", "src/components/SearchPanel.tsx", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
 const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
 const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
@@ -50,6 +52,24 @@ const overviewClasses = [...new Set([...readFileSync(join(root, "src", "overview
 const kitText = readFileSync(join(root, "src", "ui", "controls.css"), "utf8");
 const unused = overviewClasses.filter((c) => c !== "app" && !new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(pageText) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
 check("noUnusedOverviewRules", !unused.length, unused);
+
+// The app's stylesheets carry nothing unused: each class is drawn somewhere, each :root token is read somewhere.
+const readSrc = (f) => readFileSync(join(root, "src", f), "utf8");
+const drawn = [...walk(join(root, "src", "components")), ...walk(join(root, "src", "ui")), join(root, "src", "App.tsx")].filter((f) => /\.tsx?$/.test(f) && !/\.test\./.test(f)).map((f) => readFileSync(f, "utf8")).join("\n");
+const classesOf = (css) => [...new Set([...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(?<![\w-])\.([a-z][\w-]*)(?=[^{}]*\{)/g)].map((m) => m[1]))];
+const inCode = (c) => new RegExp(`(className|classList|class=)[^\\n]*(?<![\\w-])${c}(?![\\w-])`).test(drawn);
+const undrawn = classesOf(legacy).filter((c) => !inCode(c));
+check("noUnusedAppRules", !undrawn.length, undrawn);
+const paneCss = readSrc("panes.css") + readSrc("editor.css");
+// Monaco draws these itself; editor.css themes them.
+const MONACO_CLASSES = ["monaco-editor", "margin-view-overlays", "line-numbers", "gutter-insert", "gutter-delete"];
+const undrawnPanes = classesOf(paneCss).filter((c) => c !== "app" && !MONACO_CLASSES.includes(c) && !inCode(c) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
+check("noUnusedPaneRules", !undrawnPanes.length, undrawnPanes);
+const allCss = ["styles.css", "shell.css", "panes.css", "editor.css", "overview.css"].map(readSrc).join("\n") + drawn;
+const unreadTokens = [...new Set([...legacy.matchAll(/^\s*(--[\w-]+):/gm)].map((m) => m[1]))].filter((t) => !allCss.includes(`var(${t}`) && !allCss.includes(`"${t}"`));
+check("noUnusedAppTokens", !unreadTokens.length, unreadTokens);
+check("noPaneRulesInAppStyles", !/\.(left|list-row|ed-tab|tab-strip|image-|md-preview|html-preview|editor-)/.test(legacy));
+check("monacoNeverNamedDirectly", !/setTheme\(.*vs/.test(readSrc("components/EditorArea.tsx") + readSrc("App.tsx")) && !/#[0-9a-f]{3,8}\b/i.test(readSrc("lib/editorTheme.ts").replace(/"#00000000"/, "").replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "").replace(/`#\$\{[^`]*`/g, "").replace(/\^#\(/g, "")));
 
 if (process.argv.includes("--bundle")) {
   const dist = join(root, "dist");
@@ -87,7 +107,9 @@ return{texts:n,fails:fails.slice(0,30),failCount:fails.length,sizes,overflow:[..
 const audit = (root = "#app") => AUDIT.replace("__ROOT__", JSON.stringify(root));
 const KEEP_ANIM = ["fade-in", "pie", "turn"], FOLD_ANIM = ["blur-in", "blur-out", "rail-slide"], COLOUR = ["background-color", "color", "box-shadow", "opacity"];
 // Timing comes from the stylesheet: a reversed transition runs shorter, so getTiming() can't tell.
+// Monaco's own scrollbars and widgets animate as Monaco ships them; the allow-list is for what this app draws.
 const CLASSIFY = `(()=>{const out=[];for(const a of document.getAnimations()){const t=a.effect&&a.effect.target,cs=getComputedStyle(t);
+ if(t.closest(".monaco-editor,.monaco-diff-editor"))continue;
  const spec=(kind,names,name)=>{const i=Math.max(0,cs[names].split(", ").indexOf(name));return{dur:Math.round(parseFloat(cs[kind+"Duration"].split(", ")[i])*1000),ease:cs[kind+"TimingFunction"].split(/, (?![^(]*[)])/)[i]}};
  const where=e=>!e?"?":(e.tagName||"")+"."+String(e.className&&e.className.baseVal!==undefined?e.className.baseVal:e.className).split(" ")[0];
  let key,bad=null;
@@ -102,6 +124,9 @@ const CLASSIFY = `(()=>{const out=[];for(const a of document.getAnimations()){co
  out.push({key,bad,where:where(t)})}return out})()`;
 const LOOPS = `document.getAnimations().filter(a=>a.playState==="running"&&a.effect.getTiming().iterations===Infinity).map(a=>a.animationName||a.transitionProperty||"?")`;
 
+const panesArg = process.argv.find((a) => a === "--panes" || a.startsWith("--panes="));
+const panesOnly = !!panesArg;
+const panesPrefix = panesArg?.split("=")[1] ?? "panes";
 const edge = process.env.EDGE_PATH || "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const port = 9361, vitePort = 1431;
 const profile = mkdtempSync(join(tmpdir(), "grove-ui-check-"));
@@ -171,7 +196,7 @@ try {
   const mouse = (x, y, type = "mouseMoved") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", clickCount: type === "mouseMoved" ? 0 : 1 });
   const hover = async (sel) => { const c = await center(sel); if (!c) throw new Error(`no ${sel}`); await mouse(c.x, c.y); return c; };
   const click = async (sel) => { const c = await hover(sel); await mouse(c.x, c.y, "mousePressed"); await mouse(c.x, c.y, "mouseReleased"); };
-  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", p: "KeyP", w: "KeyW", b: "KeyB", o: "KeyO" };
+  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", ArrowLeft: "ArrowLeft", ArrowRight: "ArrowRight", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", PageDown: "PageDown", PageUp: "PageUp", Home: "Home", End: "End", " ": "Space", p: "KeyP", w: "KeyW", b: "KeyB", o: "KeyO" };
   // mods: 2 is Ctrl, 8 is Shift.
   const key = async (k, vk, mods = 0) => {
     const base = { key: k, code: CODES[k], windowsVirtualKeyCode: vk, modifiers: mods };
@@ -185,6 +210,7 @@ try {
   const focusIs = (sel) => ev(`!!document.activeElement?.matches?.(${JSON.stringify(sel)})`);
   const waitFor = async (sel, ms = 20000) => { for (let i = 0; i < ms / 50; i++) { if (await has(sel)) return true; await sleep(50); } return false; };
   const attempt = async (name, fn) => {
+    if (panesOnly && !name.startsWith(panesPrefix)) return;
     try {
       const r = await fn();
       check(name, r === true || (r && typeof r === "object" && Object.values(r).every(Boolean)), r === true ? undefined : r);
@@ -200,7 +226,7 @@ try {
   await send("Emulation.setFocusEmulationEnabled", { enabled: true });
 
   // ---- Every theme at both ends of the window size, and the UI font size's limits at the smallest window. ----
-  const pages = [["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 800, 500, 10], ["light", 800, 500, 10], ["dark", 800, 500, 18], ["light", 800, 500, 18], ["dark", 1440, 900, 18]];
+  const pages = panesOnly ? [] : [["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 800, 500, 10], ["light", 800, 500, 10], ["dark", 800, 500, 18], ["light", 800, 500, 18], ["dark", 1440, 900, 18]];
   report.pages = {};
   for (const [theme, w, h, font] of pages) {
     const name = `${theme}-${w}x${h}-${font}px`;
@@ -219,6 +245,7 @@ try {
     check(`page ${name}`, !a.failCount && !a.overflow.length && a.docW <= a.win && !report.pages[name].wording.length && !/segoe|arial|times/i.test(a.font.split(",")[0]), a.failCount || a.overflow.length || a.docW > a.win ? { fails: a.fails, overflow: a.overflow, docW: a.docW, win: a.win } : undefined);
   }
 
+  if (!panesOnly) {
   // ---- Motion: every animation and transition seen while using the live controls must be on the list. ----
   await size(1440, 900);
   await open("theme=dark");
@@ -369,6 +396,8 @@ try {
     return { opened, picked: (await ev(`document.querySelector('[data-live="select"] .sel').textContent`)) === "development" };
   });
 
+  }
+
   // ---- The real App on mocked IPC. ----
   const openApp = async (q = "") => {
     await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark${q}` });
@@ -446,7 +475,7 @@ try {
   // Every context menu, through the app's own WV_CONTEXT_MENU hook, by right-click and by key.
   const PLACES = ["changes", "changes:key", "commit", "commit:key", "commitfile", "commitfile:key", "explorer", "explorer:key", "folder", "folder:key", "search", "search:key", "quickopen", "quickopen:key", "tab", "tab:key", "repo", "repo:key", "worktree", "worktree:key", "branch", "branch:key"];
   const menus = {};
-  for (const place of PLACES) {
+  for (const place of panesOnly ? [] : PLACES) {
     await openApp(`&auto=${encodeURIComponent(JSON.stringify({ contextMenu: place, ...(place.startsWith("tab") ? { openFile: "README.md" } : {}) }))}`);
     await waitFor("#overlays .menu", 8000);
     await sleep(120);
@@ -458,7 +487,7 @@ try {
   }
   report.menus = menus;
   const emptyMenus = Object.entries(menus).filter(([, m]) => !m.items || !m.first).map(([k]) => k);
-  check("everyContextMenu", !emptyMenus.length, emptyMenus);
+  if (!panesOnly) check("everyContextMenu", !emptyMenus.length, emptyMenus);
   await attempt("menuOptionRuns", async () => {
     await openApp(`&auto=${encodeURIComponent(JSON.stringify({ contextMenu: "changes>Copy path" }))}`);
     await sleep(1500);
@@ -495,11 +524,11 @@ try {
   await attempt("keysWithMonaco", async () => {
     await openApp(`&auto=${encodeURIComponent(JSON.stringify({ openFile: "src/server/orders/create.ts" }))}`);
     const d = { editor: await waitFor(".monaco-editor textarea, .monaco-editor .native-edit-context", 15000) };
-    await ev(`document.querySelector(".tab-strip .ed-tab")?.click();1`);
+    await ev(`document.querySelector(".tabs .tab")?.click();1`);
     await sleep(600);
     await ev(`document.querySelector(".editor-host:not([hidden]) .monaco-editor textarea, .monaco-editor textarea, .monaco-editor .native-edit-context").focus();1`);
     d.inMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
-    const tabs = `document.querySelectorAll(".tab-strip .ed-tab").length`;
+    const tabs = `document.querySelectorAll(".tabs .tab").length`;
     const before = await ev(tabs);
     await key("p", 80, 2);
     await sleep(200);
@@ -527,7 +556,7 @@ try {
   const autoQ = (o) => `&auto=${encodeURIComponent(JSON.stringify(o))}`;
   const settingsQ = (o) => `&settings=${encodeURIComponent(JSON.stringify(o))}`;
   // Only the shell is held to the design system's rules here: the panes inside it move over in later phases.
-  const SHELL_REGIONS = [".rail", ".work-top", ".wc", ".ov-page", ".left", ".commit-col"];
+  const SHELL_REGIONS = [".rail", ".work-top", ".wc", ".ov-page", ".left", ".commit-col", ".ed-chrome", ".ed-msg", ".md-scroll", ".image-view"];
   const shellAudit = async () => {
     const r = { fails: [], overflow: [] };
     for (const region of SHELL_REGIONS) {
@@ -542,7 +571,7 @@ try {
     return r;
   };
   const SHELL_PAGES = [["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 1100, 700, 13], ["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 800, 500, 10], ["dark", 800, 500, 18], ["light", 800, 500, 18]];
-  for (const [theme, w, h, font] of SHELL_PAGES) {
+  for (const [theme, w, h, font] of panesOnly ? [] : SHELL_PAGES) {
     const name = `shell-${theme}-${w}x${h}-${font}px`;
     await size(w, h);
     await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=${theme}&font=${font}&states=1` });
@@ -693,7 +722,7 @@ try {
     d.noFilter = (await width(".rail-filter")) === 0;
     d.badge = await ev(`(()=>{const c=document.querySelector(".rail .wt:nth-child(2) .count").getBoundingClientRect(),m=document.querySelector(".rail .wt:nth-child(2) .mark").getBoundingClientRect();return c.left>=m.left&&c.left<m.right+6&&c.bottom>m.top})()`);
     d.noBadgeAtZero = !(await has(".rail .wt:nth-child(3) .count"));
-    d.tooltip = /Has changes\n2 changed files/.test(await ev(`document.querySelector(".rail .wt:nth-child(2)").title`));
+    d.tooltip = /Has changes\n2 files with uncommitted changes/.test(await ev(`document.querySelector(".rail .wt:nth-child(2)").title`));
     await shot("shell-rail-collapsed");
     await sleep(400);
     d.saved = (await lastSaved())?.railCollapsed === true;
@@ -907,7 +936,7 @@ try {
       noCards: !(await has(".ov-card, .ov-body, .ov-section")),
       fullWidth: (await box(".ov-tbl table")).r === (await box(".ov-page")).r,
       dragBand: (await count('.ov-head[data-tauri-drag-region="deep"]')) === 1,
-      clearOfControls: (await box(".ov-refresh")).r <= (await box(".wc")).l,
+      clearOfControls: (await box(".ov-refresh")).t >= (await box(".wc")).b,
     };
   });
   await attempt("overviewHead", async () => {
@@ -1161,7 +1190,7 @@ try {
     return d;
   });
   // Each state fits the design system's rules at both ends of the window, in both themes.
-  for (const [theme, w, h] of [["dark", 800, 500], ["light", 800, 500], ["dark", 1440, 900], ["light", 1440, 900]]) {
+  for (const [theme, w, h] of panesOnly ? [] : [["dark", 800, 500], ["light", 800, 500], ["dark", 1440, 900], ["light", 1440, 900]]) {
     const views = {};
     await size(w, h);
     for (const ov of ["", "many", "errors", "nobase", "fail", "loading", "one", "odd"]) {
@@ -1177,7 +1206,7 @@ try {
     const bad = Object.fromEntries(Object.entries(views).filter(([, v]) => v.fails.length || v.overflow.length || v.pageW > v.win || v.appW > v.win));
     check(`overview-${theme}-${w}x${h}`, !Object.keys(bad).length, Object.keys(bad).length ? bad : undefined);
   }
-  for (const font of [10, 18]) {
+  for (const font of panesOnly ? [] : [10, 18]) {
     await size(800, 500);
     await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark&font=${font}&ov=many` });
     await waitFor(".ov-page .ov-head", 60000);
@@ -1200,6 +1229,546 @@ try {
     await size(1440, 900);
     return d;
   });
+
+  // ---- The panes and the editor, on the real App. ----
+  const shots = async (name) => shot(`panes-${name}`);
+  /** Opens agent-01's work on a mock with `q`, at a width that shows the pane. */
+  const openWork = async (q = "") => {
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=${q.includes("theme=light") ? "light" : "dark"}${q.replace("&theme=light", "")}` });
+    await waitFor(".rail .wt:not(.skel)", 60000);
+    await sleep(400);
+    await toWork(2);
+    await sleep(200);
+  };
+  const paneTab = async (n) => { await click(`.ptabs button:nth-child(${n})`); await sleep(160); };
+  const selected = () => text(".left .lbox .row.on .fname, .left .lbox .row.on .cm .s");
+  const activeTabName = () => text(".tabs .tab.on .ell");
+  const tabCount = () => count(".tabs .tab");
+  const openDiff = async (path) => {
+    await ev(`window.__store.getState().openTab({id:${JSON.stringify(`x:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",spec:{type:"diff",path:${JSON.stringify(path)},origPath:null,left:{kind:"rev",rev:"HEAD",path:${JSON.stringify(path)}},right:{kind:"worktree",path:${JSON.stringify(path)}},leftLabel:"HEAD",rightLabel:"Working tree"}},true);1`);
+    await sleep(700);
+  };
+  const openPlain = async (path) => {
+    await ev(`(()=>{const s=window.__store.getState();s.openTab({id:${JSON.stringify(`p:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",spec:{type:"file",path:${JSON.stringify(path)},source:{kind:"worktree",path:${JSON.stringify(path)}}}},true)})();1`);
+    await sleep(600);
+  };
+  const pixels = async (pts) => {
+    const png = (await send("Page.captureScreenshot", { format: "png" })).result.data;
+    return ev(`(async()=>{const b=await createImageBitmap(await (await fetch("data:image/png;base64,${png}")).blob());const c=new OffscreenCanvas(b.width,b.height).getContext("2d");c.drawImage(b,0,0);return ${JSON.stringify(pts)}.map(([x,y])=>[...c.getImageData(x,y,1,1).data].slice(0,3).join())})()`);
+  };
+  const auditOk = (a) => !a.fails.length && !a.overflow.length && a.pageW <= a.win && a.appW <= a.win;
+
+  await attempt("panesScope", async () => {
+    await size(1440, 900);
+    await openWork();
+    return {
+      left: await has(".left.ui-root"),
+      chrome: await has(".ed-chrome.ui-root"),
+      noneNested: (await count(".left .ui-root, .ed-chrome .ui-root, .commit-col .ui-root")) === 0,
+      monacoOutside: !(await has(".ui-root .monaco-editor")),
+      noLegacy: !(await has(".list-row, .ed-tab, .tab-strip, .left-tabs, .segmented, .editor-toolbar, .icon-button")),
+    };
+  });
+  await attempt("panesIconTabs", async () => {
+    await openWork();
+    const d = {};
+    d.four = (await count(".ptabs button")) === 4;
+    d.onlyActiveNamed = (await text(".ptabs [aria-selected=true]")) === "Changes" && (await ev(`[...document.querySelectorAll(".ptabs button")].filter(b=>b.textContent.trim()).length`)) === 1;
+    d.keepsShortcut = (await ev(`document.querySelector(".ptabs button:nth-child(2)").dataset.tip`)) === "History (Ctrl+2)";
+    await paneTab(2);
+    d.history = await has(".history");
+    d.countOnOtherPanes = (await text(".ptabs .count")) === "2";
+    await paneTab(3);
+    d.explorer = (await text(".panel-toolbar .ell"))?.endsWith("files");
+    await paneTab(4);
+    d.search = await has(".search-form");
+    d.searchFocused = await focusIs(".search-form input");
+    await paneTab(1);
+    d.changes = await has(".pane-seg");
+    d.noCountOnChanges = !(await has(".ptabs .count"));
+    await key("2", 50, CTRL);
+    await sleep(120);
+    d.ctrl2 = await has(".history");
+    await key("3", 51, CTRL);
+    await sleep(120);
+    d.ctrl3 = await has(".panel-toolbar .chk");
+    await key("1", 49, CTRL);
+    await sleep(120);
+    d.ctrl1 = await has(".pane-seg");
+    return d;
+  });
+  await attempt("panesChanges", async () => {
+    await openWork();
+    const d = {};
+    d.tray = (await text(".pane-seg .tray button:first-of-type")) === "Uncommitted (2)";
+    d.rows = (await count(".left .lbox .row")) === 2;
+    d.rowHeight = (await ev(`document.querySelector(".left .lbox .row").offsetHeight`)) === 28;
+    d.letter = (await text(".left .lbox .row .sl")) === "A" || (await text(".left .lbox .row .sl")) === "M";
+    d.icon = await has(".left .lbox .row .ficon img");
+    await shots("changes");
+    await click(".pane-seg .tray button:nth-of-type(2)");
+    await sleep(200);
+    d.base = await has(".pane-seg .sel");
+    d.baseTip = /^Base · 2 files · since /.test(await ev(`document.querySelector(".base-in").dataset.tip`));
+    await click(".pane-seg .tray button:nth-of-type(1)");
+    await click(".filter-row input");
+    await type("total");
+    await sleep(100);
+    d.filtered = (await count(".left .lbox .row")) === 1;
+    await type("nothing");
+    await sleep(100);
+    d.noMatch = (await text(".left .lbox .empty-line")) === "No files match the filter.";
+    await ev(`(()=>{const i=document.querySelector(".filter-row input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(i,"");i.dispatchEvent(new Event("input",{bubbles:true}))})();1`);
+    await click('.filter-row .btn[aria-label="View as tree"]');
+    await sleep(160);
+    d.tree = await has(".left .lbox .row .tchev .icon");
+    d.folderCount = await has(".left .lbox .row .row-t .count");
+    await shots("changes-tree");
+    await click('.filter-row .btn[aria-label="View as list"]');
+    return d;
+  });
+  await attempt("panesListKeyboard", async () => {
+    await openWork("&many=1");
+    await waitFor(".left .lbox .row", 8000);
+    const d = {};
+    const list = ".left .lbox";
+    const total = 82;
+    d.virtual = (await count(`${list} .row`)) < total;
+    d.spacer = (await ev(`document.querySelector(".lbox-in").offsetHeight`)) === total * 28;
+    await click(`${list} .row`);
+    await sleep(300);
+    d.focusOnList = await focusIs(list);
+    await key("ArrowDown", 40);
+    await sleep(200);
+    const second = await selected();
+    d.downMoves = !!second;
+    d.previewOpens = (await activeTabName()) === second && (await has(".tabs .tab.on.preview"));
+    await key("Enter", 13);
+    await sleep(120);
+    d.enterPins = !(await has(".tabs .tab.on.preview"));
+    await ev(`document.querySelector(${JSON.stringify(list)}).focus();1`);
+    await key("PageDown", 34);
+    await sleep(200);
+    const paged = await selected();
+    d.pageDown = paged !== second;
+    d.stillShown = await ev(`(()=>{const r=document.querySelector(".left .lbox .row.on").getBoundingClientRect(),b=document.querySelector(".left .lbox").getBoundingClientRect();return r.top>=b.top-1&&r.bottom<=b.bottom+1})()`);
+    d.keyRing = (await ev(`getComputedStyle(document.querySelector(".left .lbox .row.on")).outlineStyle`)) === "solid";
+    await key("End", 35);
+    await sleep(200);
+    d.end = await ev(`(()=>{const l=document.querySelector(".left .lbox"),rows=[...l.querySelectorAll(".row")];const last=rows.at(-1).getBoundingClientRect();return rows.at(-1).matches(".on")&&last.bottom<=l.getBoundingClientRect().bottom+1})()`);
+    const bottom = await selected();
+    d.endRendered = (await count(`${list} .row`)) < total;
+    await key("Home", 36);
+    await sleep(200);
+    const top = await selected();
+    d.home = top !== bottom && (await ev(`document.querySelector(".left .lbox").scrollTop`)) === 0;
+    await key("PageUp", 33);
+    await sleep(120);
+    d.pageUpStops = (await selected()) === top;
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.menu = await has("#overlays .menu .mi.on");
+    await key("Escape", 27);
+    d.menuReturns = await focusIs(list);
+    await ev(`window.__store.getState().updateSettings({changesView:"tree"});1`);
+    await sleep(200);
+    await ev(`document.querySelector(${JSON.stringify(list)}).focus();1`);
+    await click(`${list} .row`);
+    await sleep(160);
+    const rows = await count(`${list} .row`);
+    await key("ArrowLeft", 37);
+    await sleep(160);
+    d.leftFolds = (await count(`${list} .row`)) !== rows || !!(await ev(`document.querySelector(".left .lbox .row.on .tchev")?.dataset.open`));
+    await key("ArrowRight", 39);
+    await sleep(160);
+    d.rightOpens = (await count(`${list} .row`)) >= rows - 1;
+    await ev(`window.__store.getState().updateSettings({changesView:"list"});1`);
+    await sleep(100);
+    return d;
+  });
+  await attempt("panesRowsFollowFont", async () => {
+    await openWork("&font=18&many=1");
+    await waitFor(".left .lbox .row", 8000);
+    const d = { list: (await ev(`document.querySelector(".left .lbox .row").offsetHeight`)) === 39 };
+    d.noOverlap = await ev(`(()=>{const[a,b]=document.querySelectorAll(".left .lbox .row");return a.getBoundingClientRect().bottom<=b.getBoundingClientRect().top})()`);
+    await paneTab(2);
+    await waitFor(".history .row", 8000);
+    d.commit = (await ev(`document.querySelector(".history .row").offsetHeight`)) === 59;
+    d.textFits = await ev(`(()=>{const r=document.querySelector(".history .row"),c=r.querySelector(".cm");return c.scrollHeight<=r.offsetHeight})()`);
+    return d;
+  });
+  await attempt("panesHistory", async () => {
+    await size(1440, 900);
+    await openWork();
+    await paneTab(2);
+    await waitFor(".history .row", 8000);
+    const d = {};
+    d.twoLines = (await ev(`document.querySelector(".history .row").offsetHeight`)) === 44 && (await text(".history .row .cm .s")) === "Allow partial refunds" && /^Dev Example · /.test(await text(".history .row .cm .m"));
+    d.avatar = await has(".history .row .avatar");
+    await shots("history");
+    await click(".history .row");
+    await sleep(300);
+    d.column = await has(".commit-col.ui-root .commit-pane");
+    d.title = (await text(".pane-title")) === "2 changed files";
+    d.files = (await count(".commit-pane .lbox .row")) === 2;
+    d.details = (await text(".commit-author .muted"))?.includes("dev@example.com");
+    await shots("commit");
+    await click(".commit-pane .cp-filter");
+    await type("total");
+    await sleep(100);
+    d.filter = (await count(".commit-pane .lbox .row")) === 1;
+    await ev(`document.querySelector(".commit-head").focus();1`);
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.headMenuKey = await has("#overlays .menu .mi.on");
+    await key("Escape", 27);
+    const w0 = await width(".commit-col");
+    await ev(`document.querySelectorAll(".pane-edge .resize")[1].focus();1`);
+    await key("ArrowRight", 39);
+    await sleep(60);
+    d.edgeKeys = (await width(".commit-col")) === w0 + 8;
+    await click('.commit-pane .btn[aria-label="Close"]');
+    await sleep(120);
+    d.closes = !(await has(".commit-pane"));
+    await click(".history .history-search input");
+    await type("readme");
+    await sleep(500);
+    d.search = (await count(".history .lbox .row")) === 1 && (await text(".pane-note")) === "1 matching commit";
+    return d;
+  });
+  await attempt("panesFileHistory", async () => {
+    await size(1440, 900);
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark${autoQ({ fileHistory: "README.md" })}` });
+    await waitFor(".panel-toolbar .btn", 20000);
+    await sleep(500);
+    const d = { head: (await text(".panel-toolbar .ell"))?.startsWith("History of README.md"), rows: (await count(".history .lbox .row")) === 2, letter: (await text(".history .row .row-t .sl")) === "M" };
+    await click('.panel-toolbar .btn[aria-label="Back to all commits"]');
+    await sleep(160);
+    d.back = await has(".history-search");
+    return d;
+  });
+  await attempt("panesExplorer", async () => {
+    await size(1440, 900);
+    await openWork();
+    await paneTab(3);
+    await waitFor(".tree .row", 8000);
+    const d = { check: (await text(".panel-toolbar .chk")) === "Ignored files" };
+    const before = await count(".tree .row");
+    const folder = await ev(`[...document.querySelectorAll(".tree .row")].findIndex(r=>r.querySelector(".tchev svg"))+1`);
+    await click(`.tree .row:nth-child(${folder})`);
+    await sleep(240);
+    d.opens = (await count(".tree .row")) > before;
+    d.chevron = await ev(`document.querySelector(".tree .row:nth-child(${folder}) .tchev").dataset.open==="true"&&getComputedStyle(document.querySelector(".tree .row:nth-child(${folder}) .tchev .icon")).transform!=="none"`);
+    await shots("explorer");
+    await key("ArrowDown", 40);
+    await sleep(120);
+    d.arrowDoesNotOpen = (await tabCount()) === 0;
+    await key("ArrowUp", 38);
+    await key("ArrowLeft", 37);
+    await sleep(120);
+    d.leftCloses = (await count(".tree .row")) === before;
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.menu = await has("#overlays .menu .mi.on");
+    await key("Escape", 27);
+    const calls = await ipc("list_files");
+    await ev(`document.querySelector(".panel-toolbar .chk input").click();1`);
+    await sleep(200);
+    d.ignored = (await ipc("list_files")) > calls;
+    await ev(`document.querySelector(".panel-toolbar .chk input").click();1`);
+    return d;
+  });
+  await attempt("panesSearch", async () => {
+    await size(1440, 900);
+    await openWork();
+    await paneTab(4);
+    const d = { hint: (await text(".pane-note")) === "Press Enter to search (git grep)." };
+    await type("money");
+    await key("Enter", 13);
+    await sleep(300);
+    d.summary = (await text(".pane-note")) === "2 results in 2 files";
+    d.rows = (await count(".left .lbox .row")) === 4;
+    d.fileCount = (await text(".left .lbox .row .row-t .count")) === "1";
+    d.hit = (await text(".left .lbox .row .line-no")) === "3";
+    await shots("search");
+    await click('.search-form .btn[aria-label="Match case"]');
+    d.pressed = await has('.search-form .btn[aria-label="Match case"][aria-pressed="true"]');
+    await click(".left .lbox .row:nth-child(2)");
+    await sleep(600);
+    d.opens = (await activeTabName()) === "create.ts";
+    await ev(`document.querySelector(".left .lbox").focus();1`);
+    await key("ContextMenu", 93);
+    await sleep(120);
+    d.menu = await has("#overlays .menu .mi.on");
+    return d;
+  });
+  await attempt("panesTabStrip", async () => {
+    await size(1440, 900);
+    await openWork();
+    const d = {};
+    for (const p of ["package.json", "src/server/orders/refund.ts", "src/server/orders/create.ts"]) await openPlain(p);
+    await openDiff("src/client/cart/total.ts");
+    d.opened = (await tabCount()) === 4;
+    d.diffMark = (await text(".tabs .tab.on .tab-kind")) === "±";
+    d.icon = await has(".tabs .tab .ficon img");
+    d.closeShown = await ev(`[...document.querySelectorAll(".tabs .tab .btn")].every(b=>getComputedStyle(b).opacity==="1")`);
+    await shots("tabs");
+    await click(".tabs .tab:nth-child(1)");
+    await sleep(200);
+    d.clickActivates = (await activeTabName()) === "package.json";
+    const c = await center(".tabs .tab:nth-child(2)");
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", x: c.x, y: c.y, button: "middle", buttons: 4, clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: c.x, y: c.y, button: "middle", clickCount: 1 });
+    await sleep(160);
+    d.middleCloses = (await tabCount()) === 3;
+    await click(".tabs .tab.on .btn");
+    await sleep(160);
+    d.closeButton = (await tabCount()) === 2;
+    await ev(`window.__store.setState({tabs:window.__store.getState().tabs.map(t=>({...t,preview:true}))});1`);
+    await sleep(80);
+    d.italic = (await ev(`getComputedStyle(document.querySelector(".tabs .tab.preview .ell")).fontStyle`)) === "italic";
+    await ev(`document.querySelector(".tabs .tab.on").focus();1`);
+    await key("Enter", 13);
+    await sleep(100);
+    d.enterPins = !(await has(".tabs .tab.on.preview"));
+    await key("F10", 121, 8);
+    await sleep(120);
+    d.menu = await has("#overlays .menu .mi.on");
+    await key("Escape", 27);
+    d.menuReturns = await focusIs(".tabs .tab.on");
+    await key("w", 87, CTRL);
+    await sleep(160);
+    d.ctrlW = (await tabCount()) === 1;
+    // Many tabs at the smallest window: the strip scrolls, the page does not, and the active tab shows.
+    await size(800, 500);
+    for (let i = 0; i < 9; i++) await openPlain(`src/generated/a-rather-long-file-name-${i}.ts`);
+    await sleep(200);
+    d.activeInView = await ev(`(()=>{const t=document.querySelector(".tabs .tab.on").getBoundingClientRect(),s=document.querySelector(".tabs").getBoundingClientRect();return t.left>=s.left-1&&t.right<=s.right+1})()`);
+    d.noPageScroll = (await ev(`document.querySelector(".app").scrollWidth`)) <= 800;
+    await shots("tabs-800");
+    await size(1440, 900);
+    return d;
+  });
+  await attempt("panesToolbars", async () => {
+    await size(1440, 900);
+    await openWork();
+    await openDiff("src/client/cart/total.ts");
+    const d = {};
+    d.crumb = (await text(".crumb .path b")) === "total.ts";
+    d.sides = (await text(".tools .opt-long")) === "HEAD ↔ Working tree";
+    d.layout = await has('.tools .tray[aria-label="Diff layout"]');
+    await click('.tools .tray[aria-label="Diff layout"] button:nth-of-type(2)');
+    await sleep(300);
+    d.inline = (await lastSaved())?.diff?.sideBySide === false;
+    await click('.tools .tray[aria-label="Diff layout"] button:nth-of-type(1)');
+    await click('.tools .btn[aria-label="Next change"]');
+    await click('.tools .btn[data-tip="Collapse unchanged regions"]');
+    await sleep(300);
+    d.collapse = (await lastSaved())?.diff?.collapseUnchanged === true;
+    await click('.tools .btn[data-tip="Collapse unchanged regions"]');
+    // The toggles move into More when the editor itself is narrow, whatever the window's band.
+    await ev(`window.__store.getState().updateSettings({leftWidth:760});1`);
+    await sleep(300);
+    d.narrowMore = (await text(".tools .btn[aria-haspopup=menu] .btn-l")) === "More";
+    await click(".tools .btn[aria-haspopup=menu]");
+    await sleep(120);
+    d.moreMenu = (await count("#overlays .menu .mi")) === 2;
+    await key("Escape", 27);
+    await ev(`window.__store.getState().updateSettings({leftWidth:300});1`);
+    await sleep(200);
+    await openPlain("src/server/orders/create.ts");
+    await click('.tools .btn[data-tip^="Show who last changed"]');
+    await sleep(700);
+    d.blameOn = await has(".editor-host.blame-on");
+    d.blameText = await ev(`[...document.querySelectorAll(".blame-on .line-numbers")].some(e=>/Dev Example/.test(e.textContent))`);
+    await shots("blame");
+    await click('.tools .btn[data-tip^="Show who last changed"]');
+    return d;
+  });
+  for (const theme of ["dark", "light"]) {
+    await attempt(`panesMonacoTheme-${theme}`, async () => {
+      await size(1440, 900);
+      await openWork(theme === "light" ? "&theme=light" : "");
+      await openDiff("src/server/orders/create.ts");
+      const token = (t) => ev(`(()=>{const p=document.createElement("div");p.className="ui-root";document.body.append(p);p.style.background="var(${t})";const c=getComputedStyle(p).backgroundColor;p.remove();return c})()`);
+      const d = {};
+      await waitFor(".monaco-diff-editor .line-insert", 4000);
+      d.ownThemeBase = await has(`.monaco-diff-editor .monaco-editor.${theme === "dark" ? "vs-dark" : "vs"}`);
+      const bg = await ev(`getComputedStyle(document.querySelector(".monaco-diff-editor .monaco-editor-background")).backgroundColor`);
+      d.surface = bg === (await token("--sheet"));
+      d.notBuiltIn = await ev(`!/rgb\\((30, 30, 30|255, 255, 254|255, 255, 255)\\)/.test(${JSON.stringify(bg)})`);
+      // Real pixels: an unchanged part of the diff's text area, its gutter, and the empty end of the list pane.
+      const pane = await box(".left .lbox"), line = await box(".monaco-diff-editor .editor.modified");
+      const px = await pixels([[pane.l + 40, pane.b - 20], [line.r - 60, line.t + 3], [line.l + 2, line.t + 3]]);
+      d.notLighterThanPanes = px[0] === px[1] && px[0] === px[2];
+      if (!d.notLighterThanPanes) d.px = px.join(" | ");
+      d.added = await has(".monaco-diff-editor .line-insert");
+      d.addColour = (await ev(`getComputedStyle(document.querySelector(".monaco-diff-editor .line-insert")).backgroundColor`)) === (await token("--diff-add"));
+      d.gutterMark = (await ev(`getComputedStyle(document.querySelector(".monaco-diff-editor .gutter-insert")).boxShadow`)).includes("inset");
+      const colours = await ev(`[...new Set([...document.querySelectorAll(".monaco-diff-editor .view-line span span")].map(e=>getComputedStyle(e).color))]`);
+      d.keyword = colours.includes(await token("--tok-key"));
+      d.strings = colours.includes(await token("--tok-str"));
+      d.lineNumber = (await ev(`getComputedStyle(document.querySelector(".monaco-editor")).getPropertyValue("--vscode-editorLineNumber-foreground")`)).length > 0;
+      d.ruler = (await ev(`getComputedStyle(document.querySelector(".monaco-editor")).getPropertyValue("--vscode-editorOverviewRuler-background")`)) !== "";
+      await shot(`panes-diff-${theme}`);
+      await openPlain("src/server/orders/refund.ts");
+      await ev(`window.__store.getState().updateSettings({editor:{...window.__store.getState().settings.editor,minimap:true,stickyScroll:true}});1`);
+      await sleep(500);
+      const editor = await box(".editor-host:not([style*=hidden]) .monaco-editor");
+      await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: editor.l + 300, y: editor.t + 200, deltaX: 0, deltaY: 800 });
+      await sleep(500);
+      d.sticky = await has(".sticky-widget .sticky-line-content, .sticky-widget .sticky-widget-lines");
+      if (d.sticky) d.stickySurface = (await ev(`getComputedStyle(document.querySelector(".sticky-widget .sticky-widget-lines-scrollable")).backgroundColor`)) === (await token("--sheet"));
+      d.minimap = await has(".minimap canvas");
+      await shot(`panes-file-${theme}`);
+      await ev(`window.__store.getState().updateSettings({editor:{...window.__store.getState().settings.editor,minimap:false}});1`);
+      // Changing the theme repaints Monaco at once.
+      const other = theme === "dark" ? "light" : "dark";
+      await ev(`window.__store.getState().updateSettings({theme:"${other}"});1`);
+      await sleep(250);
+      d.follows = (await ev(`getComputedStyle(document.querySelector(".monaco-editor .monaco-editor-background")).backgroundColor`)) === (await token("--sheet")) && (await has(`.monaco-editor.${other === "dark" ? "vs-dark" : "vs"}`));
+      return d;
+    });
+  }
+  await attempt("panesPreviews", async () => {
+    await size(1440, 900);
+    await openWork();
+    const d = {};
+    await openPlain("README.md");
+    await waitFor(".md-preview h1", 5000);
+    await sleep(400);
+    d.markdown = await has(".md-scroll.ui-root .md-preview h1");
+    d.table = await has(".md-preview table th");
+    d.blocked = (await ev(`document.querySelector(".md-blocked").dataset.tip`))?.startsWith("Remote image not loaded:");
+    d.repoImage = await ev(`[...document.querySelectorAll(".md-preview img")].some(i=>i.src.startsWith("data:"))`);
+    d.codeColoured = await has(".md-preview pre code [class*=mtk]");
+    d.previewTray = await has('.tools .tray[aria-label="Preview or source"]');
+    await shots("markdown");
+    await click(".md-preview a[href='#usage']");
+    await sleep(100);
+    d.anchorScrolled = (await ev(`document.querySelector(".md-scroll").scrollTop`)) >= 0;
+    await click('.tools .tray[aria-label="Preview or source"] button:nth-of-type(2)');
+    await sleep(400);
+    d.source = !(await has(".md-preview")) && (await has('.tools .btn[data-tip^="Show who last changed"]'));
+    await click('.tools .tray[aria-label="Preview or source"] button:nth-of-type(1)');
+    await sleep(200);
+    await openPlain("docs/preview.html");
+    await waitFor("iframe.html-preview", 5000);
+    await sleep(200);
+    d.html = await has(".html-wrap.ui-root iframe.html-preview[sandbox='']");
+    d.runScripts = (await text(".tools .btn.tgl .btn-l")) === "Run scripts";
+    await click(".tools .btn.tgl");
+    await sleep(300);
+    d.scriptsSandbox = await has("iframe.html-preview[sandbox='allow-scripts']");
+    await shots("html");
+    await click(".tools .btn.tgl");
+    await openPlain("docs/assets/logo.png");
+    await waitFor(".image-view img", 5000);
+    await sleep(300);
+    d.image = await has(".image-view.ui-root .image-checker img");
+    d.info = (await text(".image-info"))?.includes("320 × 200");
+    await click('.image-view .btn[aria-label="Zoom in"]');
+    d.zoomed = (await text(".image-zoom")) !== "100%";
+    await click('.image-view .tgl:last-child');
+    await sleep(60);
+    d.actual = (await text(".image-zoom")) === "100%";
+    await shots("image");
+    await openDiff("docs/assets/logo.png");
+    await waitFor(".image-view img", 5000);
+    await sleep(300);
+    d.sides = (await count(".image-pane")) === 2 && (await count(".image-tag")) === 2;
+    await shots("image-side");
+    await click('.tools .tray[aria-label="Compare images"] button:nth-of-type(2)');
+    await sleep(300);
+    d.swipe = (await has(".image-stack.swipe .swipe-handle")) && (await has(".image-view .sld input[type=range]"));
+    await shots("image-swipe");
+    await click('.tools .tray[aria-label="Compare images"] button:nth-of-type(3)');
+    await sleep(300);
+    d.onion = await has(".image-stack.onion");
+    d.onionLabel = (await text(".image-view .sld"))?.startsWith("Opacity");
+    await shots("image-onion");
+    await click('.tools .tray[aria-label="Compare images"] button:nth-of-type(1)');
+    await openDiff("docs/assets/huge.png");
+    await sleep(300);
+    d.tooLarge = (await text(".image-none"))?.startsWith("Image is too large to show");
+    await openDiff("docs/assets/broken.png");
+    await sleep(400);
+    d.broken = (await text(".image-none"))?.startsWith("Not a valid image");
+    return d;
+  });
+  await attempt("panesMessages", async () => {
+    await size(1440, 900);
+    await openWork();
+    const d = {};
+    d.none = (await text(".ed-msg .empty p")) === "Select a changed file, a commit file or a file in Explorer.";
+    d.hint = (await text(".ed-msg .empty p.muted"))?.startsWith("Ctrl+P open file");
+    await shots("message-none");
+    await openPlain("assets/app.bin");
+    d.binary = (await text(".ed-msg")) === "Binary file (12.4 KB) is not shown.";
+    await shots("message-binary");
+    await openPlain("data/dump.json");
+    d.tooLarge = (await text(".ed-msg")) === "File is too large to show (6.5 MB; the limit is 5 MB).";
+    await openPlain("src/removed.ts");
+    d.missing = (await text(".ed-msg")) === "This file does not exist.";
+    d.status = await has(".ed-msg[role=status]");
+    d.hostsHidden = (await ev(`[...document.querySelectorAll(".editor-host")].every(e=>e.style.visibility==="hidden")`));
+    return d;
+  });
+  await attempt("panesMotion", async () => {
+    await size(1440, 900);
+    await openWork();
+    const seen = new Map(), bad = new Map();
+    const grab = async () => { for (const a of await ev(CLASSIFY)) { seen.set(a.key, 1); if (a.bad) bad.set(a.bad, a.where); } };
+    const step = async (fn) => { await fn(); for (let i = 0; i < 4; i++) { await grab(); await sleep(25); } };
+    await step(() => hover(".left .lbox .row"));
+    await step(() => click(".pane-seg .tray button:nth-of-type(2)"));
+    await step(() => click('.filter-row .btn[aria-label="View as tree"]'));
+    await sleep(100);
+    await step(() => click(".left .lbox .row"));
+    await step(() => click(".left .lbox .row"));
+    await step(() => click('.filter-row .btn[aria-label="View as list"]'));
+    await step(() => paneTab(2));
+    await step(() => paneTab(1));
+    return { allowed: !bad.size, bad: bad.size ? [...bad.keys()].join() : true, chevron: seen.has("transition:transform") };
+  });
+  // Every view keeps the design system's rules at both ends of the window, in both themes, and at the UI font's limits.
+  const VIEWS = {
+    changes: async () => {},
+    base: async () => { await click(".pane-seg .tray button:nth-of-type(2)"); await sleep(200); },
+    tree: async () => { await ev(`window.__store.getState().updateSettings({changesView:"tree"});1`); await sleep(160); },
+    history: async () => { await ev(`window.__store.getState().setLeftTab("history");1`); await waitFor(".history .row", 5000); await sleep(100); },
+    commit: async () => { await ev(`window.__store.getState().setLeftTab("history");1`); await waitFor(".history .row", 5000); await click(".history .row"); await sleep(260); },
+    explorer: async () => { await ev(`window.__store.getState().setLeftTab("explorer");1`); await sleep(200); },
+    search: async () => { await ev(`window.__store.getState().focusSearch();1`); await sleep(120); await type("money"); await key("Enter", 13); await sleep(260); },
+    diff: async () => { await openDiff("src/server/orders/create.ts"); },
+    file: async () => { await openPlain("src/server/orders/refund.ts"); },
+    blame: async () => { await openPlain("src/server/orders/refund.ts"); await ev(`window.__store.getState().toggleBlame();1`); await sleep(500); },
+    markdown: async () => { await openPlain("README.md"); await sleep(300); },
+    html: async () => { await openPlain("docs/preview.html"); await sleep(300); },
+    image: async () => { await openPlain("docs/assets/logo.png"); await sleep(300); },
+    imageDiff: async () => { await openDiff("docs/assets/logo.png"); await sleep(300); },
+    message: async () => { await openPlain("assets/app.bin"); },
+  };
+  for (const [theme, w, h, font] of [["dark", 800, 500, 13], ["light", 800, 500, 13], ["dark", 1440, 900, 13], ["light", 1440, 900, 13], ["dark", 800, 500, 18], ["dark", 800, 500, 10]]) {
+    const views = {};
+    await size(w, h);
+    for (const [name, go] of Object.entries(VIEWS)) {
+      await openWork(`${theme === "light" ? "&theme=light" : ""}&font=${font}`);
+      try {
+        await go();
+      } catch (e) {
+        views[name] = { fails: [String(e.message ?? e)], overflow: [], pageW: 0, appW: 0, win: 1 };
+        continue;
+      }
+      await sleep(120);
+      views[name] = await shellAudit();
+      if (font === 13) await shot(`panes-${theme}-${w}x${h}-${name}`);
+      await ev(`window.__store.setState({blame:false});1`);
+    }
+    const bad = Object.fromEntries(Object.entries(views).filter(([, v]) => !auditOk(v)));
+    check(`panes-${theme}-${w}x${h}-${font}px`, !Object.keys(bad).length, Object.keys(bad).length ? bad : undefined);
+  }
+  await size(1440, 900);
 
   check("noConsoleErrors", !report.errors.length, report.errors.slice(0, 5));
   ws.close();

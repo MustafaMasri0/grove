@@ -12,11 +12,13 @@ import { languageFor, monaco } from "../monaco";
 import { useStore, type Tab } from "../store";
 import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuEnv } from "../menuEnv";
-import { menuAtElement, menuAtPointer } from "../ui";
+import { Button, Empty, EditorTab, menuAtElement, menuAtPointer, PathLabel, Toggle, Toolbar, Tray } from "../ui";
+import { Icon } from "./Icon";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { HtmlPreview } from "./HtmlPreview";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
+import "../editor.css";
 
 type Editor = monaco.editor.IStandaloneCodeEditor;
 type DiffEditor = monaco.editor.IStandaloneDiffEditor;
@@ -62,6 +64,18 @@ function showsImage(t: Tab, preview: boolean): boolean {
 
 /** Tabs of different worktrees may share an id, and `HEAD` differs between them. */
 const docKey = (t: Pick<Tab, "cwd" | "id">) => `${t.cwd}\n${t.id}`;
+
+/** Below this width the diff toolbar moves its two toggles into a More menu. */
+const COMPACT_TOOLBAR = 600;
+
+/** A whole-view message in the editor's place. */
+function Message(p: { text?: string; hint?: string }) {
+  return (
+    <div className="ui-root ed-msg" role="status">
+      <Empty {...p} />
+    </div>
+  );
+}
 
 /** The file a tab shows, as a Windows path. */
 function tabPath(t: Tab): string {
@@ -128,6 +142,9 @@ export function EditorArea() {
   /** The blame the file editor's margin shows, and the line count it was laid out for. */
   const blameShown = useRef<{ blame: Blame; lines: number } | null>(null);
   const [, rerender] = useState(0);
+  const area = useRef<HTMLElement>(null);
+  const strip = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
 
   const active = tabs.find((t) => t.id === activeId) ?? null;
   const activeKey = active ? docKey(active) : null;
@@ -206,6 +223,19 @@ export function EditorArea() {
       d.modified?.updateOptions({ tabSize: editorSettings.tabSize });
     }
   }, [editorSettings]);
+
+  // The diff toolbar follows the editor's own width, not only the window's band.
+  useEffect(() => {
+    const el = area.current!;
+    const ro = new ResizeObserver(() => setCompact(el.clientWidth < COMPACT_TOOLBAR));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // The strip has no scrollbar, so the active tab brings itself into view.
+  useEffect(() => {
+    strip.current?.querySelector(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [activeId, tabs.length]);
 
   // Dispose models of closed tabs, and of tabs parked with their worktree: an open worktree with
   // many tabs costs memory only while shown. Parked tabs load again, where they were, on return.
@@ -398,15 +428,18 @@ export function EditorArea() {
   /** Shown rendered rather than in the editor. */
   const rendered = showPreview || showHtml || showImage;
   const previewToggle = (
-    <div className="segmented small">
-      <button className={mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: true })}>
-        Preview
-      </button>
-      <button className={!mdPreview ? "on" : ""} onClick={() => updateSettings({ mdPreview: false })}>
-        Source
-      </button>
-    </div>
+    <Tray
+      small
+      label="Preview or source"
+      value={mdPreview ? "preview" : "source"}
+      items={[
+        ["preview", "Preview"],
+        ["source", "Source"],
+      ]}
+      onChange={(v) => updateSettings({ mdPreview: v === "preview" })}
+    />
   );
+  const setDiff = (patch: Partial<typeof diffOpts>) => updateSettings({ diff: { ...diffOpts, ...patch } });
 
   // Blame: loaded for the active file view when on (again after the file reloads), shown in the line-number margin.
   useEffect(() => {
@@ -434,142 +467,141 @@ export function EditorArea() {
   };
 
   const spec = active?.spec;
+  const sides = spec?.type === "diff" && (
+    <span className="muted ell opt-long">
+      {spec.leftLabel} ↔ {spec.rightLabel}
+    </span>
+  );
   return (
-    <section className="editor-area">
-      <div className="tab-strip" role="tablist">
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            role="tab"
-            aria-selected={t.id === activeId}
-            className={`ed-tab${t.id === activeId ? " active" : ""}${t.preview ? " preview" : ""}`}
-            title={`${t.spec.path}\n${t.description}`}
-            tabIndex={t.id === activeId ? 0 : -1}
-            onContextMenu={(e) => menuAtPointer(e, tabMenu(t))}
-            onKeyDown={(e) => {
-              if (!isMenuKey(e)) return;
-              e.preventDefault();
-              menuAtElement(e.currentTarget, tabMenu(t));
-            }}
-            onMouseDown={(e) => {
-              if (e.button === 1) {
-                e.preventDefault();
-                closeTab(t.id);
-              }
-            }}
-            onClick={() => activateTab(t.id)}
-            onDoubleClick={() => pinTab(t.id)}
-          >
-            <FileTypeIcon name={t.title} />
-            {t.spec.type === "diff" && <span className="ed-tab-kind">±</span>}
-            <span className="tab-title">{t.title}</span>
-            <button
-              className="tab-close"
-              title="Close (Ctrl+W)"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(t.id);
-              }}
-            >
-              ×
-            </button>
+    <section ref={area} className="editor-area">
+      <div className="ui-root ed-chrome">
+        <div ref={strip} className="tabs">
+          <div className="tabs-in" role="tablist">
+            {tabs.map((t) => (
+              <EditorTab
+                key={t.id}
+                text={t.title}
+                on={t.id === activeId}
+                preview={t.preview}
+                lead={<FileTypeIcon name={t.title} />}
+                mark={t.spec.type === "diff" ? "±" : undefined}
+                title={`${t.spec.path}\n${t.description}`}
+                closeTip="Close (Ctrl+W)"
+                onClose={() => closeTab(t.id)}
+                onContextMenu={(e) => menuAtPointer(e, tabMenu(t))}
+                onKeyDown={(e) => {
+                  if (isMenuKey(e)) {
+                    e.preventDefault();
+                    menuAtElement(e.currentTarget, tabMenu(t));
+                  } else if (e.key === "Enter" && e.target === e.currentTarget) {
+                    e.preventDefault();
+                    activateTab(t.id);
+                    pinTab(t.id);
+                  }
+                }}
+                onMouseDown={(e) => {
+                  if (e.button === 1) {
+                    e.preventDefault();
+                    closeTab(t.id);
+                  }
+                }}
+                onClick={() => activateTab(t.id)}
+                onDoubleClick={() => pinTab(t.id)}
+              />
+            ))}
           </div>
-        ))}
-      </div>
-      {spec && (
-        <div className="editor-toolbar">
-          <span className="crumb" title={spec.path}>
-            {spec.type === "diff" && spec.origPath && spec.origPath !== spec.path ? `${spec.origPath} → ` : ""}
-            {spec.path}
-          </span>
-          {spec.type === "file" && (isMarkdown || isHtml || isSvg) && (
-            <>
-              <span className="spacer" />
-              {showHtml && active && (
-                <button
-                  className={`toggle${runScripts ? " on" : ""}`}
-                  title={"Run this page's own scripts, inline or from the repository, in every HTML preview of this repository.\nThe page still cannot reach the network or the app; web links ask first."}
-                  aria-pressed={runScripts}
-                  onClick={() => updateSettings(withRunScripts(useStore.getState().settings, active.repo, !runScripts))}
-                >
-                  Run scripts
-                </button>
-              )}
-              {previewToggle}
-            </>
-          )}
-          {spec.type === "file" && !rendered && !(kind === "image" && (mdPreview || !isSvg)) && (
-            <>
-              {!(isMarkdown || isHtml || isSvg) && <span className="spacer" />}
-              {blameOn && activeDoc?.blame?.loading && <span className="muted">Loading blame…</span>}
-              {blameOn && activeDoc?.blame?.error && (
-                <span className="error-text ellipsis" title={activeDoc.blame.error}>
-                  No blame: {activeDoc.blame.error}
-                </span>
-              )}
-              <button
-                className={`toggle${blameOn ? " on" : ""}`}
-                title="Show who last changed each line; click a line's margin to open its commit in History"
-                aria-pressed={blameOn}
-                onClick={toggleBlame}
-              >
-                Blame
-              </button>
-            </>
-          )}
-          {spec.type === "diff" && showImage && (
-            <>
-              <span className="muted sides">
-                {spec.leftLabel} ↔ {spec.rightLabel}
-              </span>
-              <span className="spacer" />
-              {isSvg && previewToggle}
-              <div className="segmented small">
-                {(
-                  [
-                    ["sideBySide", "Side by side"],
-                    ["swipe", "Swipe"],
-                    ["onion", "Onion skin"],
-                  ] as const
-                ).map(([m, label]) => (
-                  <button key={m} className={imageDiff === m ? "on" : ""} onClick={() => updateSettings({ imageDiff: m })}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {spec.type === "diff" && !showImage && (
-            <>
-              <span className="muted sides">
-                {spec.leftLabel} ↔ {spec.rightLabel}
-              </span>
-              <span className="spacer" />
-              {isSvg && previewToggle}
-              <button className="icon-button" title="Previous change (Shift+F7)" onClick={() => editorCommands.goToDiff("previous")}>
-                ↑
-              </button>
-              <button className="icon-button" title="Next change (F7)" onClick={() => editorCommands.goToDiff("next")}>
-                ↓
-              </button>
-              <div className="segmented small">
-                <button className={diffOpts.sideBySide ? "on" : ""} onClick={() => updateSettings({ diff: { ...diffOpts, sideBySide: true } })}>
-                  Side by side
-                </button>
-                <button className={!diffOpts.sideBySide ? "on" : ""} onClick={() => updateSettings({ diff: { ...diffOpts, sideBySide: false } })}>
-                  Inline
-                </button>
-              </div>
-              <button className={`toggle${diffOpts.collapseUnchanged ? " on" : ""}`} title="Collapse unchanged regions" onClick={() => updateSettings({ diff: { ...diffOpts, collapseUnchanged: !diffOpts.collapseUnchanged } })}>
-                Collapse unchanged
-              </button>
-              <button className={`toggle${diffOpts.ignoreWhitespace ? " on" : ""}`} title="Ignore leading/trailing whitespace" onClick={() => updateSettings({ diff: { ...diffOpts, ignoreWhitespace: !diffOpts.ignoreWhitespace } })}>
-                Ignore whitespace
-              </button>
-            </>
-          )}
         </div>
-      )}
+        {spec && (
+          <Toolbar>
+            <span className="crumb" title={spec.path}>
+              {spec.type === "diff" && spec.origPath && spec.origPath !== spec.path && (
+                <>
+                  <span className="muted ell">{spec.origPath}</span>
+                  <span className="muted arrow">→</span>
+                </>
+              )}
+              {spec.type === "settingsJson" ? <span className="ell">{spec.path}</span> : <PathLabel path={spec.path} />}
+            </span>
+            {sides}
+            <span className="spacer" />
+            {spec.type === "file" && (isMarkdown || isHtml || isSvg) && (
+              <>
+                {showHtml && active && (
+                  <Toggle
+                    text="Run scripts"
+                    tip={"Run this page's own scripts, inline or from the repository, in every HTML preview of this repository.\nThe page still cannot reach the network or the app; web links ask first."}
+                    on={runScripts}
+                    onClick={() => updateSettings(withRunScripts(useStore.getState().settings, active.repo, !runScripts))}
+                  />
+                )}
+                {previewToggle}
+              </>
+            )}
+            {spec.type === "file" && !rendered && !(kind === "image" && (mdPreview || !isSvg)) && (
+              <>
+                {blameOn && activeDoc?.blame?.loading && <span className="muted">Loading blame…</span>}
+                {blameOn && activeDoc?.blame?.error && (
+                  <span className="err-text ell" title={activeDoc.blame.error}>
+                    No blame: {activeDoc.blame.error}
+                  </span>
+                )}
+                <Toggle text="Blame" tip="Show who last changed each line; click a line's margin to open its commit in History" on={blameOn} onClick={toggleBlame} />
+              </>
+            )}
+            {spec.type === "diff" && isSvg && previewToggle}
+            {spec.type === "diff" && showImage && (
+              <Tray
+                small
+                label="Compare images"
+                value={imageDiff}
+                items={[
+                  ["sideBySide", "Side by side"],
+                  ["swipe", "Swipe"],
+                  ["onion", "Onion skin"],
+                ]}
+                onChange={(m) => updateSettings({ imageDiff: m })}
+              />
+            )}
+            {spec.type === "diff" && !showImage && (
+              <>
+                <Button kind="ghost" size="sm" icon="arrow-up" label="Previous change" tip="Previous change (Shift+F7)" onClick={() => editorCommands.goToDiff("previous")} />
+                <Button kind="ghost" size="sm" icon="arrow-down" label="Next change" tip="Next change (F7)" onClick={() => editorCommands.goToDiff("next")} />
+                <Tray
+                  small
+                  label="Diff layout"
+                  value={diffOpts.sideBySide ? "side" : "inline"}
+                  items={[
+                    ["side", "Side by side"],
+                    ["inline", "Inline"],
+                  ]}
+                  onChange={(v) => setDiff({ sideBySide: v === "side" })}
+                />
+                {compact ? (
+                  <Button
+                    kind="ghost"
+                    size="sm"
+                    text="More"
+                    after={<Icon name="chevron-down" size={10} />}
+                    tip="Collapse unchanged, Ignore whitespace"
+                    aria-haspopup="menu"
+                    onClick={(e) =>
+                      menuAtElement(e.currentTarget, [
+                        { label: "Collapse unchanged", check: diffOpts.collapseUnchanged, run: () => setDiff({ collapseUnchanged: !diffOpts.collapseUnchanged }) },
+                        { label: "Ignore whitespace", check: diffOpts.ignoreWhitespace, run: () => setDiff({ ignoreWhitespace: !diffOpts.ignoreWhitespace }) },
+                      ])
+                    }
+                  />
+                ) : (
+                  <>
+                    <Toggle text="Collapse unchanged" tip="Collapse unchanged regions" on={diffOpts.collapseUnchanged} onClick={() => setDiff({ collapseUnchanged: !diffOpts.collapseUnchanged })} />
+                    <Toggle text="Ignore whitespace" tip="Ignore leading/trailing whitespace" on={diffOpts.ignoreWhitespace} onClick={() => setDiff({ ignoreWhitespace: !diffOpts.ignoreWhitespace })} />
+                  </>
+                )}
+              </>
+            )}
+          </Toolbar>
+        )}
+      </div>
       <div className="editor-stack">
         <div ref={diffHost} className="editor-host" style={{ visibility: isDiff && ready && !showImage ? "inherit" : "hidden" }} />
         <div ref={codeHost} className={`editor-host${blameOn && spec?.type === "file" ? " blame-on" : ""}`} style={{ visibility: !isDiff && ready && !rendered ? "inherit" : "hidden" }} />
@@ -582,14 +614,9 @@ export function EditorArea() {
             mode={imageDiff}
           />
         )}
-        {!active && (
-          <div className="editor-empty">
-            <p>Select a changed file, a commit file or a file in Explorer.</p>
-            <p className="muted">Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings</p>
-          </div>
-        )}
-        {active && activeDoc?.state === "message" && <div className="editor-empty">{activeDoc.message}</div>}
-        {active && (!activeDoc || activeDoc.state === "loading") && <div className="editor-empty muted">Loading…</div>}
+        {!active && <Message text="Select a changed file, a commit file or a file in Explorer." hint="Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings" />}
+        {active && activeDoc?.state === "message" && <Message text={activeDoc.message} />}
+        {active && (!activeDoc || activeDoc.state === "loading") && <Message text="Loading…" />}
       </div>
     </section>
   );

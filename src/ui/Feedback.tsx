@@ -71,12 +71,13 @@ export function Banner({ tone = "neutral", title, text, pre, flush, lead, action
   );
 }
 
-/** The empty state of a whole view. */
-export function Empty({ title, text, action }: { title?: string; text?: string; action?: ReactNode }) {
+/** The empty state of a whole view. `hint` is a quieter line under the text. */
+export function Empty({ title, text, hint, action }: { title?: string; text?: string; hint?: string; action?: ReactNode }) {
   return (
     <div className="empty">
       {title && <h2>{title}</h2>}
       {text && <p>{text}</p>}
+      {hint && <p className="muted">{hint}</p>}
       {action}
     </div>
   );

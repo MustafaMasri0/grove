@@ -3,6 +3,7 @@ import type { ImageSource } from "../api";
 import { formatBytes } from "../lib/format";
 import { anchoredScroll, fitScale, formatZoom, MAX_PIXELS, stepZoom, tooManyPixels } from "../lib/imageZoom";
 import type { ImageDiff } from "../lib/settings";
+import { Button, Slider, Toggle, Toolbar } from "../ui";
 
 export interface ImageSide {
   label: string;
@@ -159,8 +160,8 @@ export function ImageView({ sides, mode }: { sides: ImageSide[]; mode: ImageDiff
   };
 
   return (
-    <div className="image-view">
-      <div ref={area} className={`image-area${layered ? "" : " panes-" + panes}`}>
+    <div className="ui-root image-view">
+      <div ref={area} className="image-area">
         {layered ? (
           <div className="image-pane">
             <div className="image-canvas">
@@ -201,35 +202,19 @@ export function ImageView({ sides, mode }: { sides: ImageSide[]; mode: ImageDiff
         )}
         {layered && states.some((s) => s.error) && <div className="image-none">{states.find((s) => s.error)!.error}</div>}
       </div>
-      <div className="image-footer">
+      <Toolbar>
         {sides.map((_, i) => info(i))}
         <span className="spacer" />
-        {layered && mode === "swipe" && (
-          <label className="image-range" title="Where the after image starts; drag across the image too">
-            Swipe <input type="range" min={0} max={100} value={pos} onChange={(e) => setPos(Number(e.target.value))} />
-          </label>
-        )}
-        {layered && mode === "onion" && (
-          <label className="image-range" title="How much of the after image shows through">
-            Opacity <input type="range" min={0} max={100} value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />
-          </label>
-        )}
-        <button className="icon-button" title="Zoom out (Ctrl+- or Ctrl+wheel)" onClick={() => imageCommands.zoom(-1)}>
-          −
-        </button>
-        <span className="image-zoom" title="Zoom">
+        {layered && mode === "swipe" && <Slider text="Swipe" tip="Where the after image starts; drag across the image too" value={pos} onChange={(e) => setPos(Number(e.target.value))} />}
+        {layered && mode === "onion" && <Slider text="Opacity" tip="How much of the after image shows through" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} />}
+        <Button kind="ghost" size="sm" icon="remove" label="Zoom out" tip="Zoom out (Ctrl+- or Ctrl+wheel)" onClick={() => imageCommands.zoom(-1)} />
+        <span className="image-zoom num" data-tip="Zoom">
           {formatZoom(scale)}
         </span>
-        <button className="icon-button" title="Zoom in (Ctrl+= or Ctrl+wheel)" onClick={() => imageCommands.zoom(1)}>
-          +
-        </button>
-        <button className={`toggle${zoom === "fit" ? " on" : ""}`} title="Fit to the window (Ctrl+0)" onClick={() => imageCommands.zoom(0)}>
-          Fit
-        </button>
-        <button className={`toggle${zoom === 1 ? " on" : ""}`} title="Actual size" onClick={() => setZoom(1)}>
-          100%
-        </button>
-      </div>
+        <Button kind="ghost" size="sm" icon="add" label="Zoom in" tip="Zoom in (Ctrl+= or Ctrl+wheel)" onClick={() => imageCommands.zoom(1)} />
+        <Toggle size="sm" text="Fit" tip="Fit to the window (Ctrl+0)" on={zoom === "fit"} onClick={() => imageCommands.zoom(0)} />
+        <Toggle size="sm" text="100%" tip="Actual size" on={zoom === 1} onClick={() => setZoom(1)} />
+      </Toolbar>
     </div>
   );
 }

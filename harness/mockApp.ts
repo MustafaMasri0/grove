@@ -8,6 +8,7 @@ const WT = [
 const HEAD = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
 const query = new URLSearchParams(location.search);
 // ?states=1 adds a worktree that is gone and the bare repository, ?none=1 opens no repository, ?settings=<JSON> adds saved settings, ?reject=1 refuses pushes.
+// ?many=1 gives agent-01 a long list of changes and the repository a long history, for the lists' keyboard use.
 // ?ov=loading|fail|nobase|errors|many|one|odd picks what the Worktrees overview gets.
 const OV = query.get("ov");
 const UNUSUAL = [
@@ -15,12 +16,57 @@ const UNUSUAL = [
   { path: "/home/user/src/shop-platform.git", branch: null, isMain: false, missing: false, prunable: null, bare: true },
 ];
 const OTHER = "1b2c3d4e5f60718293a4b5c6d7e8f90123456789";
+const commit = (sha: string, subject: string) => ({ sha, parents: [OTHER], authorName: "Dev Example", authorEmail: "dev@example.com", authorDate: "2026-10-30T10:00:00Z", subject });
 const CHANGED = [
   { path: "src/server/orders/create.ts", origPath: null, kind: "modified", staged: ".", unstaged: "M" },
   { path: "src/client/cart/total.ts", origPath: null, kind: "added", staged: "A", unstaged: "." },
 ];
-const FILES = ["README.md", "package.json", "src/client/cart/total.ts", "src/server/orders/create.ts", "src/server/orders/refund.ts"];
-const commit = (sha: string, subject: string) => ({ sha, parents: [OTHER], authorName: "Dev Example", authorEmail: "dev@example.com", authorDate: "2026-10-30T10:00:00Z", subject });
+const MANY = query.has("many");
+const EXTRA = Array.from({ length: 80 }, (_, i) => ({ path: `src/generated/part-${String(i + 1).padStart(2, "0")}.ts`, origPath: null, kind: "modified", staged: ".", unstaged: "M" }));
+const CHANGES = MANY ? [...CHANGED, ...EXTRA] : CHANGED;
+const FILES = ["README.md", "package.json", "src/client/cart/total.ts", "src/server/orders/create.ts", "src/server/orders/refund.ts", "assets/app.bin", "data/dump.json", "docs/preview.html", "docs/assets/logo.png", "docs/assets/order-flow.svg"];
+
+// What the files hold. Long enough that sticky scroll, the minimap and the overview ruler have something to show.
+const CODE = (extra: boolean) => [
+  "// The order service.",
+  'import { money } from "./money";',
+  "",
+  "export class Orders {",
+  "  private readonly rate = 0.2;",
+  "",
+  ...Array.from({ length: 60 }, (_, i) => [`  async step${i}(input: string) {`, "    const value = input.trim();", i === 0 && extra ? '    const checked = audit.record("change");' : "    const parsed = parse(value);", i === 20 && extra ? "    return checked;" : '    return money(parsed, "EUR");', "  }", ""]).flat(),
+  "}",
+  "",
+].join("\n");
+const MARKDOWN = ["# shop-platform", "", "A sample storefront. See [Architecture](docs/architecture.md), or jump to [Usage](#usage).", "", "![Build status](https://example.com/badges/build.svg)", "", "![Order flow](docs/assets/order-flow.svg)", "", "## Usage", "", "Run the dev server with `npm run dev`.", "", "| Command | What it does |", "| --- | --- |", "| `npm test` | Runs the unit tests |", "", "```ts", "export const total = 1;", "```", "", "> Keep changes small.", ""].join("\n");
+const HTML_PAGE = '<!doctype html><html><head><title>Order status</title></head><body><h1>Order status</h1><p><a href="#x">Back</a></p></body></html>';
+const svg = (fill: string, w: number, h: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${fill}"/></svg>`)}`;
+const text = (t: string) => ({ kind: "text", text: t });
+type Src = { kind: string; path?: string };
+const contentOf = (s: Src, right: boolean) => {
+  if (s.kind === "empty") return text("");
+  switch (s.path) {
+    case "assets/app.bin":
+      return { kind: "binary", size: 12698 };
+    case "data/dump.json":
+      return { kind: "tooLarge", size: 6815744 };
+    case "src/removed.ts":
+      return { kind: "missing" };
+    case "README.md":
+      return text(MARKDOWN);
+    case "docs/preview.html":
+      return text(HTML_PAGE);
+    default:
+      return text(CODE(right));
+  }
+};
+const imageOf = (s: Src, i: number) => {
+  if (s.kind === "empty" || s.path === "docs/assets/gone.png") return { kind: "missing" };
+  if (s.path === "docs/assets/huge.png") return { kind: "tooLarge", size: 50331648 };
+  if (s.path === "docs/assets/broken.png") return { kind: "image", size: 2048, url: "data:image/png;base64,AAAA" };
+  return { kind: "image", size: 2900 + i, url: svg(i ? "#1d6b64" : "#2b5fa8", 320, 200) };
+};
+const HISTORY = Array.from({ length: 120 }, (_, i) => ({ ...commit(String(i).padStart(40, "a"), `Change number ${i}`), parents: [OTHER] }));
 const summary = (w: (typeof WT)[number], i: number) => ({
   path: w.path,
   branch: w.branch,
@@ -104,7 +150,7 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "branches":
       return [...WT.map((w) => ({ name: w.branch, fullRef: `refs/heads/${w.branch}`, kind: "local", oid: HEAD, upstream: null, ahead: 0, behind: 0, upstreamGone: false, committerUnix: 1_790_000_000, isHead: false })), { name: "origin/main", fullRef: "refs/remotes/origin/main", kind: "remote", oid: HEAD, upstream: null, ahead: 0, behind: 0, upstreamGone: false, committerUnix: 1_790_000_000, isHead: false }];
     case "status":
-      return { branch: { oid: HEAD, head: "agent/orders-refund", upstream: null, ahead: 1, behind: 0 }, entries: a.cwd === WT[1].path ? CHANGED : [] };
+      return { branch: { oid: HEAD, head: "agent/orders-refund", upstream: null, ahead: 1, behind: 0 }, entries: a.cwd === WT[1].path ? CHANGES : [] };
     case "worktrees_overview":
       return overview();
     case "resolve_base":
@@ -116,7 +162,8 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "github_repo":
       return null;
     case "log":
-      return [commit(HEAD, "Allow partial refunds"), commit(OTHER, "Update readme")];
+      if (MANY) return HISTORY.slice(a.skip as number, (a.skip as number) + (a.limit as number));
+      return a.skip ? [] : [commit(HEAD, "Allow partial refunds"), commit(OTHER, "Update readme")];
     case "commit":
       return { detail: { sha: a.sha, parents: [OTHER], authorName: "Dev Example", authorEmail: "dev@example.com", authorDate: "2026-10-30T10:00:00Z", committerName: "Dev Example", committerDate: "2026-10-30T10:00:00Z", message: "Allow partial refunds" }, parent: OTHER, files: CHANGED.map((c) => ({ path: c.path, origPath: null, kind: c.kind })) };
     case "list_files":
@@ -129,14 +176,29 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     }
     case "grep":
       return { hits: [{ path: FILES[3], line: 3, column: 1, text: "import { money } from './money';" }, { path: FILES[4], line: 8, column: 1, text: "import { money } from './money';" }], truncated: false };
-    case "read_sources":
-      return (a.sources as unknown as unknown[]).map(() => ({ kind: "text", text: "export const total = 1;\nexport const tax = 2;\n" }));
+    case "read_sources": {
+      const sources = a.sources as unknown as Src[];
+      return sources.map((s, i) => contentOf(s, i === sources.length - 1 && sources.length > 1));
+    }
+    case "image_sources":
+      return (a.sources as unknown as Src[]).map(imageOf);
+    case "read_image":
+      return svg("#2b5fa8", 480, 200);
+    case "preview_base":
+      return "http://wvfile.localhost/base/";
+    case "preview_page":
+      return `data:text/html;charset=utf-8,${encodeURIComponent(a.html as string)}`;
+    case "drop_preview_page":
+      return null;
     case "file_history":
-      return [];
+      return a.skip ? [] : [commit(HEAD, "Allow partial refunds"), commit(OTHER, "Update readme")].map((c) => ({ commit: c, file: { path: a.path, origPath: null, kind: "modified" }, parent: OTHER }));
     case "search_log":
-      return { commits: [], truncated: false };
+      return { commits: [commit(HEAD, "Allow partial refunds"), commit(OTHER, "Update readme")].filter((c) => c.subject.toLowerCase().includes(String(a.query).toLowerCase())), truncated: false };
     case "blame":
-      return { hunks: [], commits: {} };
+      return {
+        hunks: [{ sha: HEAD, start: 1, count: 40 }, { sha: OTHER, start: 41, count: 400 }],
+        commits: { [HEAD]: { authorName: "Dev Example", authorEmail: "dev@example.com", authorTime: 1_790_000_000, summary: "Allow partial refunds", uncommitted: false }, [OTHER]: { authorName: "Ada Example", authorEmail: "ada@example.com", authorTime: 1_789_000_000, summary: "Update readme", uncommitted: false } },
+      };
     case "avatar":
       return null;
     case "run_action":

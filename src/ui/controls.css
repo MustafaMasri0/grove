@@ -1396,13 +1396,6 @@
   & .tab .btn.sm.only {
     width: var(--h-xs);
     height: var(--h-xs);
-    opacity: 0;
-  }
-
-  & .tab:hover .btn,
-  & .tab.on .btn,
-  & .tab .btn:focus-visible {
-    opacity: 1;
   }
 
   /* Setting row */

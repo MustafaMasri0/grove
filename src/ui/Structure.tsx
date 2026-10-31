@@ -86,7 +86,7 @@ export function SettingRow(p: { label: string; description: string; control: Rea
   );
 }
 
-export interface EditorTabProps {
+export interface EditorTabProps extends Omit<HTMLAttributes<HTMLDivElement>, "role"> {
   text: string;
   on?: boolean;
   /** Italic title: the next preview replaces this tab. */
@@ -96,15 +96,13 @@ export interface EditorTabProps {
   lead?: ReactNode;
   /** The tab's kind, such as ± for a diff. */
   mark?: string;
-  className?: string;
   closeTip?: string;
-  onClick?: () => void;
   onClose?: () => void;
 }
 
-export function EditorTab({ text, on, preview, icon, lead, mark, className, closeTip, onClick, onClose }: EditorTabProps) {
+export function EditorTab({ text, on, preview, icon, lead, mark, className, closeTip, onClose, ...rest }: EditorTabProps) {
   return (
-    <div className={cx("tab", on && "on", preview && "preview", className)} role="tab" aria-selected={!!on} tabIndex={0} onClick={onClick}>
+    <div {...rest} className={cx("tab", on && "on", preview && "preview", className)} role="tab" aria-selected={!!on} tabIndex={0}>
       {lead ?? (icon && <Icon name={icon} size={13} />)}
       {mark && (
         <span className="tab-kind" aria-hidden="true">

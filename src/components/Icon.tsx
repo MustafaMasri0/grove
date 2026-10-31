@@ -70,6 +70,9 @@ const icons = {
 
 export type IconName = keyof typeof icons;
 
+/** The icon's SVG, for markup that is not React's. */
+export const iconMarkup = (name: IconName) => icons[name];
+
 /** `size` applies inside the design system, whose CSS reads --ic; elsewhere an icon keeps the SVG's own size. */
 export function Icon({ name, className, size }: { name: IconName; className?: string; size?: number }) {
   const style = size ? ({ "--ic": `${size}px` } as CSSProperties) : undefined;
