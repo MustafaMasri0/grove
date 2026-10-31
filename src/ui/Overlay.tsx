@@ -24,17 +24,17 @@ export function closeOverlay(entry = topEntry(), focus = true) {
   if (focus && back?.isConnected) back.focus();
 }
 
-/** Positions `el` at a point inside the window; `flipTop` is where it ends when it has to open upwards. */
-export function placeAt(el: HTMLElement, x: number, y: number, flipTop?: number) {
+/** Positions `el` at a point inside the window; `flipTop` and `flipLeft` are where it ends when it has to open upwards or leftwards. */
+export function placeAt(el: HTMLElement, x: number, y: number, flipTop?: number, flipLeft?: number) {
   el.style.maxHeight = `${window.innerHeight - 2 * MARGIN}px`;
-  const { left, top } = placeMenu({ x, y }, { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight }, flipTop);
+  const { left, top } = placeMenu({ x, y }, { width: el.offsetWidth, height: el.offsetHeight }, { width: window.innerWidth, height: window.innerHeight }, flipTop, flipLeft);
   el.style.left = `${left}px`;
   el.style.top = `${top}px`;
 }
 
 export function placeUnder(el: HTMLElement, anchor: Element, gap = 4) {
   const r = anchor.getBoundingClientRect();
-  placeAt(el, r.left, r.bottom + gap, r.top - gap);
+  placeAt(el, r.left, r.bottom + gap, r.top - gap, r.right);
 }
 
 export interface OverlayProps extends HTMLAttributes<HTMLDivElement> {

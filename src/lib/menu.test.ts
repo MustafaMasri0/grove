@@ -13,6 +13,10 @@ describe("placeMenu", () => {
     expect(placeMenu({ x: 950, y: 80 }, size, view)).toEqual({ left: 750, top: 80 });
   });
 
+  it("ends at the right edge of the element it opens under near the right edge", () => {
+    expect(placeMenu({ x: 900, y: 80 }, size, view, undefined, 960)).toEqual({ left: 760, top: 80 });
+  });
+
   it("flips above the point near the bottom edge", () => {
     expect(placeMenu({ x: 100, y: 650 }, size, view)).toEqual({ left: 100, top: 500 });
   });

@@ -27,7 +27,7 @@ export function watchTooltips(host: HTMLElement) {
     tip.textContent = text;
     host.append(tip);
     const r = t.getBoundingClientRect();
-    placeAt(tip, r.left, r.bottom + 6, r.top - 6);
+    placeAt(tip, r.left, r.bottom + 6, r.top - 6, r.right);
   };
 
   const over = (e: MouseEvent) => {
