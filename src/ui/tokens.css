@@ -1,5 +1,6 @@
 /* Grove's design tokens: Carbon surfaces, status colours and the type, spacing and height scales.
    They live on .ui-root, not :root, so they cannot reach anything drawn outside the design system.
+   The editors read these too (src/lib/editorTheme.ts), so a colour changes in one place.
    Tokens marked MIT come from AffectUI's free items (see THIRD_PARTY_NOTICES.md); shell, surface and status colours are Grove's own. */
 .ui-root,
 :root[data-theme="dark"] .ui-root {
@@ -44,6 +45,18 @@
   --add: #58d292;
   --del: #ff8f87;
   --tok-key: #b4b4ff;
+  --diff-add: rgba(62, 194, 122, 0.12);
+  --diff-add-word: rgba(62, 194, 122, 0.2);
+  --diff-add-mark: rgba(62, 194, 122, 0.75);
+  --diff-del: rgba(255, 110, 100, 0.1);
+  --diff-del-word: rgba(255, 110, 100, 0.2);
+  --diff-del-mark: rgba(255, 110, 100, 0.75);
+  --hatch: rgba(255, 255, 255, 0.03);
+  --tok-str: #5fc8e8;
+  --tok-com: rgba(255, 255, 255, 0.62);
+  --tok-fn: #fff;
+  --check: rgba(255, 255, 255, 0.1);
+  --check-2: rgba(255, 255, 255, 0.04);
   color-scheme: dark;
 }
 
@@ -89,6 +102,18 @@
   --add: #0f7040;
   --del: #ba1f19;
   --tok-key: #4a4ac4;
+  --diff-add: rgba(26, 154, 82, 0.1);
+  --diff-add-word: rgba(26, 154, 82, 0.2);
+  --diff-add-mark: rgba(15, 112, 64, 0.7);
+  --diff-del: rgba(229, 72, 77, 0.08);
+  --diff-del-word: rgba(229, 72, 77, 0.18);
+  --diff-del-mark: rgba(196, 34, 28, 0.65);
+  --hatch: rgba(0, 0, 0, 0.025);
+  --tok-str: #00628a;
+  --tok-com: rgba(0, 0, 0, 0.61);
+  --tok-fn: #000;
+  --check: rgba(0, 0, 0, 0.08);
+  --check-2: rgba(0, 0, 0, 0.02);
   color-scheme: light;
 }
 

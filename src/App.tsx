@@ -17,6 +17,7 @@ import { WorkHeader } from "./components/WorkHeader";
 import { WorktreesPage } from "./components/WorktreesPage";
 import { api, type WorktreeChanged } from "./api";
 import { ZOOM_STEPS } from "./lib/settingsSchema";
+import { applyEditorTheme } from "./monaco";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
 import { bandOf, commitInList, isNarrow } from "./lib/shell";
@@ -144,8 +145,10 @@ export function App() {
     };
   }, []);
 
-  useEffect(() => {
+  // A layout effect: the editors are created in a passive one, and must never paint Monaco's own theme.
+  useLayoutEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
+    applyEditorTheme(dark);
     // What the window shows behind the page: while it opens, and in the strip a fast resize uncovers.
     const shell = getComputedStyle(document.getElementById("rail")!).getPropertyValue("--shell").trim();
     void getCurrentWebviewWindow().setBackgroundColor(shell).catch(() => {});

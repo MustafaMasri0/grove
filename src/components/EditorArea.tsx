@@ -9,7 +9,7 @@ import { formatBytes, shortSha } from "../lib/format";
 import { displayPath, joinPath } from "../lib/hostPaths";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { languageFor, monaco } from "../monaco";
-import { effectiveDark, useStore, type Tab } from "../store";
+import { useStore, type Tab } from "../store";
 import { isLive, revealPathOf, tabsToClose, type CloseWhich } from "../tabs";
 import { menuEnv } from "../menuEnv";
 import { menuAtElement, menuAtPointer } from "../ui";
@@ -109,7 +109,6 @@ export function EditorArea() {
   const mdPreview = useStore((s) => s.settings.mdPreview);
   const imageDiff = useStore((s) => s.settings.imageDiff);
   const runScripts = useStore((s) => !!s.repo && scriptsAllowed(s.settings, s.repo.id));
-  const dark = useStore(effectiveDark);
   const updateSettings = useStore((s) => s.updateSettings);
   const activateTab = useStore((s) => s.activateTab);
   const closeTab = useStore((s) => s.closeTab);
@@ -142,6 +141,7 @@ export function EditorArea() {
       domReadOnly: true,
       automaticLayout: true,
       scrollBeyondLastLine: false,
+      renderLineHighlightOnlyWhenFocus: true,
       unicodeHighlight: { ambiguousCharacters: false },
       ...editorOptions(ed),
     };
@@ -186,10 +186,6 @@ export function EditorArea() {
       docs.current.clear();
     };
   }, []);
-
-  useEffect(() => {
-    monaco.editor.setTheme(dark ? "vs-dark" : "vs");
-  }, [dark]);
 
   useEffect(() => {
     diffEditor.current?.updateOptions({

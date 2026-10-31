@@ -22,5 +22,5 @@ export default defineConfig({
     assetsInlineLimit: (file: string) => (file.replace(/\\/g, "/").includes("/assets/charmed/") ? false : undefined),
   },
   // Only this checkout's tests: other worktrees live under .claude.
-  test: { environment: "node", dir: "src" },
+  test: { environment: "node", dir: "src", css: { include: [/tokens.css/] } },
 });

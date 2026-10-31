@@ -30,6 +30,7 @@ import "monaco-esm/base/browser/ui/codicons/codicon/codicon.css";
 import "monaco-esm/base/browser/ui/codicons/codicon/codicon-modifiers.css";
 import "monaco-esm/languages/definitions/register.all.js";
 import EditorWorker from "monaco-esm/editor/editor.worker.js?worker";
+import { editorTheme } from "./lib/editorTheme";
 
 // The diff computation runs in the editor worker; nothing else needs one.
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = {
@@ -69,6 +70,19 @@ monaco.languages.setMonarchTokensProvider("json", {
     ],
   },
 });
+
+/** Builds the theme from the design tokens as they resolve now, so call it after the page's theme changed. */
+export function applyEditorTheme(dark: boolean) {
+  const probe = document.createElement("div");
+  probe.className = "ui-root";
+  probe.hidden = true;
+  document.body.append(probe);
+  const css = getComputedStyle(probe);
+  const name = dark ? "grove-dark" : "grove-light";
+  monaco.editor.defineTheme(name, editorTheme((t) => css.getPropertyValue(t), dark));
+  probe.remove();
+  monaco.editor.setTheme(name);
+}
 
 /** Monaco's language id for a path, from registered extensions and file names. */
 export function languageFor(path: string): string {
