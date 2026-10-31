@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { Icon, type IconName } from "../components/Icon";
 import { cx } from "./classes";
 import { Spinner } from "./Feedback";
@@ -21,12 +21,13 @@ export interface ButtonProps extends NativeButton {
   after?: ReactNode;
 }
 
-export function Button({ kind = "secondary", size = "md", icon, text, label, tip, disabled, loading, after, className, type = "button", onClick, ...rest }: ButtonProps) {
+export function Button({ kind = "secondary", size = "md", icon, text, label, tip, disabled, loading, after, className, type = "button", onClick, ref, ...rest }: ButtonProps & { ref?: Ref<HTMLButtonElement> }) {
   const only = !!icon && !text;
   const iconSize = size === "sm" ? 13 : 14;
   return (
     <button
       {...rest}
+      ref={ref}
       type={type}
       className={cx("btn", kind !== "secondary" && kind, size === "sm" && "sm", only && "only", className)}
       aria-label={only ? label : rest["aria-label"]}

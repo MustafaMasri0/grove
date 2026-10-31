@@ -6,6 +6,12 @@
   }
 }
 
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
 @keyframes turn {
   to {
     transform: rotate(360deg);
@@ -1352,6 +1358,264 @@
   & .resize:focus-visible {
     background: var(--line-strong);
   }
+  /* Select */
+  & .sel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    max-width: 100%;
+    height: var(--h-md);
+    padding: 0 8px 0 10px;
+    border-radius: var(--r-sm);
+    background: var(--card);
+    box-shadow: var(--sh-hair);
+    color: var(--ink);
+    font-weight: 500;
+    text-align: left;
+    transition: box-shadow var(--t) ease, opacity var(--t) ease;
+  }
+
+  & .sel:hover:not([aria-disabled="true"]),
+  & .sel[aria-expanded="true"] {
+    box-shadow: var(--sh-hair-hover);
+  }
+
+  & .sel .icon {
+    color: var(--icon);
+  }
+
+  & .sel[aria-expanded="true"] .icon {
+    transform: rotate(180deg);
+  }
+
+  & .sel[aria-disabled="true"] {
+    opacity: 0.45;
+  }
+
+  /* Overlays. Each fades in with opacity only; closing is instant. Active rows are a static fill. */
+  & .menu,
+  & .pop {
+    position: absolute;
+    background: var(--card);
+    border-radius: var(--r-lg);
+    box-shadow: var(--sh-pop);
+    outline: none;
+    animation: fade-in var(--t) ease both;
+    z-index: var(--z-menu);
+  }
+
+  & .menu {
+    min-width: 180px;
+    max-width: 320px;
+    padding: 4px;
+    overflow: auto;
+  }
+
+  & .mi {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--h-md);
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  & .mi.on {
+    color: var(--title);
+    background: var(--fill);
+  }
+
+  & .mi.dis {
+    color: var(--muted);
+    cursor: default;
+  }
+
+  & .mi-c {
+    flex: none;
+    width: 12px;
+    color: var(--title);
+  }
+
+  & .mi-i {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: var(--r-xs);
+    background: var(--fill);
+    color: var(--icon);
+  }
+
+  & .mi-m {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  & .mi-l {
+    display: block;
+  }
+
+  & .mi-d {
+    display: block;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+  }
+
+  & .mi-s {
+    flex: none;
+    font-size: var(--fs-sm);
+    color: var(--muted);
+  }
+
+  & .mi .mi-x {
+    opacity: 0;
+  }
+
+  & .mi:hover .mi-x,
+  & .mi.on .mi-x,
+  & .mi .mi-x:focus-visible {
+    opacity: 1;
+  }
+
+  & .menu-sep {
+    height: 0.5px;
+    margin: 4px 8px;
+    background: var(--line-strong);
+  }
+
+  & .pop {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px;
+    max-width: calc(100% - 12px);
+  }
+
+  & .picker-l {
+    max-height: min(300px, 50vh);
+    overflow: hidden auto;
+    outline: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .picker-f {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 4px 4px;
+    border-top: 0.5px solid var(--line);
+  }
+
+  & .tip {
+    position: absolute;
+    z-index: var(--z-tip);
+    max-width: 280px;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    background: var(--solid);
+    color: var(--on-solid);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    white-space: pre-line;
+  }
+
+  /* Dialog: the scrim fades in with the dialog on it */
+  & .dlg-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-scrim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background: var(--scrim);
+    outline: none;
+    animation: fade-in var(--t) ease both;
+  }
+
+  & .dlg {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: min(760px, 100%);
+    max-height: 100%;
+    background: var(--sheet);
+    border-radius: var(--r-xl);
+    box-shadow: var(--sh-pop);
+    overflow: hidden;
+    outline: none;
+  }
+
+  & .dlg-h {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 6px 8px 6px 16px;
+    border-bottom: 0.5px solid var(--line);
+  }
+
+  & .dlg-h h2 {
+    font-size: var(--fs-lg);
+    line-height: var(--lh-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--title);
+  }
+
+  & .dlg-x {
+    margin-left: auto;
+  }
+
+  & .dlg-b {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  & .dlg-f {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-top: 0.5px solid var(--line);
+  }
+}
+
+/* The host of overlays, and a control placed in the app's own page: they bring the design system's scope, not a surface. */
+.ui-root.ui-overlays {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: none;
+  pointer-events: none;
+
+  & > *,
+  & .tip {
+    pointer-events: auto;
+  }
+
+  & > .tip {
+    pointer-events: none;
+  }
+}
+
+.ui-root.ui-inline {
+  display: inline-flex;
+  background: none;
+  color: inherit;
 }
 
 /* Reduced motion: nothing moves, end states apply at once. */
