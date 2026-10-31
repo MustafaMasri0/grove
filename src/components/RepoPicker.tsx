@@ -61,6 +61,7 @@ export function RepoPicker() {
           width={440}
           footer={
             <Button
+              kind="primary"
               icon="add"
               text="Add repository…"
               onClick={() => {
