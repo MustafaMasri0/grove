@@ -1,0 +1,66 @@
+/* The Add repository dialog. Fields, buttons and the tray come from src/ui. */
+.ui-root .repo-dlg {
+  width: min(480px, 100%);
+
+  & .dlg-f {
+    justify-content: flex-end;
+  }
+}
+
+.ui-root .repo-add {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+
+  & .tray {
+    align-self: flex-start;
+  }
+}
+
+/* Tall enough for either source, so switching leaves the footer where it is. */
+.ui-root .repo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 116px;
+}
+
+.ui-root .repo-f {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  & label {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    font-weight: 500;
+    color: var(--title);
+  }
+
+  & p {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+  }
+}
+
+.ui-root .repo-browse {
+  display: flex;
+  gap: 8px;
+
+  & .field {
+    flex: 1;
+    min-width: 0;
+  }
+}
+
+.ui-root .repo-err {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  color: var(--err);
+  overflow-wrap: anywhere;
+}

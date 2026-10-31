@@ -54,8 +54,8 @@ You need:
   load keys into `ssh-agent`, and connect once from a terminal to accept a new
   host key. Fetch and push run on the host, with its credentials.
 
-Add a repository from the **Repository** menu at the top left. Pick a folder,
-paste a path, or use **Connect over SSH…**.
+Add a repository from the **Repository** menu at the top left: choose
+**Add repository…**, then pick or paste a local folder, or switch to **SSH**.
 
 ## Features
 

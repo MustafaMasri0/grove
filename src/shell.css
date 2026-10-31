@@ -547,18 +547,3 @@
   color: var(--err);
 }
 
-.ui-root .repo-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.ui-root .repo-err {
-  padding: 2px 4px;
-  font-size: var(--fs-sm);
-  line-height: var(--lh-sm);
-  color: var(--err);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  user-select: text;
-}
