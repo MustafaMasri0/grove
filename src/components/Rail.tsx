@@ -3,6 +3,7 @@ import { worktreeItems } from "../lib/contextMenus";
 import { shortTime } from "../lib/format";
 import { canReveal } from "../lib/hostPaths";
 import { isMenuKey } from "../lib/menu";
+import { changeCountTitle } from "../lib/changes";
 import { railRows, railTitle, railVisible, sharedTitle, STATE_MARK, type RailRow } from "../lib/rail";
 import { clampRail, isNarrow } from "../lib/shell";
 import { useNow } from "../lib/useNow";
@@ -67,7 +68,7 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
         (shared > 0 || changed > 0) && (
           <>
             {shared > 0 && <WarnMark n={shared} title={sharedTitle(shared)} />}
-            {changed > 0 && <Count n={changed} title={`${changed} changed file${changed === 1 ? "" : "s"}`} />}
+            {changed > 0 && <Count n={changed} title={changeCountTitle(changed)} />}
           </>
         )
       }

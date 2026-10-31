@@ -75,6 +75,6 @@ describe("labels", () => {
   it("puts the rest in the tooltip in icons mode", () => {
     const [r] = railRows(input({ worktrees: [info("one")], changeCounts: { "/src/one": 1 } }), NOW);
     expect(railTitle(r, false)).toBe("one\nagent/one");
-    expect(railTitle(r, true)).toBe("one\nagent/one\nHas changes\n1 changed file");
+    expect(railTitle(r, true)).toBe("one\nagent/one\nHas changes\n1 file with uncommitted changes");
   });
 });

@@ -2,6 +2,7 @@
 // nothing blanks while the overview reloads; the overview only adds to them.
 import type { Overview, WorktreeInfo, WorktreeSummary } from "../api";
 import { shortSha } from "./format";
+import { changeCountTitle } from "./changes";
 import { lastActivity, sharedFiles, STATE_LABEL, worktreeName, worktreeState, type WorktreeState } from "./worktrees";
 
 export const STATE_MARK = { rejected: "error", changing: "active", changes: "changes", clean: "idle" } as const satisfies Record<WorktreeState, string>;
@@ -94,7 +95,7 @@ export function railTitle(r: RailRow, icons: boolean): string {
   const lines = [r.name, r.branch];
   if (icons) {
     lines.push(STATE_LABEL[r.state]);
-    if (r.changed) lines.push(`${r.changed} changed file${r.changed === 1 ? "" : "s"}`);
+    if (r.changed) lines.push(changeCountTitle(r.changed));
     if (r.shared) lines.push(sharedTitle(r.shared));
   }
   return lines.join("\n");

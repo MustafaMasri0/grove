@@ -470,26 +470,24 @@ fn summary_compares_with_the_base_and_the_upstream() {
 }
 
 #[test]
-fn summary_counts_uncommitted_and_committed_files_once_each() {
+fn summary_counts_only_uncommitted_files_and_lines() {
     let r = branched_repo();
     let wt = r.dir.path().join("feature-wt");
     git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
     let cwd = wt.to_str().unwrap();
     let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
-    assert_eq!(s.changed_files, 2, "committed since the base");
-    assert!(s.lines_added > 0);
+    assert!(s.base_ahead > 0, "the branch has commits the base lacks");
+    assert_eq!((s.changed_files, s.lines_added, s.lines_removed), (0, 0, 0), "commits do not count");
 
-    // a.txt is already among the branch's files; the untracked one adds a file but no lines.
-    let lines = s.lines_added;
+    // The untracked file adds a file but no lines.
     std::fs::write(wt.join("a.txt"), "one\nTWO\nthree\n").unwrap();
     std::fs::write(wt.join("untracked.txt"), "one\ntwo\n").unwrap();
     let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
-    assert_eq!(s.changed_files, 3);
-    assert_eq!(s.lines_added, lines + 1);
-
-    // Without a base only the uncommitted changes count.
-    let s = overview::summary(&h(), cwd, None, false).unwrap();
     assert_eq!((s.changed_files, s.lines_added, s.lines_removed), (2, 1, 0));
+
+    // The base changes nothing here.
+    let without = overview::summary(&h(), cwd, None, false).unwrap();
+    assert_eq!((without.changed_files, without.lines_added, without.lines_removed), (2, 1, 0));
 }
 
 #[test]
