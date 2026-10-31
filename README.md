@@ -72,9 +72,9 @@ paste a path, or use **Connect over SSH…**.
 - **Worktrees overview** (Overview in the rail, or
   Ctrl+Shift+O): every worktree of the repository side by side, with its
   branch, uncommitted files, commits ahead of and behind the base branch and
-  origin, and its last commit. Grove watches all worktrees while it is open: a
-  worktree whose files are changing pulses green (and reads Changing in the rail),
-  and an activity feed lists commits, branch switches and file edits in any of
+  origin, and its last commit, in a table you can sort. It keeps its order while
+  the pointer is over it. Grove watches all worktrees while it is open: a
+  worktree whose files are changing reads Changing, and an activity feed lists commits, branch switches and file edits in any of
   them. **Possible conflicts** lists files that two worktrees both
   change, committed since the base or not committed yet. A file committed on
   both sides only counts when the two versions differ and neither branch

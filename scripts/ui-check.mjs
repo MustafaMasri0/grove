@@ -25,7 +25,7 @@ const check = (name, ok, detail) => {
 };
 
 const walk = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? walk(join(dir, f)) : [join(dir, f)]));
-const SHELL = ["src/shell.css", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
+const SHELL = ["src/shell.css", "src/overview.css", "src/components/WorktreesPage.tsx", "src/components/Rail.tsx", "src/components/RepoPicker.tsx", "src/components/WorkHeader.tsx", "src/components/WindowControls.tsx", "src/components/foldRail.ts", "src/lib/rail.ts", "src/lib/branchAction.ts"].map((f) => join(root, f));
 const sources = [...walk(join(root, "src", "ui")), ...walk(join(root, "harness")), ...SHELL].filter((f) => /\.(css|tsx?|html)$/.test(f) && !f.endsWith(".test.tsx"));
 const sourceText = sources.map((f) => readFileSync(f, "utf8")).join("\n");
 
@@ -42,6 +42,14 @@ check("noForbiddenWording", !forbidden(sourceText).length, forbidden(sourceText)
 const legacy = readFileSync(join(root, "src", "styles.css"), "utf8");
 const collisions = [...legacy.matchAll(/(?<![\w-])\.(row|tab|badge|banner|spin|setting|avatar)(?![\w-])/g)].map((m) => m[0]);
 check("noKitClassesInAppStyles", !collisions.length, [...new Set(collisions)]);
+
+// Overview's styles live in src/overview.css, and each rule there is for something the page draws.
+check("noOverviewRulesInAppStyles", !/\.ov-|\.base-select select/.test(legacy));
+const pageText = ["src/components/WorktreesPage.tsx", "src/components/BaseSelect.tsx"].map((f) => readFileSync(join(root, f), "utf8")).join("\n");
+const overviewClasses = [...new Set([...readFileSync(join(root, "src", "overview.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/(?<![\w-])\.([a-z][\w-]*)(?=[^{}]*\{)/g)].map((m) => m[1]))];
+const kitText = readFileSync(join(root, "src", "ui", "controls.css"), "utf8");
+const unused = overviewClasses.filter((c) => c !== "app" && !new RegExp(`(?<![\\w-])${c}(?![\\w-])`).test(pageText) && !new RegExp(`\\.${c}(?![\\w-])`).test(kitText));
+check("noUnusedOverviewRules", !unused.length, unused);
 
 if (process.argv.includes("--bundle")) {
   const dist = join(root, "dist");
@@ -519,7 +527,7 @@ try {
   const autoQ = (o) => `&auto=${encodeURIComponent(JSON.stringify(o))}`;
   const settingsQ = (o) => `&settings=${encodeURIComponent(JSON.stringify(o))}`;
   // Only the shell is held to the design system's rules here: the panes inside it move over in later phases.
-  const SHELL_REGIONS = [".rail", ".work-top", ".wc"];
+  const SHELL_REGIONS = [".rail", ".work-top", ".wc", ".ov-page"];
   const shellAudit = async () => {
     const r = { fails: [], overflow: [] };
     for (const region of SHELL_REGIONS) {
@@ -868,6 +876,319 @@ try {
     await size(1440, 900);
     return d;
   });
+  // ---- The Overview, on the real App. ----
+  const SHOP = "/home/user/src/shop-platform", ONE = "/home/user/src/agent-01", TWO = "/home/user/src/agent-02", GONE = "/home/user/src/old-experiments";
+  const AT = 1_790_000_000;
+  const FEED = [
+    { at: AT + 70, path: TWO, kind: "editing", files: [["src/a/modified.ts", "modified"], ["src/a/added.ts", "added"], ["src/a/deleted.ts", "deleted"], ["src/a/new-name.ts", "renamed", "src/a/old-name.ts"], ["src/a/fifth.ts", "untracked"]].map(([path, kind, origPath]) => ({ path, kind, origPath: origPath ?? null })) },
+    { at: AT + 60, path: ONE, kind: "commit", text: "committed “Allow partial refunds”", sha: "0a1b2c3d" },
+    { at: AT + 50, path: ONE, kind: "moved", text: "now at 1b2c3d4 “Update readme”", sha: "1b2c3d4e" },
+    { at: AT + 40, path: TWO, kind: "branch", text: "switched to agent/cart-rounding" },
+    { at: AT + 30, path: TWO, kind: "added", text: "new worktree on agent/cart-rounding" },
+    { at: AT + 20, path: GONE, kind: "removed", text: "worktree removed" },
+    { at: AT + 10, path: GONE, kind: "commit", text: "committed “Old spike”", sha: "2c3d4e5f" },
+    { at: AT, path: GONE, kind: "editing", files: [{ path: "src/experiments/spike.ts", origPath: null, kind: "modified" }] },
+  ];
+  const seedFeed = async () => { await ev(`window.__store.setState({activity:${JSON.stringify(FEED)}});1`); await sleep(120); };
+  const openOverview = async (ov = "") => {
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark${ov ? `&ov=${ov}` : ""}` });
+    const ok = await waitFor(".ov-page .ov-head", 60000);
+    await sleep(500);
+    return ok;
+  };
+  const rowsNow = () => ev(`[...document.querySelectorAll(".ov-tbl tbody .wname .ell")].map(e=>e.textContent)`);
+  const badges = () => ev(`[...document.querySelectorAll(".sum .badge")].map(e=>e.textContent)`);
+  const sortBy = (n) => click(`.ov-tbl th:nth-child(${n}) .dt-sort`);
+
+  await attempt("overviewIsItsOwnScope", async () => {
+    await openOverview();
+    return {
+      root: await has(".ov-page.ui-root"),
+      noInnerScopes: (await count(".ov-page .ui-root")) === 1 && (await has(".ov-page .base-select .ui-root")),
+      noCards: !(await has(".ov-card, .ov-body, .ov-section")),
+      fullWidth: (await box(".ov-tbl table")).r === (await box(".ov-page")).r,
+      dragBand: (await count('.ov-head[data-tauri-drag-region="deep"]')) === 1,
+      clearOfControls: (await box(".ov-refresh")).r <= (await box(".wc")).l,
+    };
+  });
+  await attempt("overviewHead", async () => {
+    await openOverview();
+    const d = { title: (await text(".ov-head h1")) === "Overview" };
+    d.neutralAndChanges = JSON.stringify(await badges()) === JSON.stringify(["3 worktrees", "1 with changes"]);
+    d.check = (await ev(`document.querySelector(".ov-tools .chk input").checked`)) === true;
+    d.base = (await text(".ov-tools .sel .ell")) === "main";
+    d.refresh = (await text(".ov-refresh .btn-l")) === "Refresh";
+    await ev(`window.__store.setState({lastChange:{${JSON.stringify(TWO)}:Date.now()/1000+300},actions:{${JSON.stringify(ONE)}:{running:false,label:"",progress:"",error:null,rejected:true}}});1`);
+    await sleep(120);
+    const b = await badges();
+    d.live = b.includes("1 active");
+    d.rejected = b.includes("1 push rejected");
+    d.noChangesStillCounts = b.includes("1 with changes");
+    d.rejectedBadge = (await text('.ov-tbl tr[data-path$="agent-01"] .badge.error .ell')) === "Push rejected";
+    d.activeTag = (await text('.ov-tbl tr[data-path$="agent-02"] .st-tag.active .ell')) === "Changing";
+    d.liveNote = (await text(".live-note")) === "Live";
+    const before = await ipc("worktrees_overview");
+    await click(".ov-refresh");
+    await sleep(200);
+    d.refreshed = (await ipc("worktrees_overview")) > before;
+    return d;
+  });
+  await attempt("overviewTable", async () => {
+    await openOverview();
+    const row = 'tr[data-path$="agent-01"]';
+    const d = {};
+    d.columns = JSON.stringify(await ev(`[...document.querySelectorAll(".ov-tbl th")].map(e=>e.textContent)`)) === JSON.stringify(["Worktree", "Branch", "State", "Files", "+/−", "Origin", "↑↓ main", "Conflicts", "Last commit", "Last"]);
+    d.default = JSON.stringify(await rowsNow()) === JSON.stringify(["agent-01", "main worktree", "agent-02"]);
+    d.state = (await text(`${row} .st-tag .ell`)) === "Has changes" && (await text('tr[data-path$="agent-02"] .st-tag .ell')) === "Clean";
+    d.current = (await text(`${row} .wn .chip`)) === "current";
+    d.files = (await text(`${row} td:nth-child(4)`)) === "2";
+    d.lines = /\+12\s*−3/.test(await text(`${row} .delta`));
+    d.labelsWhole = await ev(`[...document.querySelectorAll(".ov-tbl th .ell")].every(e=>e.scrollWidth<=e.clientWidth)`);
+    d.notPublished = (await text(`${row} td:nth-child(6)`)) === "not published";
+    d.inSync = (await text('tr[data-path$="shop-platform"] td:nth-child(6)')) === "in sync";
+    d.aheadBehind = (await text(`${row} td:nth-child(7)`)) === "1/0";
+    d.baseOwnRow = (await text('tr[data-path$="shop-platform"] td:nth-child(7)')) === "–";
+    d.commit = (await text(`${row} .lc .ell`)) === "Allow partial refunds";
+    d.tip = (await ev(`document.querySelector('${row} .wname').dataset.tip`)).includes("agent/orders-refund · not published · Allow partial refunds (Dev Example)");
+    await sortBy(1);
+    d.sortAsc = JSON.stringify(await rowsNow()) === JSON.stringify(["agent-01", "agent-02", "main worktree"]) && (await ev(`document.querySelector(".ov-tbl th:nth-child(1)").getAttribute("aria-sort")`)) === "ascending";
+    await sortBy(1);
+    d.sortDesc = JSON.stringify(await rowsNow()) === JSON.stringify(["main worktree", "agent-02", "agent-01"]) && (await ev(`document.querySelector(".ov-tbl th:nth-child(1)").getAttribute("aria-sort")`)) === "descending";
+    await click('tr[data-path$="agent-02"] td:nth-child(4)');
+    await sleep(300);
+    d.opens = !(await has(".ov-page")) && (await text(".head h1 .ell")) === "agent-02";
+    await key("o", 79, CTRL_SHIFT);
+    await sleep(200);
+    d.sortOutlivesThePage = JSON.stringify(await rowsNow()) === JSON.stringify(["main worktree", "agent-02", "agent-01"]);
+    await ev(`window.__store.getState().setOverviewSort({key:"state",dir:1});1`);
+    return d;
+  });
+  await attempt("overviewOddRows", async () => {
+    await openOverview("odd");
+    const d = {};
+    d.diverged = /^origin ↑2 ↓1$/.test(await text('tr[data-path$="shop-platform"] td:nth-child(6)'));
+    d.detached = (await text('tr[data-path$="agent-01"] td:nth-child(2)')) === "detached @ 0a1b2c3";
+    d.noBranchOrigin = (await text('tr[data-path$="agent-01"] td:nth-child(6)')) === "–";
+    d.unborn = (await text('tr[data-path$="agent-02"] td:nth-child(2)')) === "no commits";
+    d.noCommit = (await text('tr[data-path$="agent-02"] td:nth-child(9)')) === "–";
+    return d;
+  });
+  await attempt("overviewHoldsOrder", async () => {
+    await openOverview();
+    const d = {};
+    const start = ["agent-01", "main worktree", "agent-02"], resorted = ["agent-02", "agent-01", "main worktree"];
+    const same = async (want) => JSON.stringify(await rowsNow()) === JSON.stringify(want);
+    const changeTwo = () => ev(`window.__store.setState({lastChange:{${JSON.stringify(TWO)}:Date.now()/1000+300}});1`);
+    await hover('tr[data-path$="agent-02"]');
+    await changeTwo();
+    await sleep(120);
+    d.heldUnderPointer = await same(start);
+    d.stateStillUpdates = (await text('tr[data-path$="agent-02"] .st-tag .ell')) === "Changing";
+    await sortBy(3);
+    await sleep(60);
+    d.clickSortsAtOnce = await same([...resorted].reverse());
+    await sortBy(3);
+    await sleep(60);
+    d.clickSortsBack = await same(resorted);
+    await ev(`window.__store.setState({lastChange:{}});1`);
+    await sleep(120);
+    d.heldAgain = await same(resorted);
+    await mouse(1000, 860);
+    await sleep(120);
+    d.leavingSorts = await same(start);
+    // Clicking a header leaves focus in the table; the pointer leaving must still re-sort.
+    await hover('tr[data-path$="agent-02"]');
+    await sortBy(1);
+    await sortBy(3);
+    await changeTwo();
+    await sleep(120);
+    d.heldAfterClick = await same(start);
+    await mouse(1000, 860);
+    await sleep(120);
+    d.leavingSortsAfterClick = await same(resorted);
+    // A row that arrives while held joins at the end instead of waiting for the pointer.
+    await ev(`window.__store.setState({lastChange:{}});1`);
+    await sleep(120);
+    await hover('tr[data-path$="agent-02"]');
+    await ev(`(()=>{const s=window.__store,o=s.getState().overview,w={...o.worktrees[0],path:"/home/user/src/agent-03",branch:"agent/new"};s.setState({overview:{...o,worktrees:[w,...o.worktrees]}})})();1`);
+    await sleep(120);
+    d.newRowJoinsAtEnd = (await rowsNow()).at(-1) === "agent-03";
+    await mouse(1000, 860);
+    return d;
+  });
+  await attempt("overviewKeyboard", async () => {
+    await openOverview();
+    const d = {};
+    await ev(`document.querySelector(".ov-tbl th .dt-sort").focus();1`);
+    await key("Enter", 13);
+    await sleep(60);
+    d.headerSorts = JSON.stringify(await rowsNow()) === JSON.stringify(["agent-01", "agent-02", "main worktree"]);
+    await key("Tab", 9);
+    await ev(`window.__store.getState().setOverviewSort({key:"state",dir:1});1`);
+    await sleep(60);
+    await ev(`document.querySelector('tr[data-path$="agent-02"]').focus();1`);
+    await key("Enter", 13);
+    await sleep(300);
+    d.rowOpens = (await text(".head h1 .ell")) === "agent-02";
+    await key("o", 79, CTRL_SHIFT);
+    await sleep(200);
+    await ev(`document.querySelector(".help").focus();1`);
+    await key("Tab", 9, 8);
+    await key("Tab", 9);
+    await sleep(100);
+    d.helpTipOnFocus = (await text("#overlays .tip"))?.startsWith("Files that more than one worktree changes");
+    return d;
+  });
+  await attempt("overviewLoading", async () => {
+    await openOverview("loading");
+    return { line: (await text(".ov .empty-line")) === "Loading…", noBadges: !(await has(".sum")), noTable: !(await has(".ov-tbl")), noSections: !(await has(".ov-pane")), head: await has(".ov-tools .chk") };
+  });
+  await attempt("overviewFailedLoad", async () => {
+    await openOverview("fail");
+    await waitFor(".ov .banner.error", 4000);
+    return { banner: (await text(".ov .banner.error"))?.includes("the connection to dev-box timed out"), noLoading: !(await has(".ov .empty-line")), noTable: !(await has(".ov-tbl")), noBadges: !(await has(".sum")) };
+  });
+  await attempt("overviewNoBaseBranch", async () => {
+    await openOverview("nobase");
+    return { note: (await text(".ov-note")) === "no base branch: pick one to compare with", header: (await text(".ov-tbl th:nth-child(7)")) === "↑↓ base", dash: (await text('tr[data-path$="agent-01"] td:nth-child(7)')) === "–", hint: (await ev(`document.querySelector(".help").dataset.tip`)).includes("since the base") };
+  });
+  await attempt("overviewWorktreeErrors", async () => {
+    await openOverview("errors");
+    return { rows: (await count(".ov-tbl tbody tr")) === 2, name: (await text(".ov-err b")) === "agent-02", message: (await text(".ov-err .err-text"))?.startsWith("fatal: not a git repository"), counted: (await badges())[0] === "2 worktrees" };
+  });
+  await attempt("overviewManySharedFiles", async () => {
+    await openOverview("many");
+    const d = {};
+    d.badge = (await text(".sum .badge.warn")) === "15 possible conflicts";
+    d.count = (await text(".ov-pane h2 .count")) === "15";
+    d.twelve = (await count(".ov-shared .row")) === 12;
+    d.more = (await text(".ov-more .btn-l")) === "Show all 15 files";
+    await click(".ov-more");
+    d.all = (await count(".ov-shared .row")) === 15 && (await text(".ov-more .btn-l")) === "Show fewer";
+    d.committedMark = (await text(".ov-shared .row:nth-child(2) .chip:nth-child(2)"))?.endsWith("committed") === false || (await count(".ov-shared .cs")) > 0;
+    d.tableBadge = (await text('tr[data-path$="agent-01"] .badge.warn')) === "15";
+    d.tableTip = (await ev(`document.querySelector('tr[data-path$="agent-01"] .badge.warn').dataset.tip`)) === "Also changed in main worktree, agent-02";
+    await click(".ov-more");
+    d.fewer = (await count(".ov-shared .row")) === 12;
+    const before = await ipc("status");
+    await click(".ov-shared button.chip");
+    await sleep(300);
+    d.chipOpens = !(await has(".ov-page")) || (await ipc("status")) > before;
+    return d;
+  });
+  await attempt("overviewActivityKinds", async () => {
+    await openOverview();
+    await seedFeed();
+    const d = {};
+    d.entries = (await count(".ev")) === 8;
+    d.empty = !(await has(".ov-feed .empty-line"));
+    const t = (n) => text(`.ev:nth-child(${n}) .a`);
+    d.editing = (await t(1)) === "changed 5 files";
+    d.commit = (await t(2)) === "committed “Allow partial refunds”";
+    d.moved = (await t(3)) === "now at 1b2c3d4 “Update readme”";
+    d.branch = (await t(4)) === "switched to agent/cart-rounding";
+    d.added = (await t(5)) === "new worktree on agent/cart-rounding";
+    d.removed = (await t(6)) === "worktree removed";
+    d.threeFiles = (await count(".ev:nth-child(1) .ev-file")) === 3;
+    d.letters = (await ev(`[...document.querySelectorAll(".ev:nth-child(1) .sl")].map(e=>e.textContent).join("")`)) === "MAD";
+    await click(".ev-more");
+    d.moreShown = (await count(".ev:nth-child(1) .ev-file")) === 5;
+    d.rename = (await ev(`document.querySelector(".ev:nth-child(1) .ev-file:nth-child(4) .path").title`)) === "src/a/old-name.ts → src/a/new-name.ts";
+    await click(".ev:nth-child(1) .ev-w");
+    await sleep(300);
+    d.worktreeLink = (await text(".head h1 .ell")) === "agent-02";
+    await key("o", 79, CTRL_SHIFT);
+    await sleep(200);
+    await click(".ev:nth-child(2) .ev-link");
+    await sleep(300);
+    d.commitLink = (await ipc("commit")) > 0 || !(await has(".ov-page"));
+    return d;
+  });
+  await attempt("overviewRemovedWorktree", async () => {
+    await openOverview();
+    await seedFeed();
+    return {
+      nameIsText: (await text(".ev:nth-child(6) .ev-w.gone")) === "old-experiments" && !(await has(".ev:nth-child(6) button")),
+      commitIsText: (await text(".ev:nth-child(7) .a")) === "committed “Old spike”" && !(await has(".ev:nth-child(7) button")),
+      filesAreText: (await count(".ev:nth-child(8) span.ev-file")) === 1 && !(await has(".ev:nth-child(8) button")),
+      liveStillLinks: await has(".ev:nth-child(2) .ev-link"),
+    };
+  });
+  await attempt("overviewOneWorktree", async () => {
+    await openOverview("one");
+    return { badge: (await badges())[0] === "1 worktree", row: (await count(".ov-tbl tbody tr")) === 1, none: (await text(".ov-shared .empty-line")) === "No two worktrees change the same file.", nothingYet: (await text(".ov-feed .empty-line"))?.startsWith("Nothing yet."), noChangesBadge: (await badges()).length === 1 };
+  });
+  await attempt("overviewConflictsOff", async () => {
+    await openOverview("many");
+    const d = { on: await has(".ov-shared") };
+    await ev(`document.querySelector(".ov-tools .chk input").click();1`);
+    await sleep(500);
+    d.sectionGone = !(await has(".ov-shared"));
+    d.solo = await has(".ov-split.solo");
+    d.activityFull = (await box(".ov-pane")).r === (await box(".ov-page")).r;
+    d.saved = (await lastSaved())?.possibleConflicts === false;
+    d.noGit = (await ev(`[...window.__ipc].reverse().find(c=>c.cmd==="worktrees_overview").args.findOverlaps ?? [...window.__ipc].reverse().find(c=>c.cmd==="worktrees_overview").args.overlaps`)) === false;
+    d.cellBlank = (await text('tr[data-path$="agent-01"] td:nth-child(8)')) === "";
+    return d;
+  });
+  await attempt("overviewMotion", async () => {
+    await openOverview();
+    await seedFeed();
+    const bad = new Map();
+    const grab = async () => { for (const a of await ev(CLASSIFY)) if (a.bad) bad.set(a.bad, a.where); };
+    await hover(".ov-tbl tbody tr");
+    for (let i = 0; i < 3; i++) { await grab(); await sleep(30); }
+    await sortBy(1);
+    await grab();
+    const rowsMoving = await ev(`document.getAnimations().filter(a=>a.effect.target.closest?.("tbody tr")&&a.transitionProperty!=="background-color"&&a.transitionProperty!=="opacity").length`);
+    await click(".ov-more, .ev-more");
+    await grab();
+    return { allowed: !bad.size, rowsStill: rowsMoving === 0, bad: bad.size ? [...bad.keys()].join() : true };
+  });
+  await attempt("overviewBandsHideColumns", async () => {
+    const shown = () => ev(`[...document.querySelectorAll(".ov-tbl th")].filter(e=>e.offsetWidth).length`);
+    const d = {};
+    await openOverview();
+    d.wide = (await shown()) === 10;
+    await size(1100, 700);
+    await sleep(120);
+    d.noCommitAt1100 = (await shown()) < 10;
+    await size(800, 500);
+    await sleep(120);
+    d.fewAt800 = (await shown()) === 7;
+    d.refreshIconOnly = (await width(".ov-refresh")) === 28;
+    d.refreshStillNamed = (await text(".ov-refresh .btn-l")) === "Refresh";
+    await size(1440, 900);
+    return d;
+  });
+  // Each state fits the design system's rules at both ends of the window, in both themes.
+  for (const [theme, w, h] of [["dark", 800, 500], ["light", 800, 500], ["dark", 1440, 900], ["light", 1440, 900]]) {
+    const views = {};
+    await size(w, h);
+    for (const ov of ["", "many", "errors", "nobase", "fail", "loading", "one", "odd"]) {
+      await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=${theme}&ov=${ov}` });
+      await waitFor(".ov-page .ov-head", 60000);
+      await sleep(500);
+      if (ov !== "loading" && ov !== "fail") await seedFeed();
+      await ev(`window.__store.setState({lastChange:{${JSON.stringify(TWO)}:Date.now()/1000+300},actions:{${JSON.stringify(ONE)}:{running:false,label:"",progress:"",error:null,rejected:true}}});1`);
+      await sleep(160);
+      views[ov || "live"] = await shellAudit();
+      await shot(`overview-${theme}-${w}x${h}-${ov || "live"}`);
+    }
+    const bad = Object.fromEntries(Object.entries(views).filter(([, v]) => v.fails.length || v.overflow.length || v.pageW > v.win || v.appW > v.win));
+    check(`overview-${theme}-${w}x${h}`, !Object.keys(bad).length, Object.keys(bad).length ? bad : undefined);
+  }
+  for (const font of [10, 18]) {
+    await size(800, 500);
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark&font=${font}&ov=many` });
+    await waitFor(".ov-page .ov-head", 60000);
+    await sleep(500);
+    await seedFeed();
+    const v = await shellAudit();
+    await shot(`overview-dark-800x500-font${font}`);
+    check(`overview-font-${font}`, !v.fails.length && !v.overflow.length && v.pageW <= v.win, v);
+  }
+  await size(1440, 900);
   await attempt("smallestWindow", async () => {
     await size(800, 500);
     await openApp();

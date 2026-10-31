@@ -8,6 +8,8 @@ const WT = [
 const HEAD = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
 const query = new URLSearchParams(location.search);
 // ?states=1 adds a worktree that is gone and the bare repository, ?none=1 opens no repository, ?settings=<JSON> adds saved settings, ?reject=1 refuses pushes.
+// ?ov=loading|fail|nobase|errors|many|one|odd picks what the Worktrees overview gets.
+const OV = query.get("ov");
 const UNUSUAL = [
   { path: "/home/user/src/agent-09", branch: "agent/old-spike", isMain: false, missing: true, prunable: "gitdir file points to non-existent location", bare: false },
   { path: "/home/user/src/shop-platform.git", branch: null, isMain: false, missing: false, prunable: null, bare: true },
@@ -34,6 +36,37 @@ const summary = (w: (typeof WT)[number], i: number) => ({
   upstreamBehind: 0,
   lastCommit: commit(HEAD, "Allow partial refunds"),
 });
+
+const SHARED_DIRS = ["src/server/orders/", "src/client/cart/", "src/shared/", "test/"];
+const SHARED = Array.from({ length: 15 }, (_, i) => `${SHARED_DIRS[i % SHARED_DIRS.length]}shared-${String(i + 1).padStart(2, "0")}.ts`);
+const overview = () => {
+  const worktrees = WT.map(summary);
+  const [root, one, two] = worktrees;
+  switch (OV) {
+    case "loading":
+      return new Promise(() => {});
+    case "fail":
+      throw "Could not read the worktrees: the connection to dev-box timed out";
+    case "errors":
+      return { worktrees: [root, one], errors: { [two.path]: "fatal: not a git repository: /home/user/src/agent-02" }, overlaps: [] };
+    case "many":
+      return { worktrees, errors: {}, overlaps: [{ a: root.path, b: one.path, files: SHARED.filter((_, i) => i % 2) }, { a: one.path, b: two.path, files: SHARED }] };
+    case "one":
+      return { worktrees: [root], errors: {}, overlaps: [] };
+    case "odd":
+      return {
+        worktrees: [
+          { ...root, upstreamAhead: 2, upstreamBehind: 1 },
+          { ...one, branch: null, upstream: null },
+          { ...two, branch: null, head: null, lastCommit: null, baseAhead: 0 },
+        ],
+        errors: {},
+        overlaps: [],
+      };
+    default:
+      return { worktrees, errors: {}, overlaps: [] };
+  }
+};
 
 const auto = () => {
   const given = JSON.parse(new URLSearchParams(location.search).get("auto") ?? "{}");
@@ -73,9 +106,9 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "status":
       return { branch: { oid: HEAD, head: "agent/orders-refund", upstream: null, ahead: 1, behind: 0 }, entries: a.cwd === WT[1].path ? CHANGED : [] };
     case "worktrees_overview":
-      return { worktrees: WT.map(summary), errors: {}, overlaps: [] };
+      return overview();
     case "resolve_base":
-      return "main";
+      return OV === "nobase" ? null : "main";
     case "branch_changes":
       return { mergeBase: OTHER, files: CHANGED.map((c) => ({ path: c.path, origPath: null, kind: c.kind })) };
     case "branch_status":

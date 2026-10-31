@@ -505,8 +505,7 @@
   transition: transform 160ms ease, visibility 0s 160ms;
 }
 
-/* Overview and Settings keep their own heads for now: the top of the page is a window band all the same. */
-.ov-head,
+/* Settings keeps its own head for now: the top of the page is a window band all the same. */
 .settings-head {
   padding-right: calc(var(--wc) + 12px);
 }
@@ -518,15 +517,6 @@
   z-index: 1;
   height: var(--band);
   border-bottom: 1px solid var(--border);
-}
-
-.ui-root.ui-inline.ov-banner {
-  display: block;
-}
-
-.ui-root.ui-inline.ov-welcome {
-  display: flex;
-  flex: 1;
 }
 
 /* Folding the rail (foldRail): transform, opacity and filter only, so nothing lays out while it runs. The page rides above the rail; its shadow carries the hairline and fills the strip it leaves on the right when opening. */

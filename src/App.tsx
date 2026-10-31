@@ -304,7 +304,7 @@ async function worktreesForTest(spec: string) {
   useStore.getState().setView("overview");
   const [what, n] = spec.split(":");
   if (what !== "chip" && what !== "feed") return;
-  const sel = what === "chip" ? ".ov-shared .ov-who-chip" : ".ov-feed button.link, .ov-feed .ov-file-link";
+  const sel = what === "chip" ? ".ov-shared button.chip" : ".ov-feed .ev-link, .ov-feed button.ev-file";
   for (let i = 0; i < 600; i++) {
     const el = document.querySelectorAll<HTMLElement>(sel)[Number(n)];
     if (el) {

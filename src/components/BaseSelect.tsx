@@ -10,7 +10,7 @@ export function BaseSelect() {
   const choices = branches.filter((b) => b.fullRef !== viewBranch?.fullRef).map((b) => ({ value: b.name, label: b.name }));
   return (
     <span className="base-select">
-      Base
+      <span className="base-l">Base</span>
       <span className="ui-root ui-inline">
         <Select label="Base branch" value={base} options={base && !choices.some((c) => c.value === base) ? [{ value: base, label: base }, ...choices] : choices} onPick={setBase} popWidth={260} />
       </span>
