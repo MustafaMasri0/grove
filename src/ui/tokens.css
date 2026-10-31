@@ -1,0 +1,146 @@
+/* Grove's design tokens: Carbon surfaces, status colours and the type, spacing and height scales.
+   They live on .ui-root, not :root, so they cannot reach anything drawn outside the design system.
+   Tokens marked MIT come from AffectUI's free items (see THIRD_PARTY_NOTICES.md); shell, surface and status colours are Grove's own. */
+.ui-root,
+:root[data-theme="dark"] .ui-root {
+  --shell: #08090a;
+  --sheet: #0c0d0e;
+  --card: #141516;
+  --well: #18191b;
+  --raised: #141516;
+  --title: #fff;
+  --ink: rgba(255, 255, 255, 0.9);
+  --muted: rgba(255, 255, 255, 0.62);
+  --icon: rgba(255, 255, 255, 0.5);
+  --faint: rgba(255, 255, 255, 0.3);
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --edge: rgba(255, 255, 255, 0.4);
+  --wash: rgba(255, 255, 255, 0.06);
+  --fill: rgba(255, 255, 255, 0.08);
+  --track: rgba(255, 255, 255, 0.06);
+  --press: rgba(255, 255, 255, 0.11);
+  --solid: rgba(255, 255, 255, 0.9);
+  --solid-hover: rgba(255, 255, 255, 0.82);
+  --on-solid: #161618;
+  --focus: #6b9dff;
+  --focus-soft: rgba(107, 157, 255, 0.28);
+  --link: #9fbdff;
+  --sh-hair: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --sh-hair-hover: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --sh-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(4, 4, 6, 0.52);
+  --live: #3ec27a;
+  --live-bg: rgba(62, 194, 122, 0.14);
+  --changes: #7fa8ff;
+  --changes-bg: rgba(127, 168, 255, 0.15);
+  --warn: #f0b43c;
+  --warn-bg: rgba(232, 162, 12, 0.14);
+  --warn-line: rgba(240, 180, 60, 0.22);
+  --err: #ff7b72;
+  --err-bg: rgba(255, 110, 100, 0.14);
+  --err-line: rgba(255, 110, 100, 0.22);
+  --on-status: #131316;
+  --add: #58d292;
+  --del: #ff8f87;
+  --tok-key: #b4b4ff;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] .ui-root {
+  --shell: #f2f2f3;
+  --sheet: #fcfcfd;
+  --card: #fff;
+  --well: #f8f8f9;
+  --raised: #fff;
+  --title: #000;
+  --ink: rgba(0, 0, 0, 0.88);
+  --muted: rgba(0, 0, 0, 0.61);
+  --icon: rgba(0, 0, 0, 0.447);
+  --faint: rgba(0, 0, 0, 0.27);
+  --line: rgba(0, 0, 0, 0.07);
+  --line-strong: rgba(0, 0, 0, 0.13);
+  --edge: rgba(0, 0, 0, 0.42);
+  --wash: rgba(0, 0, 0, 0.045);
+  --fill: rgba(0, 0, 0, 0.06);
+  --track: rgba(0, 0, 0, 0.05);
+  --press: rgba(0, 0, 0, 0.09);
+  --solid: rgba(0, 0, 0, 0.88);
+  --solid-hover: rgba(0, 0, 0, 0.8);
+  --on-solid: #fcfcfc;
+  --focus: #0a5fdc;
+  --focus-soft: rgba(10, 95, 220, 0.2);
+  --link: #0a55c8;
+  --sh-hair: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 1px -1px rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --sh-hair-hover: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 1px -1px rgba(0, 0, 0, 0.12), 0 1px 3px 0 rgba(0, 0, 0, 0.07);
+  --sh-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 12px 28px -10px rgba(0, 0, 0, 0.16), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --scrim: rgba(240, 240, 241, 0.6);
+  --live: #0f7040;
+  --live-bg: rgba(15, 112, 64, 0.09);
+  --changes: #1c50d0;
+  --changes-bg: rgba(47, 107, 255, 0.09);
+  --warn: #845500;
+  --warn-bg: rgba(232, 162, 12, 0.15);
+  --warn-line: rgba(160, 105, 0, 0.24);
+  --err: #ba1f19;
+  --err-bg: rgba(229, 72, 77, 0.09);
+  --err-line: rgba(229, 72, 77, 0.22);
+  --on-status: #fff;
+  --add: #0f7040;
+  --del: #ba1f19;
+  --tok-key: #4a4ac4;
+  color-scheme: light;
+}
+
+.ui-root {
+  --ui: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  --t: 120ms;
+  --avatar-lightness: 32%; /* Initials stay at 4.5:1 on every hue. */
+
+  /* The "UI font size" setting (10 to 18px, 13 by default). Text and the controls around it follow it, in whole pixels, so 13 is exactly the designed scale. */
+  --uf: var(--ui-font-size, 13px);
+  --fs-xs: round(calc(var(--uf) * 11 / 13), 1px);
+  --fs-sm: round(calc(var(--uf) * 12 / 13), 1px);
+  --fs-md: var(--uf);
+  --fs-lg: round(calc(var(--uf) * 15 / 13), 1px);
+  --fs-xl: round(calc(var(--uf) * 20 / 13), 1px);
+  --lh-xs: round(up, calc(var(--uf) * 16 / 13), 1px);
+  --lh-sm: round(up, calc(var(--uf) * 16 / 13), 1px);
+  --lh-md: round(up, calc(var(--uf) * 20 / 13), 1px);
+  --lh-lg: round(up, calc(var(--uf) * 20 / 13), 1px);
+  --lh-xl: round(up, calc(var(--uf) * 28 / 13), 1px);
+  --h-2xs: round(up, calc(var(--uf) * 18 / 13), 1px);
+  --h-xs: round(up, calc(var(--uf) * 20 / 13), 1px);
+  --h-tray-sm: round(up, calc(var(--uf) * 22 / 13), 1px);
+  --h-sm: round(up, calc(var(--uf) * 24 / 13), 1px);
+  --h-tab: round(up, calc(var(--uf) * 26 / 13), 1px);
+  --h-md: round(up, calc(var(--uf) * 28 / 13), 1px);
+  --h-lg: round(up, calc(var(--uf) * 32 / 13), 1px);
+  --h-toolbar: round(up, calc(var(--uf) * 40 / 13), 1px);
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 14px;
+  --z-pane: 10;
+  --z-pop: 20;
+  --z-scrim: 30;
+  --z-menu: 40;
+  --z-tip: 50;
+
+  --k-mod: var(--changes);
+  --k-add: var(--add);
+  --k-del: var(--del);
+  --k-ren: var(--tok-key);
+  --k-new: var(--add);
+  --k-ign: var(--muted);
+  --k-con: var(--err);
+}

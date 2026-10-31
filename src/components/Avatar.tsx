@@ -30,7 +30,7 @@ export function Avatar({ name, email, size, sha }: { name: string; email: string
     <span
       className="avatar"
       aria-hidden="true"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${avatarHue(email)} 42% 44%)` }}
+      style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${avatarHue(email)} 42% var(--avatar-lightness, 44%))` }}
     >
       {initials(name, email)}
       {url && <img src={url} alt="" draggable={false} onError={() => setUrl(null)} />}
