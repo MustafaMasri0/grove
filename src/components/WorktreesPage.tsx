@@ -107,35 +107,39 @@ function Head({ rows, shared }: { rows: OverviewRow[] | null; shared: number }) 
   const changed = rows?.filter((r) => r.summary.changedFiles > 0).length ?? 0;
 
   return (
-    <div className="ov-head" data-tauri-drag-region="deep">
-      <h1>Overview</h1>
-      {rows && (
-        <div className="sum">
-          <Badge className="b-all">{plural(rows.length, "worktree")}</Badge>
-          {changing > 0 && <Badge tone="live" tip="Files changing now">{changing} active</Badge>}
-          {changed > 0 && <Badge tone="changes">{changed} with changes</Badge>}
-          {shared > 0 && (
-            <Badge tone="warn" className="b-warn">
-              <WarnTriangle />
-              {shared} <span className="opt-long">possible </span>
-              {shared === 1 ? "conflict" : "conflicts"}
-            </Badge>
-          )}
-          {rejected > 0 && (
-            <Badge tone="error" className="b-err">
-              {rejected} <span className="opt-long">push </span>rejected
-            </Badge>
-          )}
-        </div>
-      )}
-      <div className="ov-tools">
-        <Checkbox text="Possible conflicts" tip="Look for files more than one worktree changes. When off, Grove runs none of the git commands this takes." checked={possibleConflicts} onChange={(e) => updateSettings({ possibleConflicts: e.target.checked })} />
-        <span className="ov-base" data-tip="The branch every worktree is compared with (ahead/behind, shared files); remembered for this repository">
-          <BaseSelect />
-        </span>
-        <Button className="ov-refresh" icon="sync" text="Refresh" tip="Refresh (F5)" disabled={loading && "Refresh (F5)"} loading={loading} onClick={() => void refresh()} />
+    <>
+      <div className="ov-head" data-tauri-drag-region="deep">
+        <h1>Overview</h1>
       </div>
-    </div>
+      <div className="ov-bar">
+        {rows && (
+          <div className="sum">
+            <Badge className="b-all">{plural(rows.length, "worktree")}</Badge>
+            {changing > 0 && <Badge tone="live" tip="Files changing now">{changing} active</Badge>}
+            {changed > 0 && <Badge tone="changes">{changed} with changes</Badge>}
+            {shared > 0 && (
+              <Badge tone="warn" className="b-warn">
+                <WarnTriangle />
+                {shared} <span className="opt-long">possible </span>
+                {shared === 1 ? "conflict" : "conflicts"}
+              </Badge>
+            )}
+            {rejected > 0 && (
+              <Badge tone="error" className="b-err">
+                {rejected} <span className="opt-long">push </span>rejected
+              </Badge>
+            )}
+          </div>
+        )}
+        <div className="ov-tools">
+          <Checkbox text="Possible conflicts" tip="Look for files more than one worktree changes. When off, Grove runs none of the git commands this takes." checked={possibleConflicts} onChange={(e) => updateSettings({ possibleConflicts: e.target.checked })} />
+          <span className="ov-base" data-tip="The branch every worktree is compared with (ahead/behind, shared files); remembered for this repository">
+            <BaseSelect />
+          </span>
+          <Button className="ov-refresh" icon="sync" text="Refresh" tip="Refresh (F5)" disabled={loading && "Refresh (F5)"} loading={loading} onClick={() => void refresh()} />
+        </div>
+      </div>
+    </>
   );
 }
 

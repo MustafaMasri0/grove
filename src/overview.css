@@ -18,9 +18,18 @@
     align-items: center;
     gap: 10px;
     height: var(--band);
-    padding: 0 calc(var(--wc) + 12px) 0 var(--gut);
+    padding: 0 var(--gut);
     border-bottom: 1px solid var(--line);
-    container: ov-head / inline-size;
+  }
+
+  & .ov-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px var(--gut);
+    border-bottom: 1px solid var(--line);
+    container: ov-bar / inline-size;
   }
 
   & .ov-head h1 {
@@ -56,10 +65,6 @@
 
   & .ov-base .sel {
     max-width: 180px;
-  }
-
-  & .base-l {
-    color: var(--muted);
   }
 
   & .ov-note {
@@ -424,19 +429,12 @@
   }
 
   /* Narrow bands: the longest words and columns go first. */
-  .app[data-size="m"] & .base-l,
-  .app[data-size="s"] & .base-l,
   .app[data-size="s"] & .opt-long,
   .app[data-size="s"] & .opt-col,
   .app[data-size="m"] & .opt-col-2,
   .app[data-size="m"] & .b-all,
   .app[data-size="s"] & .b-all {
     display: none;
-  }
-
-  .app[data-size="m"] & .ov-head,
-  .app[data-size="s"] & .ov-head {
-    padding-right: calc(var(--wc) + 10px);
   }
 
   .app[data-size="m"] & .sum,
@@ -471,7 +469,7 @@
   }
 
   /* In em, so a large UI font drops the long words too. */
-  @container ov-head (max-width: 40em) {
+  @container ov-bar (max-width: 40em) {
     & .opt-long {
       display: none;
     }

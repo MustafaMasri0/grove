@@ -15,7 +15,7 @@ interface Row {
   origPath: string | null;
   kind: ChangeKind;
   open: (pin: boolean) => void;
-  /** The plain file (worktree, or the tip of the viewed branch); null when deleted. */
+  /** The plain file (worktree, or the tip of the shown branch); null when deleted. */
   openFile: (() => void) | null;
   onDisk: boolean;
 }
@@ -111,7 +111,7 @@ export function ChangesPanel() {
         />
         {mode === "base" && (
           <span className="base-in" data-tip={`Base${baseDiff ? ` · ${baseDiff.files.length} files · since ${shortSha(baseDiff.mergeBase)}` : ""}`}>
-            <BaseSelect labelled={false} />
+            <BaseSelect />
           </span>
         )}
       </div>
