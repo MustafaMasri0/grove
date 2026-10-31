@@ -789,7 +789,7 @@ try {
   });
   await attempt("noRepository", async () => {
     await openApp("&none=1");
-    const d = { welcome: (await text(".rail .empty h2")) === "No repository open", noFilter: !(await has(".rail[data-bare]")) ? false : (await width(".rail-filter")) === 0, repo: (await text(".t-repo .btn-l")) === "Add a repository" };
+    const d = { welcome: (await text(".rail .empty h2")) === "No repository open", noFilter: !(await has(".rail[data-bare]")) ? false : (await width(".rail-filter")) === 0, repo: (await text(".t-repo .btn-l")) === "Add a repository", dragBand: (await box('.ov-page [data-tauri-drag-region="deep"]'))?.b === 44 && (await ev(`document.elementFromPoint(innerWidth/2,20).closest('[data-tauri-drag-region="deep"]')!==null`)) };
     await size(800, 500);
     await openApp("&none=1");
     d.onPage = (await text(".ov-page .empty h2")) === "No repository open";

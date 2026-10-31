@@ -511,6 +511,15 @@
   padding-right: calc(var(--wc) + 12px);
 }
 
+/* A page with no head of its own still has to move the window. */
+.page-band {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  height: var(--band);
+  border-bottom: 1px solid var(--border);
+}
+
 .ui-root.ui-inline.ov-banner {
   display: block;
 }

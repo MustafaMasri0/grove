@@ -49,6 +49,7 @@ export function WorktreesPage() {
   if (!repo)
     return (
       <div className="ov-page">
+        <div className="page-band" data-tauri-drag-region="deep" />
         {icons ? (
           <div className="ui-root ui-inline ov-welcome">
             <Empty {...WELCOME} />
