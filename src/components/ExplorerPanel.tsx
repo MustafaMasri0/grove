@@ -4,7 +4,7 @@ import { fileItems, folderItems } from "../lib/contextMenus";
 import { ancestorFolders, childrenOf, containsPath, dirsWithChanges, type TreeEntry } from "../lib/tree";
 import { useAt, useStore } from "../store";
 import { fileTab, revealPathOf } from "../tabs";
-import { currentWhere, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
 import { FileTypeIcon, FolderTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";
 import { ListView } from "./ListView";

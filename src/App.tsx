@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { useEffect, useRef } from "react";
 import { CommitPane } from "./components/CommitPane";
-import { ContextMenuHost, isKeyboardEcho, keepMenusOnBlur } from "./components/ContextMenu";
 import { EditorArea, editorCommands } from "./components/EditorArea";
 import { previewForTest } from "./components/HtmlPreview";
 import { imageCommands } from "./components/ImageView";
@@ -14,6 +13,8 @@ import { ZOOM_STEPS } from "./lib/settingsSchema";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
 import { normalizeSettings } from "./lib/settings";
 import { effectiveDark, setActionProgress, useStore, type LeftTab } from "./store";
+import { isKeyboardEcho, keepOverlaysOnBlur, OverlayHost } from "./ui";
+import { topEntry } from "./ui/overlayStack";
 
 function setZoom(z: number) {
   useStore.getState().updateSettings({ zoom: z });
@@ -35,7 +36,10 @@ function onKeyDown(e: KeyboardEvent) {
   const atWork = s.view === "work" && !s.settingsOpen;
   const tabs: Record<string, LeftTab> = { "1": "changes", "2": "history", "3": "explorer" };
 
-  if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
+  // An open overlay had the key first and passed on it: the page behind must not act. Browser shortcuts stay off.
+  if (topEntry()) {
+    if (key !== "F3" && !(ctrl && (key === "s" || key === "u" || key === "p"))) return;
+  } else if (ctrl && !e.shiftKey && key === "p") s.setQuickOpen(true);
   else if (ctrl && e.shiftKey && key === "o") s.setView("overview");
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
@@ -149,7 +153,8 @@ export function App() {
 
   const columns = showCommit ? `${leftWidth}px 4px ${commitWidth}px 4px 1fr` : `${leftWidth}px 4px 1fr`;
   return (
-    <div className="app">
+    <>
+    <div className="app" data-overlay-inert="">
       <TopBar />
       {repoError && <div className="banner error">{repoError}</div>}
       {connectionLost && (
@@ -177,8 +182,9 @@ export function App() {
         <EditorArea />
       </main>
       {quickOpen && repo && <QuickOpen />}
-      <ContextMenuHost />
     </div>
+    <OverlayHost />
+    </>
   );
 }
 
@@ -354,7 +360,7 @@ async function waitFor<T extends Element>(sel: string): Promise<T | null> {
 async function openMenuForTest(spec: string) {
   const [head, pickLabel] = spec.split(">");
   const [place, how] = head.split(":");
-  keepMenusOnBlur();
+  keepOverlaysOnBlur();
   const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const find = async (sel: string, pick?: (els: HTMLElement[]) => HTMLElement | undefined) => {
     for (let i = 0; i < 100; i++) {
@@ -382,8 +388,8 @@ async function openMenuForTest(spec: string) {
   };
   const s = useStore.getState();
   const dropdown = async (n: number) => {
-    (await find(".topbar .dd > .tb-button", (els) => els[n])).click();
-    return find(".dd-panel .dd-item", (els) => els.find((e) => e.classList.contains("current")) ?? els[0]);
+    (await find(".topbar .tb-switcher > .tb-button", (els) => els[n])).click();
+    return find(".picker .mi", (els) => els.find((e) => e.dataset.current) ?? els[0]);
   };
   const isFolder = (e: HTMLElement) => !!e.querySelector(".tree-chevron svg");
   // Rows of a scrolled list are also rendered just outside its visible part.
@@ -400,7 +406,7 @@ async function openMenuForTest(spec: string) {
     await openPlace(place);
     if (pickLabel) {
       // Chooses an option, as a click on it would.
-      const item = await find(".ctx-menu [role=menuitem]", (els) => els.find((e) => e.textContent?.startsWith(pickLabel)));
+      const item = await find(".menu [role=menuitem]", (els) => els.find((e) => e.textContent?.startsWith(pickLabel)));
       await wait(300);
       item.click();
     }

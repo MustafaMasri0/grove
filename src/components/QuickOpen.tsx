@@ -5,7 +5,8 @@ import { splitPath } from "../lib/format";
 import { isMenuKey } from "../lib/menu";
 import { useStore } from "../store";
 import { fileTab } from "../tabs";
-import { currentWhere, menuAtElement, menuAtPointer, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
+import { closeOverlay, menuAtElement, menuAtPointer, Overlay } from "../ui";
 import { FileTypeIcon } from "./FileTypeIcon";
 
 function Highlighted({ text, positions, offset }: { text: string; positions: Set<number>; offset: number }) {
@@ -63,27 +64,37 @@ export function QuickOpen() {
         }) : null;
   };
 
+  const keys = (e: KeyboardEvent) => {
+    if (isMenuKey(e)) {
+      const items = menuFor(active);
+      if (items) menuAtElement(list.current?.querySelector(".qo-item.active") ?? null, items);
+    } else if (e.key === "Escape") closeOverlay();
+    else if (e.key === "ArrowDown") setActive((a) => Math.min(results.length - 1, a + 1));
+    else if (e.key === "ArrowUp") setActive((a) => Math.max(0, a - 1));
+    else if (e.key === "Enter") pick(active, true);
+    else return false;
+    return true;
+  };
+
   return (
-    <div className="overlay" onMouseDown={() => setOpen(false)}>
-      <div className="quick-open" onMouseDown={(e) => e.stopPropagation()}>
+    <Overlay
+      kind="quick-open"
+      className="overlay"
+      modal
+      keys={keys}
+      onClose={() => setOpen(false)}
+      focus={(el) => el.querySelector("input")}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeOverlay();
+      }}
+    >
+      <div className="quick-open">
         <input
-          autoFocus
           placeholder={fileList ? `Go to file (${fileList.files.length} files)` : "Loading files…"}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
             setActive(0);
-          }}
-          onKeyDown={(e) => {
-            if (isMenuKey(e)) {
-              const items = menuFor(active);
-              if (items) menuAtElement(list.current?.querySelector(".qo-item.active") ?? null, items);
-            } else if (e.key === "Escape") setOpen(false);
-            else if (e.key === "ArrowDown") setActive((a) => Math.min(results.length - 1, a + 1));
-            else if (e.key === "ArrowUp") setActive((a) => Math.max(0, a - 1));
-            else if (e.key === "Enter") pick(active, true);
-            else return;
-            e.preventDefault();
           }}
         />
         <div className="qo-list" ref={list}>
@@ -113,6 +124,6 @@ export function QuickOpen() {
           {fileList && results.length === 0 && <div className="qo-empty">No matching files</div>}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

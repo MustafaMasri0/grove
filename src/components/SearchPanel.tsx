@@ -4,7 +4,7 @@ import { fileItems } from "../lib/contextMenus";
 import { splitPath } from "../lib/format";
 import { useAt, useStore } from "../store";
 import { fileTab } from "../tabs";
-import { currentWhere, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
 import { ListView } from "./ListView";
 
 type Row = { type: "file"; path: string; count: number } | { type: "hit"; hit: GrepHit; key: string };

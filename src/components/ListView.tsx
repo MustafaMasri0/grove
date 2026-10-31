@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { isMenuKey, type MenuItem } from "../lib/menu";
-import { menuAtElement, menuAtPointer } from "./ContextMenu";
+import { menuAtElement, menuAtPointer } from "../ui";
 
 export const ROW_HEIGHT = 24;
 

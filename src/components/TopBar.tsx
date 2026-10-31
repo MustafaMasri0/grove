@@ -1,5 +1,5 @@
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { errorText } from "../api";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems, repoItems, worktreeItems } from "../lib/contextMenus";
@@ -8,10 +8,42 @@ import { canReveal, displayPath, sshAddress } from "../lib/hostPaths";
 import { useNow } from "../lib/useNow";
 import { isActive, sharedFiles, worktreeName } from "../lib/worktrees";
 import { actionOf, useStore } from "../store";
-import { menuEnv } from "./ContextMenu";
-import { Dropdown, type DropdownItem } from "./Dropdown";
+import { menuEnv } from "../menuEnv";
+import { Button, Count, Field, Picker, type PickerItem } from "../ui";
 import { WindowControls } from "./WindowControls";
 import { Icon } from "./Icon";
+
+/** A top-bar switcher: a wide button that opens a Picker. `footer` gets what closes it. */
+function Switcher(p: {
+  caption: string;
+  value: ReactNode;
+  icon: ReactNode;
+  items: PickerItem[];
+  onPick: (key: string) => void;
+  searchable?: boolean;
+  placeholder?: string;
+  footer?: (close: () => void) => ReactNode;
+  disabled?: boolean;
+  width?: number;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = () => setOpen(false);
+  return (
+    <div className="tb-switcher">
+      <button ref={button} className={`tb-button${open ? " open" : ""}`} disabled={p.disabled} onClick={() => setOpen(!open)} title={p.title} style={{ width: p.width }} aria-haspopup="listbox" aria-expanded={open}>
+        <span className="tb-icon">{p.icon}</span>
+        <span className="tb-text">
+          <span className="tb-caption">{p.caption}</span>
+          <span className="tb-value">{p.value}</span>
+        </span>
+        <span className="tb-chevron">▾</span>
+      </button>
+      {open && <Picker anchor={button.current} items={p.items} onPick={p.onPick} onClose={close} searchable={p.searchable} placeholder={p.placeholder} label={p.caption} width={440} footer={p.footer?.(close)} />}
+    </div>
+  );
+}
 
 function RepoSwitcher() {
   const settings = useStore((s) => s.settings);
@@ -40,7 +72,7 @@ function RepoSwitcher() {
     }
   };
 
-  const items: DropdownItem[] = settings.repos.map((r) => {
+  const items: PickerItem[] = settings.repos.map((r) => {
     const info = repos[r];
     const name = info && "name" in info ? info.name : r.split(/[\\/]/).filter(Boolean).pop() ?? r;
     return {
@@ -51,22 +83,24 @@ function RepoSwitcher() {
       current: repo?.id === r,
       menu: () => repoItems(menuEnv, { name, path: info && "root" in info ? displayPath(info, info.root) : null, reveal: !!info && "root" in info && canReveal(info), remove: () => removeRepo(r) }),
       trailing: (
-        <button
-          className="icon-button dd-remove"
+        <Button
+          kind="ghost"
+          size="sm"
+          icon="close"
+          label="Remove from list"
+          className="mi-x"
           title="Remove from list"
           onClick={(e) => {
             e.stopPropagation();
             removeRepo(r);
           }}
-        >
-          ×
-        </button>
+        />
       ),
     };
   });
 
   return (
-    <Dropdown
+    <Switcher
       caption="Repository"
       value={repo ? repo.name : "Add a repository"}
       icon={<Icon name="root-folder" />}
@@ -78,16 +112,15 @@ function RepoSwitcher() {
       onPick={(k) => void selectRepo(k)}
       footer={(close) => (
         <div className="repo-add">
-          <button
-            className="primary"
+          <Button
+            kind="primary"
+            text="Add repository folder…"
             onClick={async () => {
               const picked = await openDialog({ directory: true, multiple: false, title: "Choose a git repository folder" });
               if (typeof picked === "string") await add(picked, close);
             }}
-          >
-            Add repository folder…
-          </button>
-          <button onClick={() => setSsh(ssh ? null : { host: "", path: "" })}>Connect over SSH…</button>
+          />
+          <Button text="Connect over SSH…" onClick={() => setSsh(ssh ? null : { host: "", path: "" })} />
           {ssh && (
             <form
               onSubmit={(e) => {
@@ -95,11 +128,9 @@ function RepoSwitcher() {
                 if (ssh.host.trim() && ssh.path.trim()) void add(sshAddress(ssh.host, ssh.path), close);
               }}
             >
-              <input autoFocus placeholder="user@host, or a name from ssh config" value={ssh.host} onChange={(e) => setSsh({ ...ssh, host: e.target.value })} />
-              <input placeholder="path, e.g. /home/user/src/example or ~/example" value={ssh.path} onChange={(e) => setSsh({ ...ssh, path: e.target.value })} />
-              <button className="primary" type="submit" disabled={connecting}>
-                {connecting ? "Connecting…" : "Connect"}
-              </button>
+              <Field autoFocus placeholder="user@host, or a name from ssh config" value={ssh.host} onChange={(e) => setSsh({ ...ssh, host: e.target.value })} />
+              <Field placeholder="path, e.g. /home/user/src/example or ~/example" value={ssh.path} onChange={(e) => setSsh({ ...ssh, path: e.target.value })} />
+              <Button kind="primary" type="submit" text={connecting ? "Connecting…" : "Connect"} disabled={connecting ? "Connecting…" : undefined} />
             </form>
           )}
           <form
@@ -108,7 +139,7 @@ function RepoSwitcher() {
               void add(typed, close);
             }}
           >
-            <input placeholder="or paste a path, or ssh://user@host/path" value={typed} onChange={(e) => setTyped(e.target.value)} />
+            <Field placeholder="or paste a path, or ssh://user@host/path" value={typed} onChange={(e) => setTyped(e.target.value)} />
           </form>
           {error && <div className="error-text">{error}</div>}
         </div>
@@ -119,11 +150,7 @@ function RepoSwitcher() {
 
 /** The uncommitted-changes badge of a worktree; nothing when it is clean or not counted yet. */
 function ChangeBadge({ n }: { n: number | undefined }) {
-  return n ? (
-    <span className="badge change-badge" title={changeCountTitle(n)}>
-      {n}
-    </span>
-  ) : null;
+  return n ? <Count n={n} title={changeCountTitle(n)} /> : null;
 }
 
 function WorktreeSwitcher() {
@@ -138,7 +165,7 @@ function WorktreeSwitcher() {
   const label = (w: (typeof worktrees)[number]) => (w.branch ? w.branch : w.head ? `detached @ ${shortSha(w.head)}` : "bare");
   const now = useNow(5_000);
 
-  const items: DropdownItem[] = worktrees.map((w) => ({
+  const items: PickerItem[] = worktrees.map((w) => ({
     key: w.path,
     label: (
       <>
@@ -160,7 +187,7 @@ function WorktreeSwitcher() {
   }));
 
   return (
-    <Dropdown
+    <Switcher
       caption={`Worktree${worktrees.length > 1 ? ` (${worktrees.length})` : ""}`}
       value={current ? worktreeName(current) : "—"}
       icon={<Icon name="worktree" />}
@@ -185,7 +212,7 @@ function BranchSwitcher() {
   const current = worktrees.find((w) => w.path === cwd);
   const value = viewBranch ? viewBranch.name : current?.branch ?? (current?.head ? `detached @ ${shortSha(current.head)}` : "—");
 
-  const items: DropdownItem[] = branches.map((b) => {
+  const items: PickerItem[] = branches.map((b) => {
     const wt = b.kind === "local" ? worktrees.find((w) => w.branch === b.name && !w.missing) : undefined;
     const isCurrent = viewBranch ? viewBranch.fullRef === b.fullRef : b.kind === "local" && current?.branch === b.name;
     return {
@@ -202,7 +229,7 @@ function BranchSwitcher() {
   items.sort((a, b) => (a.section === b.section ? 0 : a.section === "Local branches" ? -1 : 1));
 
   return (
-    <Dropdown
+    <Switcher
       caption={viewBranch ? "Branch (view only)" : "Branch"}
       value={value}
       icon={<Icon name="git-branch" />}

@@ -6,7 +6,7 @@ import type { MenuItem } from "../lib/menu";
 import { SEARCH_LIMIT, useStore, type FileHistory } from "../store";
 import { commitFileTab } from "../tabs";
 import { Avatar } from "./Avatar";
-import { menuEnv } from "./ContextMenu";
+import { menuEnv } from "../menuEnv";
 import { ListView } from "./ListView";
 
 /** The commit list (or one file's commits); the selected commit opens in the commit pane next to it. */

@@ -4,7 +4,7 @@ import { buildTree, compactFolders, flattenTree, type TreeNode, type TreeRow } f
 import { folderItems } from "../lib/contextMenus";
 import type { MenuItem } from "../lib/menu";
 import { useStore } from "../store";
-import { currentWhere, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
 import { FileRow } from "./FileRow";
 import { FolderTypeIcon } from "./FileTypeIcon";
 import { Icon } from "./Icon";

@@ -7,7 +7,7 @@ import { useStore } from "../store";
 import { fileTab, revisionTab, uncommittedTab } from "../tabs";
 import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 import { BaseSelect } from "./BaseSelect";
-import { currentWhere, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
 
 interface Row {
   path: string;

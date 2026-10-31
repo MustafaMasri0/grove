@@ -4,7 +4,8 @@ import { commitItems, fileItems } from "../lib/contextMenus";
 import { shortSha } from "../lib/format";
 import { useStore } from "../store";
 import { commitFileTab, fileTab } from "../tabs";
-import { currentWhere, menuAtPointer, menuEnv } from "./ContextMenu";
+import { currentWhere, menuEnv } from "../menuEnv";
+import { menuAtPointer } from "../ui";
 import { Avatar } from "./Avatar";
 import { ChangedFilesView, ChangesViewToggle } from "./ChangedFilesView";
 
