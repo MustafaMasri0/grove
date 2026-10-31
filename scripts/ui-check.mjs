@@ -1796,8 +1796,14 @@ try {
     d.searchFocused = await focusIs(".set-q input");
     d.navPressed = await has('.rail-nav[aria-label="Settings"][aria-pressed="true"]');
     d.pageStaysBehind = (await ev(`getComputedStyle(document.querySelector(".work")).visibility`)) === "visible" && (await ev(`document.querySelector(".monaco-editor").__keep`)) === 1;
-    d.count = (await text(".set-count")) === "All settings are at their defaults";
-    d.resetOff = await has('.set-top .tgl[aria-disabled="true"]');
+    d.noCountAtDefaults = !(await has(".set-count"));
+    d.resetOff = await has('.set-foot .tgl[aria-disabled="true"]');
+    const rail = await box(".set-rail"), find = await box(".set-q"), foot = await box(".set-foot"), json = await box(".dlg-h .set-json"), x = await box(".dlg-x");
+    const row = await box(".set-n");
+    d.searchTopsRail = find.t >= rail.t && find.t < (await box(".set-nav")).t;
+    d.searchMatchesRows = find.l === row.l && find.r === row.r;
+    d.resetFootsRail = foot.b === rail.b && foot.r <= rail.r;
+    d.fileBesideClose = json.r <= x.l && x.l - json.r <= 16;
     await shot("surface-settings");
     await type("minimap");
     await sleep(80);
@@ -1887,12 +1893,12 @@ try {
     await sleep(60);
     d.zoomKey = (await setting("zoom")) === 1.1 && (await text("[id='setting-zoom'] .ell")) === "110%";
     // Reset all asks twice, and keeps the repositories.
-    await clickText(".set-top .tgl", "Reset all");
+    await clickText(".set-foot .tgl", "Reset all");
     await sleep(60);
-    d.asks = (await text(".set-top .tgl .btn-l")) === "Click again to reset all";
-    await clickText(".set-top .tgl", "Click again to reset all");
+    d.asks = (await text(".set-foot .tgl .btn-l")) === "Click again to reset all";
+    await clickText(".set-foot .tgl", "Click again to reset all");
     await sleep(100);
-    d.allReset = (await text(".set-count")) === "All settings are at their defaults" && (await setting("zoom")) === 1 && (await setting("repos")).length === 1;
+    d.allReset = !(await has(".set-count")) && (await setting("zoom")) === 1 && (await setting("repos")).length === 1;
     return d;
   });
   await attempt("surfaceSettingsNav", async () => {
@@ -1939,7 +1945,7 @@ try {
   await attempt("surfaceSettingsJson", async () => {
     await openApp();
     await openSettings();
-    await clickText(".set-top .btn.link", "Open settings.json");
+    await click(".dlg-h .set-json");
     await sleep(300);
     const d = { closes: !(await has(".set-dlg")), tab: (await text(".tabs .tab.on .ell")) === "settings.json", header: await has(".head h1") };
     d.list = await has(".left .ptabs");
@@ -1950,7 +1956,7 @@ try {
     await openApp("&none=1");
     await openSettings();
     const d = { opens: await has(".set-dlg"), empty: (await text(".set-note")) === "No repositories yet. Add one from the Repository menu at the top left." };
-    await clickText(".set-top .btn.link", "Open settings.json");
+    await click(".dlg-h .set-json");
     d.editor = await waitFor(".monaco-editor .view-lines", 15000);
     await sleep(300);
     d.tab = (await text(".tabs .tab.on .ell")) === "settings.json";
@@ -1965,7 +1971,7 @@ try {
     await sleep(120);
     d.overviewShowsWelcome = await has(".ov-page .empty");
     await openSettings();
-    await clickText(".set-top .btn.link", "Open settings.json");
+    await click(".dlg-h .set-json");
     await sleep(300);
     d.sameTab = (await count(".tabs .tab")) === 1;
     await key("w", 87, CTRL);
@@ -1974,7 +1980,7 @@ try {
     await size(800, 500);
     await openApp("&none=1");
     await openSettings();
-    await clickText(".set-top .btn.link", "Open settings.json");
+    await click(".dlg-h .set-json");
     await waitFor(".monaco-editor .view-lines", 15000);
     await sleep(300);
     const a = await shellAudit();
@@ -2215,6 +2221,14 @@ try {
       await ev(`window.__store.getState().updateSettings({uiFontSize:${font}+0,editor:{...window.__store.getState().settings.editor,tabSize:2}});1`);
       await sleep(100);
       d.settings = await audited(".set-dlg", "settings");
+      await clickText(".set-foot .tgl", "Reset all");
+      await sleep(60);
+      d.confirmingReset = await audited(".set-dlg", "reset");
+      await key("Escape", 27);
+      await sleep(60);
+      await openSettings();
+      await clickText(".set-n", "Editor");
+      await sleep(100);
       await clickText(".set-n", "Repositories");
       await sleep(100);
       d.repositories = await audited(".set-dlg", "repositories");

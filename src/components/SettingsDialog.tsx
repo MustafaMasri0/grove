@@ -92,6 +92,18 @@ export function SettingsDialog() {
     <Dialog
       title="Settings"
       className="set-dlg"
+      head={
+        <Button
+          kind="link"
+          className="set-json"
+          text="Open settings.json"
+          tip="Show the saved settings file (read-only)"
+          onClick={() => {
+            setFileError(null);
+            openSettingsFile().catch((e) => setFileError(errorText(e)));
+          }}
+        />
+      }
       onClose={closeSettings}
       onEscape={() => {
         if (!query) return false;
@@ -100,55 +112,49 @@ export function SettingsDialog() {
         return true;
       }}
     >
-      <div className="set-top">
-        <Field
-          ref={search}
-          search
-          data-autofocus
-          className="set-q"
-          placeholder="Search settings"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            if (body.current) body.current.scrollTop = 0;
-          }}
-        />
-        <span className="muted set-count" role="status">
-          {modified === 0 ? "All settings are at their defaults" : `${modified} changed`}
-        </span>
-        <span className="spacer" />
-        <Button
-          kind="link"
-          text="Open settings.json"
-          tip="Show the saved settings file (read-only)"
-          onClick={() => {
-            setFileError(null);
-            openSettingsFile().catch((e) => setFileError(errorText(e)));
-          }}
-        />
-        <Toggle
-          text={confirmReset ? "Click again to reset all" : "Reset all"}
-          on={confirmReset}
-          disabled={modified === 0 ? "No settings have been changed" : undefined}
-          tip="Put every setting on this page back to its default. Added repositories and their base branches are kept."
-          onClick={() => {
-            if (!confirmReset) return setConfirmReset(true);
-            updateSettings(resetAll(settings, ALL_PATHS));
-            setConfirmReset(false);
-          }}
-        />
-      </div>
       {fileError && (
         <div className="set-err set-file" role="alert">
           {fileError}
         </div>
       )}
       <div className="set-split">
-        <nav className="set-nav" aria-label="Sections">
-          {sections.map(({ id }) => (
-            <Toggle key={id} className="set-n" text={sectionTitle(id)} on={on === id} onClick={() => goTo(id)} />
-          ))}
-        </nav>
+        <div className="set-rail">
+          <Field
+            ref={search}
+            search
+            data-autofocus
+            className="set-q"
+            placeholder="Search settings"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              if (body.current) body.current.scrollTop = 0;
+            }}
+          />
+          <nav className="set-nav" aria-label="Sections">
+            {sections.map(({ id }) => (
+              <Toggle key={id} className="set-n" text={sectionTitle(id)} on={on === id} onClick={() => goTo(id)} />
+            ))}
+          </nav>
+          <div className="set-foot">
+            <Toggle
+              text={confirmReset ? "Click again to reset all" : "Reset all"}
+              on={confirmReset}
+              disabled={modified === 0 ? "No settings have been changed" : undefined}
+              tip="Put every setting on this page back to its default. Added repositories and their base branches are kept."
+              onClick={() => {
+                if (!confirmReset) return setConfirmReset(true);
+                updateSettings(resetAll(settings, ALL_PATHS));
+                setConfirmReset(false);
+              }}
+            />
+            {modified > 0 && (
+              <span className="muted set-count" role="status">
+                {modified} changed
+              </span>
+            )}
+          </div>
+        </div>
         <div ref={body} className="set-b" onScroll={follow}>
           {sections.map(({ id, content }) => (
             <section key={id} className="set-sec" data-sec={id} aria-label={sectionTitle(id)}>

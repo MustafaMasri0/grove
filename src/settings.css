@@ -7,20 +7,13 @@
     flex-direction: column;
   }
 
-  & .set-top {
-    flex: none;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 12px;
-    padding: 8px 16px;
-    border-bottom: 0.5px solid var(--line);
+  /* Beside the close button. */
+  & .set-json {
+    margin-left: auto;
   }
 
-  & .set-q {
-    flex: 1 1 200px;
-    max-width: 320px;
-    min-width: 160px;
+  & .dlg-x {
+    margin-left: 0;
   }
 
   & .set-count {
@@ -41,15 +34,40 @@
   }
 
   /* Wide enough for "Keyboard shortcuts" at every UI font size. */
-  & .set-nav {
-    width: max(180px, 13em);
+  & .set-rail {
+    width: max(190px, 13.5em);
     flex: none;
-    padding: 8px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
     border-right: 0.5px solid var(--line);
+  }
+
+  & .set-q {
+    flex: none;
+    width: auto;
+    margin: 8px 8px 0;
+  }
+
+  & .set-nav {
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
     display: flex;
     flex-direction: column;
     gap: 2px;
     overflow: hidden auto;
+  }
+
+  & .set-foot {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 8px;
+    padding: 8px;
+    border-top: 0.5px solid var(--line);
   }
 
   & .set-n {
@@ -174,18 +192,31 @@
   }
 }
 
-/* Below 800px the section nav is a strip above the body. */
+/* Below 800px the rail is a band above the body: search and reset on a line, the sections in a strip under them. */
 @media (max-width: 799.98px) {
   .ui-root .set-dlg {
     & .set-split {
       flex-direction: column;
     }
 
-    & .set-nav {
+    & .set-rail {
       width: auto;
-      flex-direction: row;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
       border-right: 0;
       border-bottom: 0.5px solid var(--line);
+    }
+
+    & .set-foot {
+      flex-wrap: nowrap;
+      padding: 8px 8px 0 0;
+      border-top: 0;
+    }
+
+    & .set-nav {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      flex-direction: row;
       overflow: auto hidden;
       scrollbar-width: none;
       padding: 6px 8px;
