@@ -1,6 +1,6 @@
 // Every control in each state, drawn by src/ui itself. .is-hover, .is-focus and .is-active stand in for the real pseudo-classes.
-// Overlays and Select come with Phase 3. The Live section is the only interactive part: scripts/ui-check.mjs uses it to see real motion.
-import { useState, type ReactNode } from "react";
+// The Live section is the only interactive part: scripts/ui-check.mjs uses it to see real motion and the real overlays.
+import { useRef, useState, type ReactNode } from "react";
 import type { ChangeKind } from "../src/api";
 import { Avatar } from "../src/components/Avatar";
 import { FileTypeIcon, FolderTypeIcon } from "../src/components/FileTypeIcon";
@@ -14,6 +14,7 @@ import {
   Chip,
   Count,
   Delta,
+  Dialog,
   EditorTab,
   Empty,
   EmptyLine,
@@ -24,11 +25,16 @@ import {
   Keys,
   LoadingLine,
   Mark,
+  menuAtElement,
+  MenuRows,
+  OverlayHost,
   PathLabel,
+  Picker,
   ProgressLine,
   Resizer,
   Row,
   SectionLabel,
+  Select,
   SettingRow,
   Skeleton,
   Slider,
@@ -43,6 +49,8 @@ import {
   WarnTriangle,
   type ButtonProps,
   type MarkState,
+  type PickerItem,
+  type RichMenuItem,
 } from "../src/ui";
 import { STATUS_LETTER, STATUS_TITLE, splitDisplayPath } from "../src/ui/classes";
 import { SAMPLE_FILES } from "./mockIpc";
@@ -414,6 +422,86 @@ function Structure() {
   );
 }
 
+const noop = () => {};
+const MENU: RichMenuItem[] = [{ label: "Open", shortcut: "Enter", run: noop }, { label: "Copy path", run: noop }, { label: "Copy relative path", run: noop }, { separator: true }, { label: "Reveal in File Explorer", disabled: true, disabledReason: "Not available over SSH", run: noop }, { separator: true }, { label: "Close", shortcut: "Ctrl+W", run: noop }];
+const CHECKS: RichMenuItem[] = [{ label: "Collapse unchanged", check: true, run: noop }, { label: "Ignore whitespace", check: false, run: noop }, { label: "Show ignored files", check: false, disabled: true, run: noop }];
+const ICONS: RichMenuItem[] = [
+  { label: "Go to Overview", lead: <Icon name="home" size={13} />, detail: "Worktrees and activity", trailing: <Keys keys={["Ctrl", "Shift", "O"]} />, run: noop },
+  { label: "Open Settings", lead: <Icon name="gear" size={13} />, trailing: <Keys keys={["Ctrl", ","]} />, run: noop },
+  { label: "agent-06", lead: <Icon name="git-branch" size={13} />, detail: "agent/payment-retry", trailing: <StateTag state="active" label="Changing" />, run: noop },
+];
+const PICK: PickerItem[] = [
+  { key: "main", label: "main", section: "Local branches", detail: "checked out in main worktree", current: true },
+  { key: "a", label: "agent/payment-retry", section: "Local branches", detail: "checked out in agent-06", trailing: <Count n={3} /> },
+  { key: "r", label: "release/2.4", section: "Local branches", detail: "3 days ago · view only", menu: () => MENU as never },
+  { key: "o", label: "origin/main", section: "Remote branches", detail: "2 hours ago · view only" },
+];
+const BRANCHES = [{ value: "main", label: "main" }, { value: "development", label: "development" }, { value: "release/2.4", label: "release/2.4" }];
+
+function Overlays() {
+  return (
+    <Section title="Overlays">
+      <Group title="Menu" note="The highlighted row is the active item.">
+        <Cell label="Separator, disabled, shortcut"><div className="menu"><MenuRows items={MENU} active={0} /></div></Cell>
+        <Cell label="Check marks"><div className="menu"><MenuRows items={CHECKS} /></div></Cell>
+        <Cell label="Icon, detail, trailing"><div className="menu"><MenuRows items={ICONS} active={1} /></div></Cell>
+      </Group>
+      <Group title="Select">
+        <Cell label="Default"><Select label="Base" value="main" options={BRANCHES} onPick={noop} /></Cell>
+        <Cell label="Disabled"><Select label="Base" value="main" options={BRANCHES} onPick={noop} disabled="Unavailable here" /></Cell>
+        <Cell label="Placeholder"><Select label="Base" value={null} placeholder="Pick a branch" options={BRANCHES} onPick={noop} /></Cell>
+      </Group>
+      <Group title="Tooltip">
+        <Cell label="Short"><div className="tip">Fetch origin</div></Cell>
+        <Cell label="Two lines"><div className="tip">{"Fetch origin\nLast fetched 13 minutes ago"}</div></Cell>
+      </Group>
+    </Section>
+  );
+}
+
+/** The real overlays, opened as a person would. */
+function LiveOverlays() {
+  const [last, setLast] = useState("Nothing chosen yet");
+  const [branch, setBranch] = useState("main");
+  const [picker, setPicker] = useState(false);
+  const [dialog, setDialog] = useState(false);
+  const pickerButton = useRef<HTMLButtonElement>(null);
+  const items = MENU.map((m) => ("separator" in m ? m : { ...m, run: () => setLast(`Menu: ${m.label}`) }));
+  return (
+    <Group title="Overlays">
+      <Cell label="Menu"><Button data-live="menu" text="Open menu" onClick={(e) => menuAtElement(e.currentTarget, items)} /></Cell>
+      <Cell label="Picker">
+        <Button ref={pickerButton} data-live="picker" text="Open picker" aria-expanded={picker} onClick={() => setPicker(!picker)} />
+        {picker && <Picker anchor={pickerButton.current} items={PICK.map((p) => ({ ...p, current: p.label === last.slice(8) }))} searchable placeholder="Filter branches" onClose={() => setPicker(false)} onPick={(k) => setLast(`Picker: ${PICK.find((p) => p.key === k)?.label}`)} />}
+      </Cell>
+      <Cell label="Dialog">
+        <Button data-live="dialog" text="Open dialog" onClick={() => setDialog(true)} />
+        {dialog && (
+          <Dialog
+            title="Dialog title"
+            onClose={() => setDialog(false)}
+            foot={
+              <>
+                <span className="spacer" />
+                <Button text="Cancel" onClick={() => setDialog(false)} />
+                <Button kind="primary" text="Confirm" onClick={() => setDialog(false)} />
+              </>
+            }
+          >
+            <div className="gal-pad">
+              <p>Dialog body text sits on the sheet.</p>
+              <Field label="Name" placeholder="Name" />
+            </div>
+          </Dialog>
+        )}
+      </Cell>
+      <Cell label="Select"><span data-live="select"><Select label="Live select" value={branch} options={BRANCHES} onPick={setBranch} /></span></Cell>
+      <Cell label="Tooltip"><Button data-live="tip" text="Hover me" tip="A tooltip shows after a short wait" /></Cell>
+      <Cell label="Last choice"><span className="muted" role="status" data-live="last">{last}</span></Cell>
+    </Group>
+  );
+}
+
 /** Controls that really change, so the checks can watch their motion. */
 function Live() {
   const [tray, setTray] = useState<"a" | "b" | "c">("b");
@@ -438,24 +526,29 @@ function Live() {
           <Mark state={mark} />
         </Cell>
       </Group>
+      <LiveOverlays />
     </Section>
   );
 }
 
 export function Gallery() {
   return (
-    <div className="ui-root" id="app">
-      <main className="gal-scroll">
-        <h1 className="gal-title">Design system</h1>
-        <Live />
-        <Tokens />
-        <Actions />
-        <Inputs />
-        <Lists />
-        <Status />
-        <Feedback />
-        <Structure />
-      </main>
-    </div>
+    <>
+      <div className="ui-root" id="app" data-overlay-inert="">
+        <main className="gal-scroll">
+          <h1 className="gal-title">Design system</h1>
+          <Live />
+          <Tokens />
+          <Actions />
+          <Inputs />
+          <Overlays />
+          <Lists />
+          <Status />
+          <Feedback />
+          <Structure />
+        </main>
+      </div>
+      <OverlayHost />
+    </>
   );
 }

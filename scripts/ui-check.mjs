@@ -42,7 +42,7 @@ if (process.argv.includes("--bundle")) {
   const dist = join(root, "dist");
   if (!existsSync(dist)) throw new Error("no dist: run pnpm build first");
   const built = walk(dist).filter((f) => /\.(js|css|html)$/.test(f));
-  const found = ["ui-root", "gal-scroll", "harness/main", "mockIPC", "The harness has no answer", "Inter Variable"].filter((s) => built.some((f) => readFileSync(f, "utf8").includes(s)));
+  const found = ["gal-scroll", "harness/main", "harness/app", "mockIPC", "The harness has no answer", "shop-platform"].filter((s) => built.some((f) => readFileSync(f, "utf8").includes(s)));
   check("productionBundleClean", !found.length, found);
   report.bundleFiles = built.length;
   finish();
@@ -71,13 +71,13 @@ app.querySelectorAll(".badge,.badge *,.count,.btn,kbd,.tray>button").forEach(e=>
 app.querySelectorAll(".btn:not(.link),.field,.row,.badge,.count,.tray>button").forEach(e=>{if(e.closest(".sr,svg")||!e.offsetWidth||!e.textContent.trim()||e.tagName==="INPUT")return;const s=document.createRange();s.selectNodeContents(e);const t=s.getBoundingClientRect();if(t.height>e.getBoundingClientRect().height+1)clip.push("TALL "+e.textContent.trim().slice(0,20))});
 return{texts:n,fails:fails.slice(0,30),failCount:fails.length,sizes,overflow:[...new Set(clip)].slice(0,12),docW:app.scrollWidth,win:app.clientWidth,font:getComputedStyle(app).fontFamily.slice(0,20)}})()`;
 
-const KEEP_ANIM = ["pie", "turn"], COLOUR = ["background-color", "color", "box-shadow", "opacity"];
+const KEEP_ANIM = ["fade-in", "pie", "turn"], COLOUR = ["background-color", "color", "box-shadow", "opacity"];
 // Timing comes from the stylesheet: a reversed transition runs shorter, so getTiming() can't tell.
 const CLASSIFY = `(()=>{const out=[];for(const a of document.getAnimations()){const t=a.effect&&a.effect.target,cs=getComputedStyle(t);
  const spec=(kind,names,name)=>{const i=Math.max(0,cs[names].split(", ").indexOf(name));return{dur:Math.round(parseFloat(cs[kind+"Duration"].split(", ")[i])*1000),ease:cs[kind+"TimingFunction"].split(/, (?![^(]*[)])/)[i]}};
  const where=e=>!e?"?":(e.tagName||"")+"."+String(e.className&&e.className.baseVal!==undefined?e.className.baseVal:e.className).split(" ")[0];
  let key,bad=null;
- if(a instanceof CSSAnimation){key="animation:"+a.animationName;if(!${JSON.stringify(KEEP_ANIM)}.includes(a.animationName))bad=key}
+ if(a instanceof CSSAnimation){const {dur,ease}=spec("animation","animationName",a.animationName);key="animation:"+a.animationName;if(!${JSON.stringify(KEEP_ANIM)}.includes(a.animationName))bad=key;else if(a.animationName==="fade-in"&&(dur!==120||ease!=="ease"))bad=key+" "+dur+" "+ease}
  else if(a instanceof CSSTransition){const p=a.transitionProperty,{dur,ease}=spec("transition","transitionProperty",p);key="transition:"+p;
   if(${JSON.stringify(COLOUR)}.includes(p)||p==="fill"){if(dur!==120||ease!=="ease")bad=key+" "+dur+" "+ease}
   else if(p==="left"||p==="right"){if(!t.matches(".tray>.glide")||dur!==160||ease!=="ease")bad=key+" "+where(t)+" "+dur}
@@ -150,6 +150,29 @@ try {
   const mouse = (x, y, type = "mouseMoved") => send("Input.dispatchMouseEvent", { type, x, y, button: type === "mouseMoved" ? "none" : "left", clickCount: type === "mouseMoved" ? 0 : 1 });
   const hover = async (sel) => { const c = await center(sel); if (!c) throw new Error(`no ${sel}`); await mouse(c.x, c.y); return c; };
   const click = async (sel) => { const c = await hover(sel); await mouse(c.x, c.y, "mousePressed"); await mouse(c.x, c.y, "mouseReleased"); };
+  const CODES = { Escape: "Escape", ArrowDown: "ArrowDown", ArrowUp: "ArrowUp", Enter: "Enter", Tab: "Tab", F10: "F10", ContextMenu: "ContextMenu", p: "KeyP", w: "KeyW" };
+  // mods: 2 is Ctrl, 8 is Shift.
+  const key = async (k, vk, mods = 0) => {
+    const base = { key: k, code: CODES[k], windowsVirtualKeyCode: vk, modifiers: mods };
+    // Enter carries its character: a form submits on that, not on the bare key.
+    await send("Input.dispatchKeyEvent", k === "Enter" ? { type: "keyDown", text: "\r", ...base } : { type: "rawKeyDown", ...base });
+    await send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+    await sleep(40);
+  };
+  const type = async (text) => { await send("Input.insertText", { text }); await sleep(60); };
+  const has = (sel) => ev(`!!document.querySelector(${JSON.stringify(sel)})`);
+  const focusIs = (sel) => ev(`!!document.activeElement?.matches?.(${JSON.stringify(sel)})`);
+  const waitFor = async (sel, ms = 20000) => { for (let i = 0; i < ms / 50; i++) { if (await has(sel)) return true; await sleep(50); } return false; };
+  const attempt = async (name, fn) => {
+    try {
+      const r = await fn();
+      check(name, r === true || (r && typeof r === "object" && Object.values(r).every(Boolean)), r === true ? undefined : r);
+    } catch (e) {
+      check(name, false, String(e.message ?? e));
+    }
+    await key("Escape", 27);
+    await key("Escape", 27);
+  };
 
   await send("Page.enable");
   await send("Runtime.enable");
@@ -198,7 +221,12 @@ try {
   await step(() => click("input.field"));
   await step(() => hover(".gal-rz .resize"));
   await step(() => click('[data-live="check"]'));
-  const need = ["animation:pie", "animation:turn", "transition:background-color", "transition:left", "transition:transform", "transition:opacity"];
+  for (const o of ["menu", "picker", "dialog"]) {
+    await step(() => click(`[data-live="${o}"]`));
+    await key("Escape", 27);
+    await sleep(60);
+  }
+  const need = ["animation:fade-in", "animation:pie", "animation:turn", "transition:background-color", "transition:left", "transition:transform", "transition:opacity"];
   report.motion = { seen: Object.fromEntries([...seen].map(([k, v]) => [k, [...v].slice(0, 6)])), violations: Object.fromEntries(bad) };
   check("motionAllowList", !bad.size && need.every((k) => seen.has(k)), { violations: Object.fromEntries(bad), missing: need.filter((k) => !seen.has(k)) });
 
@@ -215,6 +243,267 @@ try {
   const running = await ev(`document.getAnimations().filter(a=>a.playState==="running").length`);
   await send("Emulation.setEmulatedMedia", { features: [] });
   check("reducedMotion", !before.length && !running, { before, running });
+
+  // ---- The real overlays, in the gallery. ----
+  await size(1440, 900);
+  await open("theme=dark");
+  await attempt("galleryLiveOverlays", async () => {
+    const d = {};
+    for (const [k, target, sel] of [["menu", '[data-live="menu"]', "#overlays .menu"], ["picker", '[data-live="picker"]', "#overlays .picker"], ["dialog", '[data-live="dialog"]', "#overlays .dlg"], ["select", '[data-live="select"] .sel', "#overlays .picker"]]) {
+      await click(target);
+      await sleep(180);
+      d[k] = await has(sel);
+      await key("Escape", 27);
+      await sleep(60);
+      d[`${k}Closed`] = !(await has("#overlays > :not(.tip)"));
+      d[`${k}FocusBack`] = await focusIs(target);
+    }
+    return d;
+  });
+  await attempt("tooltip", async () => {
+    await hover('[data-live="tip"]');
+    await sleep(700);
+    const shown = await has("#overlays .tip");
+    const text = await ev(`document.querySelector("#overlays .tip")?.textContent`);
+    await mouse(2, 2);
+    await sleep(60);
+    return { shown, text: text === "A tooltip shows after a short wait", gone: !(await has("#overlays .tip")) };
+  });
+  await attempt("dialogFocusTrap", async () => {
+    await click('[data-live="dialog"]');
+    await sleep(160);
+    const d = { inert: await has("#app[inert]"), focusIn: await ev(`!!document.activeElement.closest(".dlg")`) };
+    for (let i = 0; i < 8; i++) await key("Tab", 9);
+    d.tabStays = await ev(`!!document.activeElement.closest(".dlg")`);
+    for (let i = 0; i < 8; i++) await key("Tab", 9, 8);
+    d.shiftTabStays = await ev(`!!document.activeElement.closest(".dlg")`);
+    await key("Escape", 27);
+    d.closed = !(await has(".dlg"));
+    d.inertGone = !(await has("#app[inert]"));
+    d.focusBack = await focusIs('[data-live="dialog"]');
+    await click('[data-live="dialog"]');
+    await sleep(100);
+    await mouse(4, 4);
+    await mouse(4, 4, "mousePressed");
+    await mouse(4, 4, "mouseReleased");
+    d.scrimCloses = !(await has(".dlg"));
+    return d;
+  });
+  await attempt("pickerKeyboard", async () => {
+    await click('[data-live="picker"]');
+    await sleep(120);
+    const d = { filterFocused: await focusIs("#overlays .picker input") };
+    await type("rel");
+    d.filtered = (await ev(`document.querySelectorAll("#overlays .picker .mi").length`)) === 1;
+    await key("ContextMenu", 93);
+    await sleep(100);
+    d.menuOnTop = await has("#overlays .menu");
+    d.keyboardFirstItem = await has("#overlays .menu .mi.on");
+    await key("Escape", 27);
+    d.onlyMenuClosed = !(await has("#overlays .menu")) && (await has("#overlays .picker"));
+    await key("Enter", 13);
+    await sleep(60);
+    d.picked = (await ev(`document.querySelector('[data-live="last"]').textContent`)) === "Picker: release/2.4";
+    d.focusBack = await focusIs('[data-live="picker"]');
+    await click('[data-live="picker"]');
+    await sleep(100);
+    await click('[data-live="picker"]');
+    d.anchorToggles = !(await has("#overlays .picker"));
+    return d;
+  });
+  await attempt("transientOverlays", async () => {
+    const open = async () => { await click('[data-live="menu"]'); await sleep(100); return has("#overlays .menu"); };
+    const d = {};
+    d.opened = await open();
+    await ev(`window.dispatchEvent(new Event("blur"));1`);
+    await sleep(40);
+    d.blur = !(await has("#overlays .menu"));
+    await open();
+    await send("Input.dispatchMouseEvent", { type: "mouseWheel", x: 4, y: 4, deltaX: 0, deltaY: 40 });
+    await sleep(80);
+    d.wheelOutside = !(await has("#overlays .menu"));
+    await open();
+    await ev(`window.dispatchEvent(new Event("resize"));1`);
+    await sleep(40);
+    d.resize = !(await has("#overlays .menu"));
+    await click('[data-live="picker"]');
+    await sleep(100);
+    await ev(`window.dispatchEvent(new Event("resize"));1`);
+    d.pickerStaysOnResize = await has("#overlays .picker");
+    await mouse(4, 4);
+    await mouse(4, 4, "mousePressed");
+    await mouse(4, 4, "mouseReleased");
+    await sleep(40);
+    d.pickerClosesOutside = !(await has("#overlays .picker"));
+    return d;
+  });
+  await attempt("selectArrowOpens", async () => {
+    await ev(`document.querySelector('[data-live="select"] .sel').focus();1`);
+    await key("ArrowDown", 40);
+    await sleep(100);
+    const opened = await has("#overlays .picker");
+    await key("ArrowDown", 40);
+    await key("Enter", 13);
+    await sleep(60);
+    return { opened, picked: (await ev(`document.querySelector('[data-live="select"] .sel').textContent`)) === "development" };
+  });
+
+  // ---- The real App on mocked IPC. ----
+  const openApp = async (q = "") => {
+    await send("Page.navigate", { url: `http://localhost:${vitePort}/harness/app.html?theme=dark${q}` });
+    await sleep(300);
+    const ok = await waitFor(".topbar .tb-switcher", 60000);
+    await sleep(500);
+    return ok;
+  };
+  const ipc = (name) => ev(`window.__ipc.filter(c=>c.cmd===${JSON.stringify(name)}).length`);
+  const switcher = (n) => `.topbar .tb-switcher:nth-of-type(${n}) .tb-button`;
+  const toWork = async () => { await ev(`document.querySelectorAll(".tab-strip .tab, .left-tabs button")[0]?.click();1`); };
+  await attempt("appStarts", async () => ({ opened: await openApp(), host: await has("#overlays.ui-root"), inert: !(await has(".app[inert]")) }));
+  await attempt("worktreePicker", async () => {
+    await click(".topbar .tb-switcher:nth-child(2) .tb-button");
+    await sleep(160);
+    const d = { open: await has(".picker .mi"), current: await has('.picker .mi[data-current]'), noCollisions: !(await has("#overlays .row, #overlays .tab, #overlays .banner, #overlays .setting, #overlays .avatar, #overlays .badge, #overlays .spin")) };
+    const before = await ipc("status");
+    await key("ArrowDown", 40);
+    await key("Enter", 13);
+    await sleep(400);
+    d.switched = (await ipc("status")) > before;
+    d.closed = !(await has(".picker"));
+    d.value = (await ev(`document.querySelectorAll(".topbar .tb-value")[1].textContent`)) === "agent-02";
+    return d;
+  });
+  await attempt("branchPicker", async () => {
+    await click(".topbar .tb-switcher:nth-child(4) .tb-button");
+    await sleep(160);
+    const d = { sections: (await ev(`document.querySelectorAll(".picker .sec-l").length`)) === 2 };
+    await type("origin/");
+    d.filtered = (await ev(`document.querySelectorAll(".picker .mi").length`)) === 1;
+    await key("Enter", 13);
+    await sleep(300);
+    d.viewOnly = await ev(`[...document.querySelectorAll(".topbar .tb-caption")].some(e=>e.textContent==="Branch (view only)")`);
+    return d;
+  });
+  await attempt("repoPickerSshForm", async () => {
+    await openApp();
+    await click(".topbar .tb-switcher:nth-child(1) .tb-button");
+    await sleep(160);
+    const d = { listed: (await ev(`document.querySelectorAll(".picker .mi").length`)) === 1 };
+    await click(".picker-f .btn:nth-of-type(2)");
+    await sleep(100);
+    d.hostFocused = await focusIs('.picker-f input[placeholder^="user@host"]');
+    await type("user@dev-box");
+    await key("Tab", 9);
+    d.tabInForm = await focusIs('.picker-f input[placeholder^="path"]');
+    await type("~/src/example");
+    d.stillOpen = await has(".picker");
+    const before = await ipc("open_repo");
+    await key("Enter", 13);
+    await sleep(500);
+    d.connected = (await ev(`window.__ipc.filter(c=>c.cmd==="open_repo").some(c=>String(c.args.path).startsWith("ssh://user@dev-box"))`)) && (await ipc("open_repo")) > before;
+    d.closedAfter = !(await has(".picker"));
+    return d;
+  });
+  await attempt("repoRemoveButton", async () => {
+    await openApp();
+    await click(".topbar .tb-switcher:nth-child(1) .tb-button");
+    await sleep(160);
+    await hover(".picker .mi");
+    const visible = await ev(`getComputedStyle(document.querySelector(".picker .mi-x")).opacity==="1"`);
+    await click(".picker .mi-x");
+    await sleep(160);
+    return { visible, stayedOpen: await has(".picker"), removed: !(await has(".picker .mi")) };
+  });
+  await attempt("baseSelect", async () => {
+    await openApp();
+    await click(".ov-tools .sel");
+    await sleep(160);
+    const d = { open: await has(".picker .mi") };
+    const before = await ipc("worktrees_overview");
+    await key("ArrowDown", 40);
+    await key("Enter", 13);
+    await sleep(300);
+    d.reloaded = (await ipc("worktrees_overview")) > before;
+    return d;
+  });
+  // Every context menu, through the app's own WV_CONTEXT_MENU hook, by right-click and by key.
+  const PLACES = ["changes", "changes:key", "commit", "commit:key", "commitfile", "commitfile:key", "explorer", "explorer:key", "folder", "folder:key", "search", "search:key", "quickopen", "quickopen:key", "tab", "tab:key", "repo", "repo:key", "worktree", "worktree:key", "branch", "branch:key"];
+  const menus = {};
+  for (const place of PLACES) {
+    await openApp(`&auto=${encodeURIComponent(JSON.stringify({ contextMenu: place, ...(place.startsWith("tab") ? { openFile: "README.md" } : {}) }))}`);
+    await waitFor("#overlays .menu", 8000);
+    await sleep(120);
+    menus[place] = {
+      items: await ev(`document.querySelectorAll("#overlays .menu [role=menuitem]").length`),
+      first: place.endsWith(":key") ? await has("#overlays .menu .mi.on") : true,
+    };
+    if (place === "repo" || place === "changes") await shot(`app-menu-${place}`);
+  }
+  report.menus = menus;
+  const emptyMenus = Object.entries(menus).filter(([, m]) => !m.items || !m.first).map(([k]) => k);
+  check("everyContextMenu", !emptyMenus.length, emptyMenus);
+  await attempt("menuOptionRuns", async () => {
+    await openApp(`&auto=${encodeURIComponent(JSON.stringify({ contextMenu: "changes>Copy path" }))}`);
+    await sleep(1500);
+    return { copied: (await ipc("copy_text")) === 1, closed: !(await has("#overlays .menu")) };
+  });
+  await attempt("contextMenuKeys", async () => {
+    await openApp();
+    await ev(`document.querySelector(".tab-strip .tab")?.click();1`);
+    await ev(`[...document.querySelectorAll(".left-tabs button")][0].click();1`);
+    await sleep(300);
+    const d = { list: await waitFor(".left .list .row", 8000) };
+    await click(".left .list .row");
+    await ev(`document.querySelector(".left .list").focus();1`);
+    await key("F10", 121, 8);
+    await sleep(100);
+    d.shiftF10 = await has("#overlays .menu .mi.on");
+    d.target = await has(".left .list .row.menu-target");
+    await ev(`document.querySelector(".left .list").dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true}));1`);
+    d.echoIgnored = (await ev(`document.querySelectorAll("#overlays .menu").length`)) === 1;
+    await key("ArrowDown", 40);
+    d.arrow = await ev(`document.querySelector("#overlays .menu").getAttribute("aria-activedescendant")!=="mi-0"`);
+    await key("Escape", 27);
+    d.closed = !(await has("#overlays .menu"));
+    d.targetCleared = !(await has(".left .list .row.menu-target"));
+    d.focusBack = await focusIs(".left .list");
+    await key("ContextMenu", 93);
+    await sleep(100);
+    d.menuKey = await has("#overlays .menu .mi.on");
+    await key("ContextMenu", 93);
+    d.menuKeyCloses = !(await has("#overlays .menu"));
+    d.focusBack2 = await focusIs(".left .list");
+    return d;
+  });
+  await attempt("keysWithMonaco", async () => {
+    await openApp(`&auto=${encodeURIComponent(JSON.stringify({ openFile: "src/server/orders/create.ts" }))}`);
+    const d = { editor: await waitFor(".monaco-editor textarea, .monaco-editor .native-edit-context", 15000) };
+    await ev(`document.querySelector(".tab-strip .tab")?.click();1`);
+    await sleep(600);
+    await ev(`document.querySelector(".editor-host:not([hidden]) .monaco-editor textarea, .monaco-editor textarea, .monaco-editor .native-edit-context").focus();1`);
+    d.inMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
+    const tabs = `document.querySelectorAll(".tab-strip .tab").length`;
+    const before = await ev(tabs);
+    await key("p", 80, 2);
+    await sleep(200);
+    d.quickOpen = await has("#overlays .quick-open");
+    d.inert = await has(".app[inert]");
+    await key("w", 87, 2);
+    await sleep(100);
+    d.pageIgnoresCtrlW = (await ev(tabs)) === before;
+    await ev(`document.querySelector(".qo-item")?.dispatchEvent(new MouseEvent("contextmenu",{bubbles:true,cancelable:true,clientX:300,clientY:200}));1`);
+    await sleep(120);
+    d.menuOverQuickOpen = await has("#overlays .menu");
+    d.modalStays = await has("#overlays .quick-open");
+    await key("Escape", 27);
+    d.escClosesMenuOnly = !(await has("#overlays .menu")) && (await has("#overlays .quick-open"));
+    await key("Escape", 27);
+    await sleep(60);
+    d.closed = !(await has("#overlays .quick-open"));
+    d.inertGone = !(await has(".app[inert]"));
+    d.focusBackInMonaco = await ev(`!!document.activeElement.closest(".monaco-editor")`);
+    return d;
+  });
 
   check("noConsoleErrors", !report.errors.length, report.errors.slice(0, 5));
   ws.close();

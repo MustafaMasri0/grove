@@ -204,6 +204,22 @@ body,
     padding: 6px 0;
   }
 
+  /* Overlays drawn in place */
+  & .gal-d .menu,
+  & .gal-d .tip {
+    position: relative;
+    animation: none;
+  }
+
+  & .gal-d .menu {
+    width: min(280px, 100%);
+    max-width: 100%;
+  }
+
+  & .gal-d .tip {
+    max-width: 100%;
+  }
+
   /* Forced states */
   & .btn.is-hover {
     box-shadow: var(--sh-hair-hover);
