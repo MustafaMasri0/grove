@@ -3,7 +3,7 @@
 import type { Overview, WorktreeInfo, WorktreeSummary } from "../api";
 import { shortSha } from "./format";
 import { changeCountTitle } from "./changes";
-import { lastActivity, sharedFiles, STATE_LABEL, worktreeName, worktreeState, type WorktreeState } from "./worktrees";
+import { folderName, lastActivity, sharedFiles, STATE_LABEL, worktreeName, worktreeState, type WorktreeState } from "./worktrees";
 
 export const STATE_MARK = { rejected: "error", changing: "active", changes: "changes", clean: "idle" } as const satisfies Record<WorktreeState, string>;
 
@@ -65,6 +65,17 @@ export function railRows({ worktrees, overview, changeCounts, lastChange, action
       off: unopenable(worktree),
     };
   });
+}
+
+/** The main worktree is pinned above the others, and only the others are filtered. */
+export function splitRail(rows: readonly RailRow[]): { main: RailRow | null; others: RailRow[] } {
+  const main = rows.find((r) => r.worktree.isMain) ?? null;
+  return { main, others: rows.filter((r) => r !== main) };
+}
+
+/** A row's two lines. Main is known by its place and badge, so it leads with its branch over the repository's folder. */
+export function railLabels(r: RailRow): { title: string; sub: string } {
+  return r.worktree.isMain ? { title: r.branch, sub: folderName(r.worktree.path) } : { title: r.name, sub: r.branch };
 }
 
 export function railMatches(r: RailRow, query: string, changesOnly: boolean): boolean {

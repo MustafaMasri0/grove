@@ -2,13 +2,13 @@ import { useMemo, useState, type CSSProperties, type KeyboardEvent, type MouseEv
 import { shortTime } from "../lib/format";
 import { isMenuKey } from "../lib/menu";
 import { changeCountTitle } from "../lib/changes";
-import { railRows, railTitle, railVisible, sharedTitle, STATE_MARK, type RailRow } from "../lib/rail";
+import { railLabels, railRows, railTitle, railVisible, sharedTitle, splitRail, STATE_MARK, type RailRow } from "../lib/rail";
 import { clampRail, isNarrow } from "../lib/shell";
 import { useNow } from "../lib/useNow";
 import { STATE_LABEL } from "../lib/worktrees";
 import { worktreeMenu } from "../menuEnv";
 import { useStore } from "../store";
-import { Button, Count, Delta, Empty, EmptyLine, Field, Mark, menuAtElement, menuAtPointer, Resizer, Row, Skeleton, Toggle, WarnMark } from "../ui";
+import { Button, Count, Delta, Empty, EmptyLine, Field, MainTreeMark, Mark, menuAtElement, menuAtPointer, Resizer, Row, Skeleton, Toggle, WarnMark } from "../ui";
 import { foldRail } from "./foldRail";
 import type { IconName } from "./Icon";
 import { dragWidth, nudgeWidth } from "./paneWidth";
@@ -50,6 +50,7 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
   const selectWorktree = useStore((s) => s.selectWorktree);
   const { worktree: w, changed, shared, state, added, removed, off } = row;
   const rejected = state === "rejected";
+  const { title, sub } = railLabels(row);
   return (
     <Row
       className={off ? "wt off" : "wt"}
@@ -58,7 +59,7 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
       menu={menu}
       disabled={off ?? undefined}
       title={off ? undefined : railTitle(row, icons)}
-      aria-label={icons ? `${row.name}, ${STATE_LABEL[state]}` : undefined}
+      aria-label={icons || w.isMain ? `${row.name}, ${STATE_LABEL[state]}` : undefined}
       data-path={w.path}
       lead={<Mark state={STATE_MARK[state]} />}
       trail={
@@ -73,11 +74,12 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
       onContextMenu={onMenu}
     >
       <span className="wt-name">
-        <span className="n ell">{row.name}</span>
+        <span className="n ell">{title}</span>
+        {w.isMain && <MainTreeMark />}
         {row.last !== null && <span className="wt-time num">{shortTime(row.last, now)}</span>}
       </span>
       <span className="wt-sub">
-        <span className={rejected ? "d ell err-note" : "d ell"}>{rejected ? STATE_LABEL.rejected : row.branch}</span>
+        <span className={rejected ? "d ell err-note" : "d ell"}>{rejected ? STATE_LABEL.rejected : sub}</span>
         {added + removed > 0 && <Delta add={added} del={removed} />}
       </span>
     </Row>
@@ -86,7 +88,43 @@ function WorktreeRow({ row, icons, on, menu, now, onMenu }: { row: RailRow; icon
 
 const SKELETON = [1, 2, 3, 4, 5, 6];
 
-function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; query: string; changesOnly: boolean; onClear: () => void }) {
+/** The list's header: its name and size, which give way to the filter while filtering. */
+function WorktreesHead({ n, searching, query, changesOnly, onSearching, onQuery, onChangesOnly }: { n: number; searching: boolean; query: string; changesOnly: boolean; onSearching: (on: boolean) => void; onQuery: (q: string) => void; onChangesOnly: (on: boolean) => void }) {
+  const close = () => {
+    onQuery("");
+    onSearching(false);
+  };
+  return (
+    <div className="rail-filter">
+      {searching ? (
+        <Field
+          quiet
+          autoFocus
+          placeholder="Filter worktrees"
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          onBlur={() => !query.trim() && close()}
+          onKeyDown={(e) => {
+            if (e.key !== "Escape") return;
+            e.stopPropagation();
+            close();
+            document.querySelector<HTMLElement>(".rail-filter .btn")?.focus();
+          }}
+        />
+      ) : (
+        <>
+          <span className="rail-sec">Worktrees</span>
+          <span className="rail-sec-n num">{n}</span>
+        </>
+      )}
+      {/* Keeps the field's focus on press, so its blur cannot close it and this click open it again. */}
+      <Toggle size="sm" icon="search" label="Filter worktrees" tip="Filter worktrees" on={searching} onMouseDown={(e) => e.preventDefault()} onClick={() => (searching ? close() : onSearching(true))} />
+      <Toggle size="sm" icon="diff" label="Show only worktrees with changes" tip="Has changes" tone="changes" on={changesOnly} onClick={() => onChangesOnly(!changesOnly)} />
+    </div>
+  );
+}
+
+function WorktreeList({ icons }: { icons: boolean }) {
   const worktrees = useStore((s) => s.worktrees);
   const overview = useStore((s) => s.overview);
   const changeCounts = useStore((s) => s.changeCounts);
@@ -97,21 +135,46 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
   const loading = useStore(railLoading);
   const now = useNow(5_000);
   const [menuPath, setMenuPath] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [changesOnly, setChangesOnly] = useState(false);
 
   const all = useMemo(() => railRows({ worktrees, overview, changeCounts, lastChange, actions }, now), [worktrees, overview, changeCounts, lastChange, actions, now]);
-  const { rows, none } = railVisible(all, { query, changesOnly, icons, open: atWork ? cwd : null });
+  const { main, others } = splitRail(all);
+  const { rows, none } = railVisible(others, { query, changesOnly, icons, open: atWork ? cwd : null });
+
+  const clear = () => {
+    setQuery("");
+    setChangesOnly(false);
+    document.querySelector<HTMLElement>(".rail-filter input")?.focus();
+  };
+
+  const row = (r: RailRow) => (
+    <WorktreeRow
+      key={r.worktree.path}
+      row={r}
+      icons={icons}
+      on={atWork && r.worktree.path === cwd}
+      menu={menuPath === r.worktree.path}
+      now={now}
+      onMenu={(e) => {
+        setMenuPath(r.worktree.path);
+        menuAtPointer(e, worktreeMenu(r.worktree), () => setMenuPath(null));
+      }}
+    />
+  );
 
   const onKeyDown = (e: KeyboardEvent) => {
-    const row = (e.target as Element).closest<HTMLElement>(".wt");
-    if (!row) return;
+    const focused = (e.target as Element).closest<HTMLElement>(".wt");
+    if (!focused) return;
     const list = [...e.currentTarget.querySelectorAll<HTMLElement>(".wt")];
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") list[Math.max(0, Math.min(list.length - 1, list.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)))]?.focus();
-    else if (e.key === "Enter" || e.key === " ") row.click();
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") list[Math.max(0, Math.min(list.length - 1, list.indexOf(focused) + (e.key === "ArrowDown" ? 1 : -1)))]?.focus();
+    else if (e.key === "Enter" || e.key === " ") focused.click();
     else if (isMenuKey(e)) {
-      const r = all.find((x) => x.worktree.path === row.dataset.path);
+      const r = all.find((x) => x.worktree.path === focused.dataset.path);
       if (!r) return;
       setMenuPath(r.worktree.path);
-      menuAtElement(row, worktreeMenu(r.worktree), () => setMenuPath(null));
+      menuAtElement(focused, worktreeMenu(r.worktree), () => setMenuPath(null));
     } else return;
     e.preventDefault();
     e.stopPropagation();
@@ -134,22 +197,20 @@ function WorktreeList({ icons, query, changesOnly, onClear }: { icons: boolean; 
     );
 
   return (
-    <div className="rail-list" role="listbox" aria-label={`Worktree${worktrees.length > 1 ? ` (${worktrees.length})` : ""}`} onKeyDown={onKeyDown}>
-      {rows.map((r) => (
-        <WorktreeRow
-          key={r.worktree.path}
-          row={r}
-          icons={icons}
-          on={atWork && r.worktree.path === cwd}
-          menu={menuPath === r.worktree.path}
-          now={now}
-          onMenu={(e) => {
-            setMenuPath(r.worktree.path);
-            menuAtPointer(e, worktreeMenu(r.worktree), () => setMenuPath(null));
-          }}
-        />
-      ))}
-      {none && <EmptyLine action={<Button kind="link" text="Clear filter" onClick={onClear} />}>{query.trim() ? "No worktrees match." : "No worktrees have changes."}</EmptyLine>}
+    // Arrow keys walk main and the list as one, so the handler sits above both.
+    <div className="rail-worktrees" onKeyDown={onKeyDown}>
+      {main && (
+        <div className="rail-pinned" role="listbox" aria-label="Main worktree">
+          {row(main)}
+        </div>
+      )}
+      {!icons && others.length > 0 && <WorktreesHead n={others.length} searching={searching} query={query} changesOnly={changesOnly} onSearching={setSearching} onQuery={setQuery} onChangesOnly={setChangesOnly} />}
+      {others.length > 0 && (
+        <div className="rail-list" role="listbox" aria-label={`Worktrees (${others.length})`}>
+          {rows.map(row)}
+          {none && <EmptyLine action={<Button kind="link" text="Clear filter" onClick={clear} />}>{query.trim() ? "No worktrees match." : "No worktrees have changes."}</EmptyLine>}
+        </div>
+      )}
     </div>
   );
 }
@@ -165,29 +226,16 @@ export function Rail() {
   const openSettings = useStore((s) => s.openSettings);
   const setPalette = useStore((s) => s.setPalette);
   const noRepo = useStore((s) => s.settingsLoaded && !s.settings.lastRepo && !s.repo);
-  const loading = useStore(railLoading);
-  const [query, setQuery] = useState("");
-  const [changesOnly, setChangesOnly] = useState(false);
-
-  const clear = () => {
-    setQuery("");
-    setChangesOnly(false);
-    document.querySelector<HTMLElement>(".rail-filter input")?.focus();
-  };
 
   return (
-    <aside className="rail ui-root" id="rail" data-compact={icons ? "" : undefined} data-bare={loading || noRepo ? "" : undefined} style={{ "--rail-w": `${width}px` } as CSSProperties}>
+    <aside className="rail ui-root" id="rail" data-compact={icons ? "" : undefined} style={{ "--rail-w": `${width}px` } as CSSProperties}>
       <Resizer label="Resize the sidebar" onMouseDown={(e) => dragWidth(e, "railWidth", clampRail)} onKeyDown={(e) => nudgeWidth(e, "railWidth", clampRail)} />
       <RailTop icons={icons} />
       <div>
         <Nav icon="home" label="Overview" tip="Overview (Ctrl+Shift+O)" on={atOverview} onClick={() => setView("overview")} />
         {icons && <Nav icon="search" label="Search" tip="Search (Ctrl+K)" onClick={() => setPalette("all")} />}
       </div>
-      <div className="rail-filter">
-        <Field quiet placeholder="Filter worktrees" value={query} onChange={(e) => setQuery(e.target.value)} />
-        <Toggle icon="diff" label="Show only worktrees with changes" tip="Has changes" tone="changes" on={changesOnly} onClick={() => setChangesOnly(!changesOnly)} />
-      </div>
-      {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} query={query} changesOnly={changesOnly} onClear={clear} />}
+      {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} />}
       <div className="rail-foot">
         {icons && !narrow && <FoldButton label="Expand sidebar" className="rail-nav" />}
         <Nav icon="gear" label="Settings" tip="Settings (Ctrl+,)" on={settingsOpen} onClick={() => openSettings()} />

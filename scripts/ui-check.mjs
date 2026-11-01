@@ -399,7 +399,7 @@ try {
     await sleep(500);
     return ok;
   };
-  const toWork = async (n = 1) => { await click(`.rail .wt:nth-child(${n})`); await sleep(250); };
+  const toWork = async (n = 1) => { await click(n === 1 ? ".rail-pinned .wt" : `.rail-list .wt:nth-child(${n - 1})`); await sleep(250); };
   const text = (sel) => ev(`document.querySelector(${JSON.stringify(sel)})?.textContent ?? null`);
   const count = (sel) => ev(`document.querySelectorAll(${JSON.stringify(sel)}).length`);
   const width = (sel) => ev(`document.querySelector(${JSON.stringify(sel)})?.getBoundingClientRect().width ?? null`);
@@ -656,12 +656,12 @@ try {
     d.top = (await count(".rail-top .t-repo")) === 1 && (await count(".rail-top .btn.only")) === 2;
     d.noTitleBar = (await box(".rail")).t === 0 && !(await has(".topbar"));
     d.rows = (await count(".rail .wt")) === 5;
-    d.branch = (await text(".rail .wt:nth-child(2) .d")) === "agent/orders-refund";
-    d.time = /^(now|\d+[mhd])$/.test((await text(".rail .wt:nth-child(2) .wt-time")) ?? "");
-    d.count = (await text(".rail .wt:nth-child(2) .count")) === "2";
-    d.delta = /\+12\s*−3/.test((await text(".rail .wt:nth-child(2) .delta")) ?? "");
-    d.mark = (await ev(`document.querySelector(".rail .wt:nth-child(2) .mark").dataset.s`)) === "changes";
-    d.clean = (await ev(`document.querySelector(".rail .wt:nth-child(3) .mark").dataset.s`)) === "idle";
+    d.branch = (await text(".rail-list .wt:nth-child(1) .d")) === "agent/orders-refund";
+    d.time = /^(now|\d+[mhd])$/.test((await text(".rail-list .wt:nth-child(1) .wt-time")) ?? "");
+    d.count = (await text(".rail-list .wt:nth-child(1) .count")) === "2";
+    d.delta = /\+12\s*−3/.test((await text(".rail-list .wt:nth-child(1) .delta")) ?? "");
+    d.mark = (await ev(`document.querySelector(".rail-list .wt:nth-child(1) .mark").dataset.s`)) === "changes";
+    d.clean = (await ev(`document.querySelector(".rail-list .wt:nth-child(2) .mark").dataset.s`)) === "idle";
     d.missing = await has('.rail .wt.off[aria-disabled="true"][data-tip^="Missing or prunable"]');
     d.bare = await has('.rail .wt.off[aria-disabled="true"][data-tip="Bare repository"]');
     const before = await ipc("status");
@@ -675,27 +675,27 @@ try {
     await openApp("&states=1");
     await ev(`window.__store.setState({overview:null});1`);
     await sleep(100);
-    const d = { rows: (await count(".rail .wt")) === 5, counts: (await text(".rail .wt:nth-child(2) .count")) === "2" };
+    const d = { rows: (await count(".rail .wt")) === 5, counts: (await text(".rail-list .wt:nth-child(1) .count")) === "2" };
     await ev(`window.__store.getState().updateSettings({possibleConflicts:false});1`);
     await sleep(60);
     d.afterSetting = (await count(".rail .wt")) === 5;
     await sleep(400);
-    d.reloaded = (await text(".rail .wt:nth-child(2) .delta")) !== null;
+    d.reloaded = (await text(".rail-list .wt:nth-child(1) .delta")) !== null;
     return d;
   });
   await attempt("railStates", async () => {
     await openApp();
-    const mark = (n) => ev(`document.querySelector(".rail .wt:nth-child(${n}) .mark").dataset.s`);
+    const mark = (n) => ev(`document.querySelector(".rail-list .wt:nth-child(${n - 1}) .mark").dataset.s`);
     await ev(`(()=>{const s=window.__store;const p=s.getState().worktrees;s.setState({lastChange:{[p[2].path]:Date.now()/1000},actions:{[p[1].path]:{running:false,label:"",progress:"",error:null,rejected:true}}});})();1`);
     await sleep(100);
-    return { changing: (await mark(3)) === "active", rejected: (await mark(2)) === "error", replacesBranch: (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected" };
+    return { changing: (await mark(3)) === "active", rejected: (await mark(2)) === "error", replacesBranch: (await text(".rail-list .wt:nth-child(1) .err-note")) === "Push rejected" };
   });
   await attempt("railFilter", async () => {
     await openApp();
-    await click(".rail-filter input");
+    await click(".rail-filter .btn");
     await type("agent-02");
     await sleep(60);
-    const d = { byName: (await count(".rail .wt")) === 1 };
+    const d = { byName: (await count(".rail .wt")) === 2, mainStays: (await text(".rail-pinned .n")) === "main" && (await has(".rail-pinned .main-mark")) };
     await ev(`document.querySelector(".rail-filter input").select();1`);
     await type("nothing here");
     await sleep(60);
@@ -703,11 +703,11 @@ try {
     await click(".rail .empty-line .btn");
     await sleep(60);
     d.cleared = (await count(".rail .wt")) === 3 && (await focusIs(".rail-filter input"));
-    await click(".rail-filter .btn");
+    await click(".rail-filter .btn:last-child");
     await sleep(60);
-    d.hasChanges = (await count(".rail .wt")) === 1 && (await has('.rail-filter .btn[aria-pressed="true"]'));
+    d.hasChanges = (await count(".rail .wt")) === 2 && (await has('.rail-filter .btn[aria-pressed="true"]'));
     await toWork(1);
-    await click(".rail-filter .btn");
+    await click(".rail-filter .btn:last-child");
     return d;
   });
   await attempt("railKeys", async () => {
@@ -715,16 +715,16 @@ try {
     await ev(`document.querySelector(".rail .wt").focus();1`);
     await key("ArrowDown", 40);
     await key("ArrowDown", 40);
-    const d = { arrows: await focusIs(".rail .wt:nth-child(3)") };
+    const d = { arrows: await focusIs(".rail-list .wt:nth-child(2)") };
     await key("Enter", 13);
     await sleep(300);
-    d.opened = (await text(".head h1 .ell")) === "agent-02" && (await has(".rail .wt:nth-child(3).on"));
+    d.opened = (await text(".head h1 .ell")) === "agent-02" && (await has(".rail-list .wt:nth-child(2).on"));
     await key("F10", 121, 8);
     await sleep(120);
     d.menu = await has("#overlays .menu .mi.on");
     d.target = await has(".rail .wt.menu-target");
     await key("Escape", 27);
-    d.focusBack = await focusIs(".rail .wt:nth-child(3)");
+    d.focusBack = await focusIs(".rail-list .wt:nth-child(2)");
     return d;
   });
   await attempt("railResize", async () => {
@@ -761,7 +761,7 @@ try {
     const seen = new Map(), bad = new Map();
     const grab = async () => { for (const a of await ev(CLASSIFY)) { seen.set(a.key, 1); if (a.bad) bad.set(a.bad, a.where); } };
     const d = {};
-    await ev(`document.querySelector(".rail-filter input").focus();1`);
+    await click(".rail-filter .btn");
     await key("b", 66, CTRL);
     d.width = (await width(".rail")) === 48;
     d.ghost = (await count("#rail-fold > .rail-ghost")) === 1 && (await width(".rail-ghost")) === 264;
@@ -774,10 +774,10 @@ try {
     d.ghostGone = (await count("#rail-fold > *")) === 0 && !(await has("#main[data-fold]")) && !(await has(".rail[data-fold]"));
     d.topOnlyRepo = (await count(".rail-top .btn")) === 1;
     d.navSearch = (await count(".rail .rail-nav")) === 4;
-    d.noFilter = (await width(".rail-filter")) === 0;
-    d.badge = await ev(`(()=>{const c=document.querySelector(".rail .wt:nth-child(2) .count").getBoundingClientRect(),m=document.querySelector(".rail .wt:nth-child(2) .mark").getBoundingClientRect();return c.left>=m.left&&c.left<m.right+6&&c.bottom>m.top})()`);
-    d.noBadgeAtZero = !(await has(".rail .wt:nth-child(3) .count"));
-    d.tooltip = /Has changes\n2 files with uncommitted changes/.test(await ev(`document.querySelector(".rail .wt:nth-child(2)").title`));
+    d.noFilter = !(await has(".rail-filter"));
+    d.badge = await ev(`(()=>{const c=document.querySelector(".rail-list .wt:nth-child(1) .count").getBoundingClientRect(),m=document.querySelector(".rail-list .wt:nth-child(1) .mark").getBoundingClientRect();return c.left>=m.left&&c.left<m.right+6&&c.bottom>m.top})()`);
+    d.noBadgeAtZero = !(await has(".rail-list .wt:nth-child(2) .count"));
+    d.tooltip = /Has changes\n2 files with uncommitted changes/.test(await ev(`document.querySelector(".rail-list .wt:nth-child(1)").title`));
     await shot("shell-rail-collapsed");
     await sleep(400);
     d.saved = (await lastSaved())?.railCollapsed === true;
@@ -859,10 +859,10 @@ try {
     await toWork(2);
     await click(".head .split .btn:first-child");
     await sleep(250);
-    const d = { banner: (await text(".work-top .banner pre"))?.includes("[rejected]"), rail: (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected" };
+    const d = { banner: (await text(".work-top .banner pre"))?.includes("[rejected]"), rail: (await text(".rail-list .wt:nth-child(1) .err-note")) === "Push rejected" };
     await click('.work-top .banner [aria-label="Dismiss"]');
     d.dismissed = !(await has(".work-top .banner"));
-    d.stays = (await text(".rail .wt:nth-child(2) .err-note")) === "Push rejected";
+    d.stays = (await text(".rail-list .wt:nth-child(1) .err-note")) === "Push rejected";
     return d;
   });
   await attempt("notices", async () => {
@@ -881,7 +881,7 @@ try {
   });
   await attempt("noRepository", async () => {
     await openApp("&none=1");
-    const d = { welcome: (await text(".rail .empty h2")) === "No repository open", noFilter: !(await has(".rail[data-bare]")) ? false : (await width(".rail-filter")) === 0, repo: (await text(".t-repo .btn-l")) === "Add a repository", dragBand: (await box('.ov-page [data-tauri-drag-region="deep"]'))?.b === 44 && (await ev(`document.elementFromPoint(innerWidth/2,20).closest('[data-tauri-drag-region="deep"]')!==null`)) };
+    const d = { welcome: (await text(".rail .empty h2")) === "No repository open", noFilter: !(await has(".rail-filter")), repo: (await text(".t-repo .btn-l")) === "Add a repository", dragBand: (await box('.ov-page [data-tauri-drag-region="deep"]'))?.b === 44 && (await ev(`document.elementFromPoint(innerWidth/2,20).closest('[data-tauri-drag-region="deep"]')!==null`)) };
     await size(800, 500);
     await openApp("&none=1");
     d.onPage = (await text(".ov-page .empty h2")) === "No repository open";

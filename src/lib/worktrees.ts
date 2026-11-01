@@ -10,8 +10,10 @@ export const MERGE_SECS = 120;
 /** The activity feed keeps this many entries. */
 export const ACTIVITY_LIMIT = 200;
 
+export const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+
 export function worktreeName(w: { path: string; isMain?: boolean }): string {
-  return w.isMain ? "main worktree" : w.path.split(/[\\/]/).filter(Boolean).pop() ?? w.path;
+  return w.isMain ? "main worktree" : folderName(w.path);
 }
 
 /** The worktrees git can read (not missing, not bare), by path. */

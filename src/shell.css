@@ -118,22 +118,57 @@
     flex: none;
   }
 
+  & .rail-worktrees {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  & .rail-pinned {
+    flex: none;
+    padding: 6px 8px 0;
+  }
+
+  /* The section's own header: its label gives way to the filter while filtering. */
   & .rail-filter {
     display: flex;
+    align-items: center;
     gap: 6px;
-    padding: 8px 8px 2px;
+    min-height: var(--h-md);
+    padding: 12px 8px 0 16px;
     flex: none;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+  }
+
+  & .rail-filter:has(.field) {
+    padding-left: 8px;
+  }
+
+  & .rail-filter .field {
+    flex: 1;
+    min-width: 0;
   }
 
   & .rail-filter .btn {
     flex: none;
   }
 
+  & .rail-sec {
+    font-weight: 500;
+  }
+
+  & .rail-sec-n {
+    margin-right: auto;
+  }
+
   & .rail-list {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 6px 8px 8px;
+    padding: 2px 8px 8px;
     scrollbar-width: thin;
     scrollbar-color: var(--line-strong) transparent;
   }
@@ -237,21 +272,25 @@
     color: var(--err);
   }
 
-  &[data-bare] .rail-filter {
-    display: none;
-  }
-
   /* Icons mode: below 1100px, or collapsed by hand. Marks, rows and the left edge of every fill sit where the full rail has them, so the two layouts fold into each other. */
   &[data-compact] {
     width: 48px;
   }
 
   &[data-compact] .rail-list {
-    padding-top: 8px;
+    padding-top: 6px;
     scrollbar-width: none;
   }
 
-  &[data-compact] .rail-filter,
+  /* No section header here, and the badge is hidden: this line is what sets main apart. */
+  &[data-compact] .rail-pinned::after {
+    content: "";
+    display: block;
+    height: 1px;
+    margin: 6px 8px 0;
+    background: var(--line-strong);
+  }
+
   &[data-compact] .rail-nav .btn-l,
   &[data-compact] .wt-name,
   &[data-compact] .wt-sub,

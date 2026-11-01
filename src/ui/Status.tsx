@@ -36,7 +36,17 @@ export function WarnTriangle() {
   );
 }
 
-export type BadgeTone = "" | "live" | "active" | "changes" | "idle" | "warn" | "error";
+/** The tree that marks the main worktree: neutral, because a coloured one would read as a state. */
+export function MainTreeMark() {
+  return (
+    <svg className="main-mark" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 14.5V8M8 11 5.5 8.5M8 9.5l2.5-2" />
+      <path d="M8 1.5c3 1 4.5 3.2 4 5.7-.4 1.8-2 2.8-4 2.8s-3.6-1-4-2.8C3.5 4.7 5 2.5 8 1.5Z" />
+    </svg>
+  );
+}
+
+export type BadgeTone ="" | "live" | "active" | "changes" | "idle" | "warn" | "error";
 
 /** Badge. Coloured badges hide at zero: the caller leaves them out. */
 export function Badge({ tone = "", tip, className, children, ...rest }: HTMLAttributes<HTMLSpanElement> & { tone?: BadgeTone; tip?: string }) {

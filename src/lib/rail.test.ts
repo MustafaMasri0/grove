@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Overview, WorktreeInfo, WorktreeSummary } from "../api";
-import { branchLabel, railRows, railTitle, railVisible, unopenable, type RailInput } from "./rail";
+import { branchLabel, railLabels, railRows, railTitle, railVisible, splitRail, unopenable, type RailInput } from "./rail";
 
 const NOW = 1_000_000;
 const info = (name: string, over: Partial<WorktreeInfo> = {}): WorktreeInfo => ({ path: `/src/${name}`, head: "0a1b2c3d4e5f", branch: `agent/${name}`, detached: false, bare: false, locked: null, prunable: null, isMain: false, displayPath: `/src/${name}`, missing: false, ...over });
@@ -58,6 +58,24 @@ describe("railVisible", () => {
 
   it("ignores the filter in icons mode, which cannot clear it", () => {
     expect(railVisible(rows, { ...base, query: "nothing", icons: true })).toMatchObject({ none: false, rows });
+  });
+});
+
+describe("the main worktree", () => {
+  const rows = railRows(input({ worktrees: [info("example-app", { isMain: true, branch: "develop" }), info("one")] }), NOW);
+
+  it("is pinned apart from the others", () => {
+    const { main, others } = splitRail(rows);
+    expect(main?.worktree.isMain).toBe(true);
+    expect(others.map((r) => r.name)).toEqual(["one"]);
+  });
+  it("leaves every row to the list when git reports none", () => {
+    const only = railRows(input({ worktrees: [info("one")] }), NOW);
+    expect(splitRail(only)).toEqual({ main: null, others: only });
+  });
+  it("leads with its branch over the repository's folder", () => {
+    expect(railLabels(rows[0])).toEqual({ title: "develop", sub: "example-app" });
+    expect(railLabels(rows[1])).toEqual({ title: "one", sub: "agent/one" });
   });
 });
 
