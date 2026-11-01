@@ -9,13 +9,17 @@ interface Rgba {
   a: number;
 }
 
-/** A token's value: #rgb, #rrggbb, or rgb()/rgba() with commas or spaces. */
+/**
+ * A token's value: hex of any length (#rgb, #rgba, #rrggbb, #rrggbbaa), or rgb()/rgba() with commas or spaces.
+ * The release build's CSS minifier rewrites the rgba() in tokens.css as hex, so what is read here differs from what is written there.
+ */
 export function parseColour(text: string): Rgba {
   const t = text.trim();
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(t)?.[1];
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(t)?.[1];
   if (hex) {
-    const six = hex.length === 3 ? [...hex].map((c) => c + c).join("") : hex;
-    return { r: parseInt(six.slice(0, 2), 16), g: parseInt(six.slice(2, 4), 16), b: parseInt(six.slice(4, 6), 16), a: 1 };
+    const long = hex.length <= 4 ? [...hex].map((c) => c + c).join("") : hex;
+    const channel = (at: number) => parseInt(long.slice(at, at + 2), 16);
+    return { r: channel(0), g: channel(2), b: channel(4), a: long.length === 8 ? channel(6) / 255 : 1 };
   }
   const n = /^rgba?\(/i.test(t) ? t.match(/[\d.]+%?/g)?.map((v) => (v.endsWith("%") ? parseFloat(v) / 100 : Number(v))) : undefined;
   if (!n || n.length < 3) throw new Error(`Not a colour: ${text}`);
