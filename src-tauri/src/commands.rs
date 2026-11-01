@@ -214,6 +214,28 @@ pub async fn run_action(app_handle: AppHandle, state: State<'_, AppState>, repo:
     .await
 }
 
+/// Clones into a new folder `name` under `parent`, which may be on any host a repository can be. Progress lines are emitted
+/// as `clone-progress`. Returns the new repository's path, ready to open.
+#[tauri::command]
+pub async fn clone_repo(app_handle: AppHandle, state: State<'_, AppState>, url: String, parent: String, name: String) -> Res<String> {
+    let app = state.inner().clone();
+    blocking(move || {
+        let (host, route) = app.hosts.resolve(&parent)?;
+        let host_parent = match route {
+            Route::Local { path } => path,
+            Route::Wsl { linux_path, .. } => linux_path,
+            Route::Ssh { path, .. } => path,
+        };
+        let emit = |line: &str| {
+            let _ = app_handle.emit("clone-progress", line.to_string());
+        };
+        ops::clone_repo(&*host, &host_parent, &url, &name, Some(&emit))?;
+        let separator = if parent.contains('\\') { '\\' } else { '/' };
+        Ok(format!("{}{separator}{name}", parent.trim_end_matches(['/', '\\'])))
+    })
+    .await
+}
+
 #[derive(Clone, Serialize)]
 struct ChangedEvent {
     cwd: String,
@@ -323,9 +345,9 @@ pub struct Automation {
 /// `WV_SHOW_HISTORY=<sha>` that commit),
 /// `WV_RUN_ACTION=fetch|push|publish` presses the action button,
 /// `WV_LEFT_TAB=changes|history|explorer|search` shows that pane,
-/// `WV_OPEN_SETTINGS=1` opens the Settings tab (`settings.json` also opens that
+/// `WV_OPEN_SETTINGS=1` opens Settings (`settings.json` also opens that
 /// file, any other value is typed into its search box), and `WV_SETTINGS_PATCH=<json>` changes settings after the
-/// rest has run, the way the Settings page would. `WV_CONTEXT_MENU=<place>[:key]`
+/// rest has run, the way Settings would. `WV_CONTEXT_MENU=<place>[:key]`
 /// then opens a context menu (changes, commitfile, commit, explorer, folder, search,
 /// quickopen, tab, repo, worktree, branch), by right-click or with `:key` by Shift+F10;
 /// `>Label` then chooses that option.

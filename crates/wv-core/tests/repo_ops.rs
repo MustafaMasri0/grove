@@ -14,6 +14,24 @@ fn h() -> LocalHost {
     LocalHost::new()
 }
 
+#[test]
+fn cloning_refuses_local_sources_and_an_occupied_folder_without_touching_it() {
+    let r = temp_repo();
+    let parent = r.dir.path().to_str().unwrap().to_string();
+    // Addresses are limited to the network ones, so this never reaches git.
+    let refused = ops::clone_repo(&h(), &parent, "file:///tmp/example", "copy", None).unwrap_err();
+    assert!(refused.contains("can be cloned"), "{refused}");
+    assert!(!r.dir.path().join("copy").exists());
+
+    let taken = r.dir.path().join("taken");
+    std::fs::create_dir(&taken).unwrap();
+    std::fs::write(taken.join("keep.txt"), "mine").unwrap();
+    // Port 9 is never listening, and git refuses the folder before it connects.
+    let refused = ops::clone_repo(&h(), &parent, "https://127.0.0.1:9/example.git", "taken", None).unwrap_err();
+    assert!(refused.contains("already exists"), "{refused}");
+    assert_eq!(std::fs::read_to_string(taken.join("keep.txt")).unwrap(), "mine");
+}
+
 /// A LocalHost that remembers the git commands it ran.
 struct RecordingHost {
     inner: LocalHost,
@@ -470,26 +488,24 @@ fn summary_compares_with_the_base_and_the_upstream() {
 }
 
 #[test]
-fn summary_counts_uncommitted_and_committed_files_once_each() {
+fn summary_counts_only_uncommitted_files_and_lines() {
     let r = branched_repo();
     let wt = r.dir.path().join("feature-wt");
     git(&r.path, &["worktree", "add", "-q", wt.to_str().unwrap(), "feature"]);
     let cwd = wt.to_str().unwrap();
     let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
-    assert_eq!(s.changed_files, 2, "committed since the base");
-    assert!(s.lines_added > 0);
+    assert!(s.base_ahead > 0, "the branch has commits the base lacks");
+    assert_eq!((s.changed_files, s.lines_added, s.lines_removed), (0, 0, 0), "commits do not count");
 
-    // a.txt is already among the branch's files; the untracked one adds a file but no lines.
-    let lines = s.lines_added;
+    // The untracked file adds a file but no lines.
     std::fs::write(wt.join("a.txt"), "one\nTWO\nthree\n").unwrap();
     std::fs::write(wt.join("untracked.txt"), "one\ntwo\n").unwrap();
     let s = overview::summary(&h(), cwd, Some("main"), false).unwrap();
-    assert_eq!(s.changed_files, 3);
-    assert_eq!(s.lines_added, lines + 1);
-
-    // Without a base only the uncommitted changes count.
-    let s = overview::summary(&h(), cwd, None, false).unwrap();
     assert_eq!((s.changed_files, s.lines_added, s.lines_removed), (2, 1, 0));
+
+    // The base changes nothing here.
+    let without = overview::summary(&h(), cwd, None, false).unwrap();
+    assert_eq!((without.changed_files, without.lines_added, without.lines_removed), (2, 1, 0));
 }
 
 #[test]

@@ -7,6 +7,7 @@ import { classifyLink, resolveRepoPath } from "../lib/mdLinks";
 import { languageFor, monaco } from "../monaco";
 import { useStore, type Tab } from "../store";
 import { fileTab } from "../tabs";
+import { iconMarkup } from "./Icon";
 
 const slug = (s: string) =>
   s
@@ -14,6 +15,22 @@ const slug = (s: string) =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/\s+/g, "-");
+
+/** Stands in for a picture that is not shown: its alternative text in a frame. */
+function blockImage(img: HTMLImageElement, tip?: string) {
+  const alt = img.getAttribute("alt") ?? "";
+  const box = document.createElement("span");
+  box.className = "md-blocked";
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", alt);
+  if (tip) box.dataset.tip = tip;
+  box.innerHTML = iconMarkup("file-media");
+  const label = document.createElement("span");
+  label.className = "ell";
+  label.textContent = alt;
+  box.append(label);
+  img.replaceWith(box);
+}
 
 /**
  * Rendered Markdown for a file tab. The HTML is sanitised before it reaches
@@ -47,19 +64,19 @@ export function MarkdownPreview({ text, tab }: { text: string; tab: Tab }) {
     el.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src") ?? "";
       img.removeAttribute("src");
-      if (classifyLink(src) !== "repo") {
-        img.classList.add("blocked");
-        img.title = `Remote image not loaded: ${src}`;
-        return;
-      }
+      if (classifyLink(src) !== "repo") return blockImage(img, `Remote image not loaded: ${src}`);
       const resolved = resolveRepoPath(path, src);
-      if (!resolved) return;
+      if (!resolved) return blockImage(img);
       const source: Source = rev ? { kind: "rev", rev, path: resolved } : { kind: "worktree", path: resolved };
       api.readImage(at, source).then(
         (url) => {
-          if (!cancelled && url) img.src = url;
+          if (cancelled) return;
+          if (url) img.src = url;
+          else blockImage(img);
         },
-        () => {},
+        () => {
+          if (!cancelled) blockImage(img);
+        },
       );
     });
 
@@ -100,5 +117,9 @@ export function MarkdownPreview({ text, tab }: { text: string; tab: Tab }) {
     }
   };
 
-  return <div ref={ref} className="md-preview" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div className="ui-root md-scroll">
+      <article ref={ref} className="md-preview" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
 }

@@ -1,5 +1,5 @@
 // The items of each context menu. Nothing here writes to a repository: the
-// options open tabs, copy text, show File Explorer or a web page, or change
+// options open tabs, copy text, show File Explorer, a terminal or a web page, or change
 // the app's own list of repositories.
 import { shortSha, splitPath } from "./format";
 import { canReveal, displayPath, githubCommitUrl, joinPath, relativeForCopy, type HostKind } from "./hostPaths";
@@ -11,6 +11,8 @@ export interface MenuEnv {
   /** Shows the item selected in File Explorer; `path` is a Windows path. */
   reveal(path: string): void | Promise<void>;
   openUrl(url: string): void | Promise<void>;
+  /** Opens a terminal on a worktree; `cwd` is its path on the host. */
+  terminal(cwd: string): void | Promise<void>;
 }
 
 /** The worktree (or branch view) a row belongs to. */
@@ -124,7 +126,7 @@ export function commitItems(env: MenuEnv, c: CommitTarget): MenuItem[] {
   return items;
 }
 
-/** A repository in the top bar list; `path` is null when it could not be opened. */
+/** A repository in the repository picker; `path` is null when it could not be opened. */
 export function repoItems(env: MenuEnv, r: { name: string; path: string | null; reveal: boolean; remove: () => void }): MenuItem[] {
   const path = r.path;
   return [
@@ -137,13 +139,14 @@ export function repoItems(env: MenuEnv, r: { name: string; path: string | null; 
   ];
 }
 
-/** A worktree in the top bar list; `path` is as its machine shows it. */
-export function worktreeItems(env: MenuEnv, w: { path: string; branch: string | null; missing: boolean; reveal: boolean }): MenuItem[] {
+/** A worktree in the rail; `path` is as its machine shows it. */
+export function worktreeItems(env: MenuEnv, w: { path: string; cwd: string; branch: string | null; missing: boolean; reveal: boolean }): MenuItem[] {
   const branch = w.branch;
   return [
     { label: "Copy path", run: () => env.copy(w.path) },
     { label: "Copy branch name", disabled: !branch, run: () => (branch ? env.copy(branch) : undefined) },
     SEP,
+    { label: "Open in Terminal", disabled: w.missing, run: () => env.terminal(w.cwd) },
     { label: REVEAL, disabled: w.missing || !w.reveal, run: () => env.reveal(w.path) },
   ];
 }

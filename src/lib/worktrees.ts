@@ -134,3 +134,106 @@ export function sharedFiles(overlaps: readonly Overlap[], worktrees: readonly Wo
       worktrees: worktrees.filter((w) => set.has(w.path)).map((w) => ({ path: w.path, uncommitted: dirty.get(w.path)?.has(path) ?? false })),
     }));
 }
+
+/** How a worktree stands against its upstream; null without a branch. */
+export type OriginState = { kind: "none" } | { kind: "sync"; upstream: string } | { kind: "diverged"; upstream: string; ahead: number; behind: number };
+
+export function originOf(w: Pick<WorktreeSummary, "branch" | "upstream" | "upstreamAhead" | "upstreamBehind">): OriginState | null {
+  if (w.upstream) return w.upstreamAhead || w.upstreamBehind ? { kind: "diverged", upstream: w.upstream, ahead: w.upstreamAhead, behind: w.upstreamBehind } : { kind: "sync", upstream: w.upstream };
+  return w.branch ? { kind: "none" } : null;
+}
+
+export const ORIGIN_TEXT = { none: "not published", sync: "in sync" } as const;
+
+/** Detached and unborn read in place of a branch. */
+export const summaryBranch = (w: Pick<WorktreeSummary, "branch" | "head">) => w.branch ?? (w.head ? `detached @ ${shortSha(w.head)}` : "no commits");
+
+/** One line of the overview's table. */
+export interface OverviewRow {
+  summary: WorktreeSummary;
+  name: string;
+  branch: string;
+  state: WorktreeState;
+  origin: OriginState | null;
+  /** Unix seconds; null when nothing is known yet. */
+  last: number | null;
+  /** The shared files this worktree is one of. */
+  shared: number;
+  /** The other worktrees that change them. */
+  sharedWith: string[];
+}
+
+export interface OverviewRowInput {
+  summaries: readonly WorktreeSummary[];
+  shared: readonly SharedFile[];
+  lastChange: Readonly<Record<string, number>>;
+  actions: Readonly<Record<string, { rejected: boolean }>>;
+  nameOf: (path: string) => string;
+}
+
+export function overviewRows({ summaries, shared, lastChange, actions, nameOf }: OverviewRowInput, now: number): OverviewRow[] {
+  return summaries.map((w) => {
+    const mine = shared.filter((f) => f.worktrees.some((x) => x.path === w.path));
+    return {
+      summary: w,
+      name: nameOf(w.path),
+      branch: summaryBranch(w),
+      state: worktreeState({ rejected: !!actions[w.path]?.rejected, lastChange: lastChange[w.path], changedFiles: w.changedFiles }, now),
+      origin: originOf(w),
+      last: lastActivity(lastChange[w.path], w.lastCommit),
+      shared: mine.length,
+      sharedWith: [...new Set(mine.flatMap((f) => f.worktrees.map((x) => x.path)).filter((p) => p !== w.path))].map(nameOf),
+    };
+  });
+}
+
+const STATE_RANK: Record<WorktreeState, number> = { rejected: 0, changing: 1, changes: 2, clean: 3 };
+
+function originRank(o: OriginState | null): number {
+  if (!o) return -2;
+  return o.kind === "none" ? -1 : o.kind === "sync" ? 0 : o.ahead + o.behind;
+}
+
+const SORT_VALUE = {
+  name: (r: OverviewRow) => r.name,
+  branch: (r: OverviewRow) => r.branch,
+  state: (r: OverviewRow) => STATE_RANK[r.state],
+  files: (r: OverviewRow) => r.summary.changedFiles,
+  lines: (r: OverviewRow) => r.summary.linesAdded + r.summary.linesRemoved,
+  origin: (r: OverviewRow) => originRank(r.origin),
+  ahead: (r: OverviewRow) => r.summary.baseAhead,
+  conflicts: (r: OverviewRow) => r.shared,
+  commit: (r: OverviewRow) => r.summary.lastCommit?.subject ?? "",
+  // Ascending reads newest first, like the rail.
+  last: (r: OverviewRow) => -(r.last ?? -Infinity),
+} satisfies Record<string, (r: OverviewRow) => string | number>;
+
+export type OverviewColumn = keyof typeof SORT_VALUE;
+
+export interface OverviewSort {
+  key: OverviewColumn;
+  dir: 1 | -1;
+}
+
+export const DEFAULT_OVERVIEW_SORT: OverviewSort = { key: "state", dir: 1 };
+
+/** Clicking the sorted column turns it around; any other starts ascending. */
+export const nextSort = (sort: OverviewSort, key: OverviewColumn): OverviewSort => ({ key, dir: sort.key === key ? (sort.dir === 1 ? -1 : 1) : 1 });
+
+/** Stable, so equal rows keep the overview's order. */
+export function sortRows(rows: readonly OverviewRow[], { key, dir }: OverviewSort): OverviewRow[] {
+  const value = SORT_VALUE[key];
+  return [...rows].sort((a, b) => {
+    const x = value(a);
+    const y = value(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * dir;
+  });
+}
+
+/** The order to keep while the table is held: rows that went are dropped, and new ones join at the end, so a row never moves under the pointer. */
+export function heldOrder(held: readonly string[], sorted: readonly string[]): string[] {
+  const live = new Set(sorted);
+  const kept = held.filter((p) => live.has(p));
+  const known = new Set(kept);
+  return [...kept, ...sorted.filter((p) => !known.has(p))];
+}

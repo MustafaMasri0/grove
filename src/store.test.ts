@@ -192,5 +192,83 @@ describe("what fills the window", () => {
     useStore.setState({ repo: null, cwd: null });
     await useStore.getState().openSettingsFile();
     expect(titles()).toEqual(["settings.json"]);
+    expect(useStore.getState().view).toBe("work");
+  });
+
+  it("closing settings.json with no repository goes back to the welcome page", async () => {
+    useStore.setState({ repo: null, cwd: null });
+    await useStore.getState().openSettingsFile();
+    useStore.getState().closeTab("app:settings.json");
+    expect(useStore.getState()).toMatchObject({ view: "overview", activeTab: null });
+  });
+
+  it("closing the last tab of a repository stays on its work view", async () => {
+    useStore.setState({ repo: { id: "r" } as RepoInfo, cwd: "/a" });
+    await useStore.getState().openSettingsFile();
+    useStore.getState().closeTabs(["app:settings.json"]);
+    expect(useStore.getState().view).toBe("work");
+  });
+
+  it("settings open at a section, unfiltered", () => {
+    useStore.setState({ settingsQuery: "minimap" });
+    useStore.getState().openSettings();
+    expect(useStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: "appearance", settingsQuery: "minimap" });
+    useStore.getState().openSettings("shortcuts");
+    expect(useStore.getState()).toMatchObject({ settingsSection: "shortcuts", settingsQuery: "" });
+  });
+
+  it("Quick Open needs a repository; the palette does not", () => {
+    useStore.setState({ repo: null, palette: null });
+    useStore.getState().setPalette("files");
+    expect(useStore.getState().palette).toBeNull();
+    useStore.getState().setPalette("all");
+    expect(useStore.getState().palette).toBe("all");
+    useStore.getState().setPalette(null);
+    useStore.setState({ repo: { id: "r" } as RepoInfo });
+    useStore.getState().setPalette("files");
+    expect(useStore.getState().palette).toBe("files");
+    useStore.getState().setPalette(null);
+  });
+});
+
+describe("list drawer", () => {
+  const tab = { id: "a", title: "a.ts", description: "", spec: { type: "file" as const, path: "a.ts", source: { kind: "head" } as never } };
+
+  beforeEach(() => {
+    useStore.setState({ repo: { id: "r" } as RepoInfo, cwd: "/w", tabs: [], activeTab: null, appWidth: 1440, listOpen: true });
+  });
+
+  it("tucks away on crossing into a narrow band and comes back on leaving it", () => {
+    useStore.getState().setAppWidth(1000);
+    expect(useStore.getState().listOpen).toBe(false);
+    useStore.getState().toggleList();
+    useStore.getState().setAppWidth(900);
+    expect(useStore.getState().listOpen).toBe(true); // Same band: left as it was.
+    useStore.getState().toggleList();
+    useStore.getState().setAppWidth(1200);
+    expect(useStore.getState().listOpen).toBe(true);
+  });
+
+  it("closes when a file opens, only on narrow windows", () => {
+    useStore.getState().openTab(tab, false);
+    expect(useStore.getState().listOpen).toBe(true);
+    useStore.setState({ appWidth: 1000, tabs: [] });
+    useStore.getState().openTab(tab, false);
+    expect(useStore.getState().listOpen).toBe(false);
+  });
+
+  it("opens for a pane", () => {
+    useStore.setState({ appWidth: 1000, listOpen: false });
+    useStore.getState().setLeftTab("changes");
+    expect(useStore.getState().listOpen).toBe(true);
+    useStore.setState({ listOpen: false });
+    useStore.getState().focusSearch();
+    expect(useStore.getState().listOpen).toBe(true);
+  });
+
+  it("removing the open repository goes back to the overview", () => {
+    useStore.setState({ view: "work" });
+    useStore.getState().removeRepo("r");
+    expect(useStore.getState()).toMatchObject({ view: "overview", repo: null, overview: null });
   });
 });

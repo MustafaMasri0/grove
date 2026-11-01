@@ -1,0 +1,303 @@
+/* The list pane, its panels and the commit pane. Each pane is its own .ui-root; controls and tokens live in src/ui. */
+.ui-root.left,
+.ui-root.commit-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--sheet);
+}
+
+.ui-root.left {
+  border-right: 1px solid var(--line);
+}
+
+/* The handle rides on the hairline between two panes. */
+.ui-root.pane-edge {
+  display: contents;
+}
+
+.ui-root {
+  & .ptabs {
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  & .pane-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding-top: 8px;
+  }
+
+  & .pane-seg {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 8px;
+  }
+
+  /* Changes and Branch vs base read as plain words beside the select. */
+  & .pane-seg .tray {
+    background: none;
+    padding: 0;
+    margin-right: auto;
+  }
+
+  & .pane-seg .tray > .glide {
+    top: 0;
+    bottom: 0;
+    background: var(--fill);
+    box-shadow: none;
+  }
+
+  & .pane-seg .tray > button {
+    padding: 0 4px;
+  }
+
+  /* Shrinks a long branch name first; drops to its own line only when the words leave it no room, at large font sizes. */
+  & .base-in {
+    flex: 1 1 72px;
+    min-width: 0;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  & .base-in .base-select {
+    display: flex;
+    min-width: 0;
+  }
+
+  & .filter-row,
+  & .search-form {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 8px;
+  }
+
+  & .filter-row .field,
+  & .search-form .field {
+    flex: 1;
+    min-width: 0;
+  }
+
+  & .filter-row .btn,
+  & .search-form .btn {
+    flex: none;
+  }
+
+  & .pane-note {
+    flex: none;
+    padding: 0 12px 6px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  & .panel-toolbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: var(--h-lg);
+    padding: 0 8px 8px 12px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  & .panel-toolbar .chk {
+    flex: none;
+  }
+
+  /* The list. Focus stays on the box, and shows on its selected row. */
+  & .lbox {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 8px 8px;
+    outline: none;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .lbox:focus-visible {
+    outline: none;
+  }
+
+  & .lbox:focus-visible:not(:has(.row.on)) {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+    border-radius: var(--r-sm);
+  }
+
+  & .lbox:focus-visible .row.on {
+    outline: 2px solid var(--focus);
+    outline-offset: -2px;
+  }
+
+  & .lbox-in {
+    position: relative;
+  }
+
+  & .lbox .row {
+    position: absolute;
+    left: 0;
+    right: 0;
+  }
+
+  & .row.commit {
+    padding: 0 6px;
+  }
+
+  & .cm {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  & .cm .s {
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  & .row.on .cm .s {
+    color: var(--title);
+  }
+
+  & .cm .m {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+  }
+
+  & .line-no {
+    flex: none;
+    min-width: 28px;
+    text-align: right;
+    color: var(--muted);
+    font: var(--fs-sm) / var(--lh-sm) var(--mono);
+  }
+
+  & .hit-text {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: var(--fs-sm) / var(--lh-sm) var(--mono);
+    color: var(--ink);
+  }
+
+  /* The commit pane: a column beside the list, or in its place on narrower windows. */
+  & .commit-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding-top: 8px;
+  }
+
+  &.commit-col .commit-pane {
+    border-right: 0.5px solid var(--line);
+  }
+
+  & .pane-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--h-lg);
+    padding: 0 8px 8px 12px;
+  }
+
+  & .pane-title {
+    flex: 1;
+    font-weight: 600;
+    color: var(--title);
+  }
+
+  & .pane-actions {
+    flex: none;
+    display: flex;
+    gap: 2px;
+  }
+
+  & .commit-pane > .cp-filter {
+    flex: none;
+    width: auto;
+    margin: 0 8px 8px;
+  }
+
+  & .commit-pane > .lbox {
+    min-height: 72px;
+  }
+
+  & .commit-head {
+    flex: none;
+    max-height: 45%;
+    overflow: hidden auto;
+    padding: 10px 12px;
+    border-top: 0.5px solid var(--line);
+    user-select: text;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .commit-head:focus-visible {
+    outline-offset: -2px;
+  }
+
+  & .commit-author {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  & .commit-author > div {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  & .commit-message {
+    margin: 0 0 8px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    color: var(--ink);
+  }
+
+  & .commit-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    overflow-wrap: anywhere;
+  }
+}
+
+.app[data-size="m"] .ui-root.left,
+.app[data-size="s"] .ui-root.left {
+  border-right: 0;
+}
+
+.app[data-size="s"] .ui-root .fdir {
+  display: none;
+}
+
+/* A SHA selects whole on one click. */
+.ui-root .selectable {
+  user-select: all;
+}

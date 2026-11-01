@@ -4,11 +4,11 @@ import { buildTree, compactFolders, flattenTree, type TreeNode, type TreeRow } f
 import { folderItems } from "../lib/contextMenus";
 import type { MenuItem } from "../lib/menu";
 import { useStore } from "../store";
-import { currentWhere, menuEnv } from "./ContextMenu";
-import { FileRow } from "./FileRow";
+import { currentWhere, menuEnv } from "../menuEnv";
+import { Count, Toggle, TreeChevron } from "../ui";
+import { fileRow } from "./FileRow";
 import { FolderTypeIcon } from "./FileTypeIcon";
-import { Icon } from "./Icon";
-import { ListView } from "./ListView";
+import { ListView, useListRowHeight } from "./ListView";
 
 interface ChangedItem {
   path: string;
@@ -34,24 +34,24 @@ export function ChangesViewToggle() {
   const view = useStore((s) => s.settings.changesView);
   const update = useStore((s) => s.updateSettings);
   const tree = view === "tree";
-  return (
-    <button className="icon-button view-toggle" title={tree ? "View as list" : "View as tree"} aria-pressed={tree} onClick={() => update({ changesView: tree ? "list" : "tree" })}>
-      <Icon name={tree ? "list-flat" : "list-tree"} />
-    </button>
-  );
+  const label = tree ? "View as list" : "View as tree";
+  return <Toggle size="sm" icon={tree ? "list-flat" : "list-tree"} label={label} tip={label} on={tree} onClick={() => update({ changesView: tree ? "list" : "tree" })} />;
 }
 
 /** Changed files as a flat list or a folder tree, following the Changes view setting. */
 export function ChangedFilesView<T extends ChangedItem>(p: Props<T>) {
   const view = useStore((s) => s.settings.changesView);
+  const showDir = useStore((s) => s.settings.showFolderPath);
+  const rowHeight = useListRowHeight();
   if (view === "tree") return <ChangedFilesTree {...p} />;
   return (
     <ListView<T>
       label={p.label}
       items={p.items}
+      rowHeight={rowHeight}
       getKey={(f) => f.path}
       selectedKey={p.selectedPath}
-      render={(f) => <FileRow path={f.path} origPath={f.origPath} kind={f.kind} />}
+      render={(f) => fileRow({ ...f, showDir })}
       onSelect={(f, pin) => p.open(f, pin)}
       menu={p.menu}
       empty={p.empty}
@@ -77,6 +77,7 @@ function ChangedFilesTree<T extends ChangedItem>(p: Props<T>) {
 
   const tree = useMemo(() => compactFolders(buildTree(p.items, (f) => f.path)), [p.items]);
   const rows = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
+  const rowHeight = useListRowHeight();
 
   const toggle = (path: string, open?: boolean) =>
     setCollapsed((c) => {
@@ -120,6 +121,7 @@ function ChangedFilesTree<T extends ChangedItem>(p: Props<T>) {
       label={p.label}
       className="tree"
       items={rows}
+      rowHeight={rowHeight}
       getKey={(r) => r.key}
       selectedKey={folder ?? p.selectedPath}
       onSelect={onSelect}
@@ -132,30 +134,20 @@ function ChangedFilesTree<T extends ChangedItem>(p: Props<T>) {
       }}
       render={(r) => {
         const n = r.node;
-        const pad = { paddingLeft: 6 + r.depth * 14 };
-        if (n.kind === "file") {
-          return (
-            <span className="tree-row" style={pad}>
-              <span className="tree-chevron" />
-              <FileRow path={n.path} origPath={n.item.origPath} kind={n.item.kind} inTree />
-            </span>
-          );
-        }
+        if (n.kind === "file") return { ...fileRow({ path: n.path, origPath: n.item.origPath, kind: n.item.kind, inTree: true }), indent: r.depth };
         const open = !collapsed.has(n.path);
-        return (
-          <span className="tree-row" style={pad} title={n.path}>
-            <span className="tree-chevron">
-              <Icon name={open ? "chevron-down" : "chevron-right"} />
-            </span>
-            <span className="tree-icon">
+        return {
+          indent: r.depth,
+          title: n.path,
+          lead: (
+            <>
+              <TreeChevron folder open={open} />
               <FolderTypeIcon name={n.path.slice(n.path.lastIndexOf("/") + 1)} open={open} />
-            </span>
-            <span className="tree-name">{n.name}</span>
-            <span className="folder-count" title={`${n.count} changed file${n.count === 1 ? "" : "s"}`}>
-              {n.count}
-            </span>
-          </span>
-        );
+            </>
+          ),
+          main: <span className="fname">{n.name}</span>,
+          trail: <Count n={n.count} title={`${n.count} changed file${n.count === 1 ? "" : "s"}`} />,
+        };
       }}
       empty={p.empty}
     />

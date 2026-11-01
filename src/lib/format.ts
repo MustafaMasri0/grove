@@ -1,5 +1,3 @@
-import type { ChangeKind } from "../api";
-
 const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 const UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 365 * 24 * 3600],
@@ -19,33 +17,17 @@ export function relativeTime(unixSeconds: number, now = Date.now() / 1000): stri
   return "just now";
 }
 
+/** "now", "5m", "3h", "2d": for the rail's narrow rows. */
+export function shortTime(unixSeconds: number, now = Date.now() / 1000): string {
+  const m = Math.round((now - unixSeconds) / 60);
+  return m < 1 ? "now" : m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+}
+
 export function isoToUnix(iso: string): number {
   return Date.parse(iso) / 1000;
 }
 
 export const shortSha = (sha: string) => sha.slice(0, 7);
-
-export const STATUS_LETTER: Record<ChangeKind, string> = {
-  modified: "M",
-  added: "A",
-  deleted: "D",
-  renamed: "R",
-  copied: "C",
-  untracked: "U",
-  ignored: "I",
-  conflicted: "!",
-};
-
-export const STATUS_TITLE: Record<ChangeKind, string> = {
-  modified: "Modified",
-  added: "Added",
-  deleted: "Deleted",
-  renamed: "Renamed",
-  copied: "Copied",
-  untracked: "Untracked",
-  ignored: "Ignored",
-  conflicted: "Conflicted",
-};
 
 export function splitPath(path: string): { name: string; dir: string } {
   const i = path.lastIndexOf("/");

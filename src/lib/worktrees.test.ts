@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommitSummary, WorktreeInfo, WorktreeSummary } from "../api";
-import { ACTIVITY_LIMIT, activityBetween, addActivity, editsOf, isActive, lastActivity, MERGE_SECS, readablePaths, sharedFiles, worktreeName, worktreeState, type ActivityEvent } from "./worktrees";
+import { ACTIVITY_LIMIT, activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, heldOrder, isActive, lastActivity, MERGE_SECS, nextSort, originOf, overviewRows, readablePaths, sharedFiles, sortRows, summaryBranch, worktreeName, worktreeState, type ActivityEvent, type OverviewColumn } from "./worktrees";
 
 const commit = (sha: string, parents: string[], subject: string): CommitSummary => ({
   sha,
@@ -200,5 +200,69 @@ describe("lastActivity", () => {
     expect(lastActivity(500, commit)).toBe(500);
     expect(lastActivity(undefined, commit)).toBe(100);
     expect(lastActivity(undefined, null)).toBeNull();
+  });
+});
+
+describe("overview table", () => {
+  const rows = (summaries: WorktreeSummary[], extra: { lastChange?: Record<string, number>; rejected?: string } = {}) =>
+    overviewRows({ summaries, shared: [], lastChange: extra.lastChange ?? {}, actions: extra.rejected ? { [extra.rejected]: { rejected: true } } : {}, nameOf: (p) => p }, 1000);
+  const order = (list: ReadonlyArray<{ summary: WorktreeSummary }>) => list.map((r) => r.summary.path);
+
+  it("names the branch, a detached HEAD and an unborn one", () => {
+    expect(summaryBranch({ branch: "main", head: "h" })).toBe("main");
+    expect(summaryBranch({ branch: null, head: "0123456789" })).toBe("detached @ 0123456");
+    expect(summaryBranch({ branch: null, head: null })).toBe("no commits");
+  });
+
+  it("reads where a branch stands against its upstream", () => {
+    expect(originOf(wt("a"))).toEqual({ kind: "none" });
+    expect(originOf(wt("a", { branch: null }))).toBeNull();
+    expect(originOf(wt("a", { upstream: "origin/a" }))).toEqual({ kind: "sync", upstream: "origin/a" });
+    expect(originOf(wt("a", { upstream: "origin/a", upstreamBehind: 2 }))).toEqual({ kind: "diverged", upstream: "origin/a", ahead: 0, behind: 2 });
+  });
+
+  it("takes each row's state from worktreeState", () => {
+    expect(rows([wt("a", { changedFiles: 2 })])[0].state).toBe("changes");
+    expect(rows([wt("a")], { rejected: "a" })[0].state).toBe("rejected");
+    expect(rows([wt("a")], { lastChange: { a: 999 } })[0].state).toBe("changing");
+    expect(rows([wt("a")])[0].state).toBe("clean");
+  });
+
+  it("counts the shared files and the others that change them", () => {
+    const summaries = [wt("a"), wt("b"), wt("c")];
+    const shared = [{ path: "x", worktrees: [{ path: "a", uncommitted: true }, { path: "b", uncommitted: false }] }, { path: "y", worktrees: [{ path: "a", uncommitted: true }, { path: "c", uncommitted: true }] }];
+    const [a, b] = overviewRows({ summaries, shared, lastChange: {}, actions: {}, nameOf: (p) => p.toUpperCase() }, 0);
+    expect([a.shared, a.sharedWith]).toEqual([2, ["B", "C"]]);
+    expect([b.shared, b.sharedWith]).toEqual([1, ["A"]]);
+  });
+
+  it("sorts by state with the most pressing first, and keeps ties in order", () => {
+    const list = rows([wt("clean-1"), wt("changes", { changedFiles: 1 }), wt("clean-2"), wt("rejected"), wt("changing")], { rejected: "rejected", lastChange: { changing: 999 } });
+    expect(order(sortRows(list, DEFAULT_OVERVIEW_SORT))).toEqual(["rejected", "changing", "changes", "clean-1", "clean-2"]);
+  });
+
+  it("sorts every column without losing a row, including rows that lack the value", () => {
+    const list = rows([wt("a", { branch: null, head: null, lastCommit: null }), wt("b", { upstream: "origin/b", upstreamAhead: 3 }), wt("c", { upstream: "origin/c" })]);
+    for (const key of ["name", "branch", "state", "files", "lines", "origin", "ahead", "conflicts", "commit", "last"] satisfies OverviewColumn[]) {
+      expect(order(sortRows(list, { key, dir: 1 })).sort()).toEqual(["a", "b", "c"]);
+    }
+    expect(order(sortRows(list, { key: "origin", dir: -1 }))).toEqual(["b", "c", "a"]);
+  });
+
+  it("shows the newest activity first when sorted by Last", () => {
+    const list = rows([wt("old"), wt("new")], { lastChange: { old: 10, new: 20 } });
+    expect(order(sortRows(list, { key: "last", dir: 1 }))).toEqual(["new", "old"]);
+  });
+
+  it("turns the sorted column around and starts others ascending", () => {
+    expect(nextSort({ key: "name", dir: 1 }, "name")).toEqual({ key: "name", dir: -1 });
+    expect(nextSort({ key: "name", dir: -1 }, "name")).toEqual({ key: "name", dir: 1 });
+    expect(nextSort({ key: "name", dir: -1 }, "files")).toEqual({ key: "files", dir: 1 });
+  });
+
+  it("holds an order: gone rows leave, new ones join at the end", () => {
+    expect(heldOrder(["a", "b", "c"], ["c", "b", "a"])).toEqual(["a", "b", "c"]);
+    expect(heldOrder(["a", "b", "c"], ["c", "a"])).toEqual(["a", "c"]);
+    expect(heldOrder(["a", "b"], ["n", "b", "a"])).toEqual(["a", "b", "n"]);
   });
 });

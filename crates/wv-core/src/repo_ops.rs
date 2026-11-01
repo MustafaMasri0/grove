@@ -472,6 +472,12 @@ pub fn run_action(h: &dyn GitHost, cwd: &str, action: Action, branch: &str, prog
     h.git(cwd, &a, progress)
 }
 
+/// Clones `url` into a new folder `name` inside `parent`. Nothing outside that folder is touched, and git removes it if the clone fails.
+pub fn clone_repo(h: &dyn GitHost, parent: &str, url: &str, name: &str, progress: Option<Progress>) -> Result<(), String> {
+    let out = h.git(parent, &args(&["clone", "--progress", "--", url, name]), progress)?;
+    if out.code == 0 { Ok(()) } else { Err(out.stderr.trim().to_string()) }
+}
+
 /// How a fetch, push or publish ended, for the UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

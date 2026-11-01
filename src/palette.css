@@ -1,0 +1,86 @@
+/* The palette (Ctrl+K and Ctrl+P): the dialog frame, near the top of the window. */
+.ui-root .pal-wrap {
+  align-items: flex-start;
+  padding: 52px 12px 12px;
+}
+
+/* Overlays sit outside .app, so the width bands are media queries here: the app fills the window. */
+@media (max-width: 1099.98px) {
+  .ui-root .pal-wrap {
+    padding-top: 12px;
+  }
+}
+
+.ui-root .pal {
+  width: min(600px, 100%);
+  max-height: min(460px, 100%);
+  background: var(--card);
+
+  & .pal-top {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px 8px 8px;
+    border-bottom: 0.5px solid var(--line);
+  }
+
+  & .pal-top .field-w {
+    flex: 1;
+  }
+
+  & .pal-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .pal-foot {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    height: 34px;
+    padding: 0 12px;
+    border-top: 0.5px solid var(--line);
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--muted);
+  }
+
+  & .pal-foot span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  & .mi-m {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  & .mi-l {
+    flex: none;
+    max-width: 60%;
+  }
+
+  & .mi-d {
+    min-width: 0;
+  }
+
+  & mark {
+    background: none;
+    color: var(--title);
+    font-weight: 700;
+  }
+
+  & .mi-i:has(.ficon) {
+    background: none;
+  }
+}

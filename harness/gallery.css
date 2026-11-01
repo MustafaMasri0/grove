@@ -1,0 +1,310 @@
+/* The gallery's layout, and the forced states that stand in for real pseudo-classes. Never part of the app. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.ui-root {
+  height: 100%;
+  overflow: hidden auto;
+
+  & .gal-scroll {
+    padding: 0 16px 24px;
+    background: var(--sheet);
+    min-height: 100%;
+  }
+
+  & .gal-title {
+    padding-top: 16px;
+    font-size: var(--fs-xl);
+    line-height: var(--lh-xl);
+    font-weight: 600;
+    color: var(--title);
+  }
+
+  & .gal-sec {
+    padding-bottom: 8px;
+  }
+
+  & .gal-sec > h2 {
+    padding-top: 20px;
+    font-size: var(--fs-lg);
+    line-height: var(--lh-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--title);
+  }
+
+  & .gal-g {
+    padding-top: 14px;
+  }
+
+  & .gal-g > h3 {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 8px;
+  }
+
+  & .gal-n {
+    max-width: 640px;
+    margin: -4px 0 8px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  & .gal-cells {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 12px 20px;
+  }
+
+  & .gal-c {
+    margin: 0;
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  & .gal-c > figcaption {
+    font-size: var(--fs-xs);
+    line-height: var(--lh-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  & .gal-d {
+    min-width: 0;
+    max-width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  & .gal-w {
+    width: min(280px, 100%);
+  }
+
+  & .gal-c.wide {
+    flex: 1 1 320px;
+    max-width: 560px;
+  }
+
+  & .gal-c.wide > .gal-d {
+    display: block;
+  }
+
+  & .gal-c.wide .banner {
+    margin: 0;
+  }
+
+  & .gal-pad {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  & .gal-num {
+    width: 136px;
+  }
+
+  & .gal-sws {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+  }
+
+  & .gal-sw {
+    margin: 0;
+    min-width: 0;
+  }
+
+  & .gal-sw > i {
+    display: block;
+    height: 36px;
+    border-radius: var(--r-md);
+    box-shadow: inset 0 0 0 0.5px var(--line-strong);
+  }
+
+  & .gal-sw > figcaption {
+    display: flex;
+    flex-direction: column;
+    margin-top: 4px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    min-width: 0;
+  }
+
+  & .gal-sw > figcaption > span {
+    font-size: var(--fs-xs);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .gal-kind,
+  & .gal-mk {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  & .gal-type {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  & .gal-ty {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  & .gal-ty .mono {
+    font-size: var(--fs-xs);
+  }
+
+  & .gal-tabs {
+    width: 180px;
+    border-bottom: 0;
+    padding: 0;
+  }
+
+  & .gal-empty {
+    width: min(420px, 100%);
+    display: flex;
+  }
+
+  & .gal-empty .empty {
+    padding: 16px;
+  }
+
+  & .gal-rz {
+    display: flex;
+    height: 40px;
+    width: 48px;
+    align-items: stretch;
+    justify-content: center;
+  }
+
+  & .gal-d .setting {
+    padding: 6px 0;
+  }
+
+  /* Overlays drawn in place */
+  & .gal-d .menu,
+  & .gal-d .tip {
+    position: relative;
+    animation: none;
+  }
+
+  & .gal-d .menu {
+    width: min(280px, 100%);
+    max-width: 100%;
+  }
+
+  & .gal-d .tip {
+    max-width: 100%;
+  }
+
+  /* Forced states */
+  & .btn.is-hover {
+    box-shadow: var(--sh-hair-hover);
+  }
+
+  & .btn.ghost.is-hover {
+    background: var(--wash);
+    color: var(--ink);
+    box-shadow: none;
+  }
+
+  & .btn.primary.is-hover {
+    background: var(--solid-hover);
+    box-shadow: none;
+  }
+
+  & .is-focus {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  & .btn.is-active {
+    background: var(--press);
+  }
+
+  & .btn.primary.is-active {
+    background: var(--solid-hover);
+  }
+
+  & .btn.link.is-hover {
+    box-shadow: none;
+    text-decoration: underline;
+  }
+
+  & .btn.link.is-active {
+    background: none;
+  }
+
+  & .field.is-hover {
+    background: var(--press);
+  }
+
+  & .field.is-focus {
+    background: var(--card);
+    box-shadow: 0 0 0 1px var(--focus), 0 0 0 4px var(--focus-soft);
+    outline: none;
+  }
+
+  & .row.is-hover {
+    background: var(--wash);
+  }
+
+  & .row.is-focus,
+  & .tab.is-focus {
+    outline-offset: -2px;
+  }
+
+  & .tab.is-hover,
+  & .sec.is-hover {
+    color: var(--ink);
+  }
+
+  & .tab.is-hover .btn,
+  & .tab.is-focus .btn {
+    opacity: 1;
+  }
+
+  & button.chip.is-hover {
+    background: var(--press);
+  }
+
+  & .chk.is-focus {
+    outline: 0;
+  }
+
+  & .chk.is-focus .box {
+    outline: 2px solid var(--focus);
+    outline-offset: 1px;
+  }
+
+  & .chk.is-hover input:not(:checked) + .box {
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+
+  & .resize.is-hover {
+    background: var(--line-strong);
+  }
+}

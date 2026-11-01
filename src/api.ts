@@ -223,6 +223,8 @@ type LeftTabName = "changes" | "history" | "explorer" | "search";
 
 export const api = {
   openRepo: (path: string) => invoke<RepoInfo>("open_repo", { path }),
+  /** Clones into a new folder `name` under `parent`; returns the path to open. Progress lines arrive as `clone-progress`. */
+  cloneRepo: (url: string, parent: string, name: string) => invoke<string>("clone_repo", { url, parent, name }),
   worktrees: (a: At) => invoke<WorktreeInfo[]>("worktrees", a),
   branches: (a: At) => invoke<BranchRef[]>("branches", a),
   status: (a: At) => invoke<Status>("status", a),
@@ -252,6 +254,8 @@ export const api = {
   avatar: (email: string, size: number, at?: At, sha?: string) =>
     invoke<string | null>("avatar", { email, size, repo: at?.repo ?? null, cwd: at?.cwd ?? null, sha: sha ?? null }),
   copyText: (text: string) => invoke<void>("copy_text", { text }),
+  /** Opens a terminal on a worktree of `repo`; `cwd` is its path on the host. */
+  openTerminal: (repo: string, cwd: string) => invoke<void>("open_terminal", { repo, cwd }),
   /** `owner/repo` when origin is on github.com, else null. */
   githubRepo: (a: At) => invoke<string | null>("github_repo", a),
   readImage: (a: At, source: Source) => invoke<string | null>("read_image", { ...a, source }),

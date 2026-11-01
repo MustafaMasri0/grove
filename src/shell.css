@@ -1,0 +1,549 @@
+/* The shell: rail, page header, window controls, width bands and the fold. Controls and tokens live in src/ui; each surface keeps its own styles. */
+@keyframes blur-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+@keyframes blur-out {
+  to {
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+@keyframes rail-slide {
+  from {
+    transform: translateX(var(--fold-x));
+  }
+}
+
+.app {
+  position: relative;
+  --wc: 132px;
+  --band: 44px;
+}
+
+.app[data-size="m"],
+.app[data-size="s"] {
+  --wc: 108px;
+}
+
+.shell-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Window controls: over the page header, top right. */
+.ui-root.wc {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--band);
+  display: flex;
+  z-index: 6;
+  background: none;
+
+  & button {
+    width: calc(var(--wc) / 3);
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    transition: background-color var(--t) ease, color var(--t) ease;
+  }
+
+  & button:hover {
+    background: var(--wash);
+    color: var(--ink);
+  }
+
+  & button.wc-close:hover {
+    background: #c42b1c;
+    color: #fff;
+  }
+}
+
+/* Rail */
+.rail {
+  width: var(--rail-w, 264px);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  box-shadow: inset -1px 0 var(--line);
+
+  & > .resize {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -2px;
+    margin: 0;
+  }
+
+  & .rail-top {
+    height: var(--band);
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    box-shadow: inset 0 -1px var(--line);
+  }
+
+  & .t-repo {
+    min-width: 0;
+    max-width: 240px;
+    margin-right: auto;
+    padding: 0 8px;
+  }
+
+  & .t-repo .btn-l {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .rail-top .btn.only {
+    flex: none;
+  }
+
+  & .rail-nav {
+    margin: 8px 8px 0;
+    width: calc(100% - 16px);
+    justify-content: flex-start;
+    flex: none;
+  }
+
+  & .rail-filter {
+    display: flex;
+    gap: 6px;
+    padding: 8px 8px 2px;
+    flex: none;
+  }
+
+  & .rail-filter .btn {
+    flex: none;
+  }
+
+  & .rail-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 6px 8px 8px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .rail-foot {
+    flex: none;
+    padding-bottom: 6px;
+  }
+
+  & .row.wt {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    gap: 0 8px;
+    align-content: center;
+    height: calc(var(--lh-md) + var(--lh-sm) + 8px);
+    padding: 0 8px;
+    border-radius: 8px;
+  }
+
+  & .wt.skel {
+    pointer-events: none;
+  }
+
+  & .wt .mark,
+  & .wt > .sk {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+  }
+
+  & .wt-name {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  & .wt .row-t {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  & .wt-sub {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  & .wt.skel .wt-name,
+  & .wt.skel .wt-sub {
+    display: block;
+    align-self: center;
+  }
+
+  & .wt .n {
+    font-weight: 500;
+    line-height: var(--lh-md);
+    color: var(--ink);
+  }
+
+  & .wt.on .n {
+    color: var(--title);
+  }
+
+  /* Rows that cannot be opened read quieter; the reason is the tooltip. */
+  & .wt.off .n {
+    color: var(--muted);
+  }
+
+  & .wt-time {
+    flex: none;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+  }
+
+  & .wt-time::before {
+    content: "·" / "";
+    margin-right: 4px;
+  }
+
+  & .wt-sub .delta {
+    flex: none;
+    line-height: var(--lh-sm);
+  }
+
+  & .wt .d {
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+    color: var(--muted);
+    min-width: 0;
+    display: block;
+  }
+
+  & .wt .d.err-note {
+    color: var(--err);
+  }
+
+  &[data-bare] .rail-filter {
+    display: none;
+  }
+
+  /* Icons mode: below 1100px, or collapsed by hand. Marks, rows and the left edge of every fill sit where the full rail has them, so the two layouts fold into each other. */
+  &[data-compact] {
+    width: 48px;
+  }
+
+  &[data-compact] .rail-list {
+    padding-top: 8px;
+    scrollbar-width: none;
+  }
+
+  &[data-compact] .rail-filter,
+  &[data-compact] .rail-nav .btn-l,
+  &[data-compact] .wt-name,
+  &[data-compact] .wt-sub,
+  &[data-compact] .warn-mark,
+  &[data-compact] > .resize {
+    display: none;
+  }
+
+  &[data-compact] .rail-nav {
+    width: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  &[data-compact] .row.wt {
+    grid-template-columns: 16px;
+    gap: 0;
+  }
+
+  /* The changes count rides on the mark's corner. grid-area auto: a placed absolute item would take its column as its box. Opaque, so the ring does not show through. */
+  &[data-compact] .wt .row-t {
+    grid-area: auto;
+    position: absolute;
+    right: -4px;
+    bottom: 4px;
+  }
+
+  &[data-compact] .wt .count {
+    width: 14px;
+    height: 14px;
+    min-width: 14px;
+    padding: 0;
+    border-radius: 3px;
+    font-size: 10px;
+    line-height: 14px;
+    letter-spacing: -0.02em;
+    background: var(--well);
+  }
+
+  &[data-compact] .t-repo {
+    margin: 0;
+    width: 32px;
+    padding: 0;
+  }
+
+  &[data-compact] .t-repo .btn-l,
+  &[data-compact] .t-repo > .icon:last-child {
+    display: none;
+  }
+}
+
+.app[data-size="m"] .rail[data-compact] .row.wt,
+.app[data-size="s"] .rail[data-compact] .row.wt {
+  height: 38px;
+}
+
+.app[data-size="m"] .rail[data-compact] .wt .row-t,
+.app[data-size="s"] .rail[data-compact] .wt .row-t {
+  bottom: 1px;
+}
+
+/* Content: fills what the rail leaves. */
+.main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: var(--sheet);
+}
+
+/* The page sits at the top right, so a notice keeps clear of the window controls. */
+.ui-root.notices {
+  flex: none;
+  background: none;
+
+  & .banner {
+    padding-right: calc(var(--wc) + 10px);
+  }
+}
+
+.page-stack {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Overview and Settings lie over the work, which stays laid out under them so its editors survive as they are. */
+.work {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.work[data-covered] {
+  visibility: hidden;
+}
+
+.ui-root.work-top {
+  flex: none;
+  position: relative;
+  z-index: 5;
+  background: var(--sheet);
+}
+
+.work-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  position: relative;
+  overflow: hidden;
+}
+
+.list-clip {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.list-clip > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Page header */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--band);
+  padding: 0 calc(var(--wc) + 12px) 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.head-id {
+  min-width: 0;
+  flex: 1;
+
+  & h1 {
+    font-size: var(--fs-lg);
+    line-height: var(--lh-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--title);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  & h1 > .ell {
+    flex: 0 1 auto;
+  }
+}
+
+.ui-root .br-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: -4px;
+  letter-spacing: 0;
+
+  & .btn-l {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.head-ab {
+  flex: none;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-sm);
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.head-tools {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  min-width: 0;
+  align-items: center;
+
+  & .prog-line {
+    max-width: 240px;
+    margin-right: 6px;
+  }
+
+  & .cap {
+    max-width: 300px;
+    font-size: var(--fs-sm);
+  }
+}
+
+.app[data-size="m"] .head,
+.app[data-size="s"] .head {
+  padding: 0 calc(var(--wc) + 10px) 0 10px;
+}
+
+.app[data-size="m"] .head-tools .cap,
+.app[data-size="s"] .head-tools .cap {
+  display: none;
+}
+
+.app[data-size="s"] .head-tools .btn-l {
+  display: none;
+}
+
+.app[data-size="m"] .work-top .banner,
+.app[data-size="s"] .work-top .banner {
+  margin: 6px 10px 0;
+}
+
+.work-top > .banner:last-child {
+  margin-bottom: 8px;
+}
+
+/* The list pane is a drawer below 1100px. */
+.app[data-size="m"] .list-clip,
+.app[data-size="s"] .list-clip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 300px;
+  max-width: 85%;
+  background: var(--sheet);
+  border-radius: 0 10px 10px 0;
+  overflow: hidden;
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.6);
+  transition: transform 160ms ease, visibility 0s;
+}
+
+.app[data-size="m"] .list-clip[data-open="false"],
+.app[data-size="s"] .list-clip[data-open="false"] {
+  transform: translateX(calc(-100% - 8px));
+  box-shadow: none;
+  visibility: hidden;
+  transition: transform 160ms ease, visibility 0s 160ms;
+}
+
+/* A page with no head of its own still has to move the window. */
+.page-band {
+  flex: none;
+  position: relative;
+  z-index: 1;
+  height: var(--band);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Folding the rail (foldRail): transform, opacity and filter only, so nothing lays out while it runs. The page rides above the rail; its shadow carries the hairline and fills the strip it leaves on the right when opening. */
+#main[data-fold] {
+  z-index: 1;
+  animation: rail-slide 160ms ease;
+  box-shadow: -1px 0 var(--line), var(--fold-gap) 0 var(--sheet);
+}
+
+.rail[data-fold] > :not(.resize) {
+  animation: blur-in 160ms ease;
+}
+
+.fold-host {
+  display: contents;
+}
+
+.rail.rail-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  animation: blur-out 160ms ease forwards;
+
+  & > .resize {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .list-clip {
+    transition: none !important;
+  }
+}
+
+/* The repository menu's footer. Rows, fields and buttons come from src/ui. */
+.ui-root .repo-ed {
+  color: var(--err);
+}
+

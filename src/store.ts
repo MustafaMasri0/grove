@@ -19,7 +19,10 @@ import {
 import { uncommittedCount } from "./lib/changes";
 import { coalesce } from "./lib/coalesce";
 import { shortSha } from "./lib/format";
-import { activityBetween, addActivity, editsOf, readablePaths, type ActivityEvent } from "./lib/worktrees";
+import type { PaletteScope } from "./lib/palette";
+import type { SectionId } from "./lib/settingsSchema";
+import { bandOf, isNarrow } from "./lib/shell";
+import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readablePaths, type ActivityEvent, type OverviewSort } from "./lib/worktrees";
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
@@ -100,6 +103,8 @@ interface State {
   /** Bumped after each write of settings.json. */
   settingsSaved: number;
   settingsQuery: string;
+  /** The section Settings opens at. */
+  settingsSection: SectionId;
   repos: Record<string, RepoInfo | { error: string }>;
   repo: RepoInfo | null;
   repoError: string | null;
@@ -118,6 +123,8 @@ interface State {
   /** Every worktree of the repository side by side, and the files they both change. */
   overview: Overview | null;
   overviewError: string | null;
+  /** The overview table's order. It outlives the page, so opening a worktree and coming back keeps it. */
+  overviewSort: OverviewSort;
   /** Worktree path → when its files last changed (unix seconds), from the watcher; this session only. */
   lastChange: Record<string, number>;
   /** What happened in the worktrees, newest first; this session only. */
@@ -147,7 +154,8 @@ interface State {
   tick: number;
   tabs: Tab[];
   activeTab: string | null;
-  quickOpen: boolean;
+  /** What the palette is searching while it is open: everything (Ctrl+K), or the worktree's files (Ctrl+P). */
+  palette: PaletteScope | null;
   searchFocus: number;
   systemDark: boolean;
   /** `owner/repo` when the repository's origin is on github.com. */
@@ -156,6 +164,10 @@ interface State {
   notice: string | null;
   /** The host whose connection was lost, while reconnecting. */
   connectionLost: string | null;
+  /** The app's width in CSS pixels; the shell's bands follow it. */
+  appWidth: number;
+  /** Below 1100px: whether the list drawer is out. */
+  listOpen: boolean;
 
   init(): Promise<void>;
   updateSettings(patch: Partial<Settings>): void;
@@ -194,19 +206,23 @@ interface State {
   closeTabs(ids: string[], keep?: string): void;
   activateTab(id: string): void;
   cycleTab(delta: number): void;
-  setQuickOpen(open: boolean): void;
+  setPalette(scope: PaletteScope | null): void;
   focusSearch(): void;
   setSystemDark(dark: boolean): void;
   setView(view: View): void;
-  openSettings(): void;
+  /** With a section, shows that section, unfiltered. */
+  openSettings(section?: SectionId): void;
   closeSettings(): void;
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
   setNotice(n: string | null): void;
+  setAppWidth(width: number): void;
+  toggleList(): void;
   /** A helper went away (`name` says which): its watches are gone, so reconnect and watch again. */
   reconnect: (name: string) => Promise<void>;
   /** Reloads the worktree list and the overview; one load at a time, with one more after it when asked meanwhile. */
   loadOverview(): Promise<void>;
+  setOverviewSort(sort: OverviewSort): void;
   /** A watcher event: refreshes what it affects and records the activity. */
   noteChange(change: WorktreeChanged): void;
   /**
@@ -338,6 +354,9 @@ export const useStore = create<State>()((set, get) => {
 
   const showWork = () => set({ view: "work", settingsOpen: false });
 
+  /** With no repository the work view exists only for settings.json: without a tab it goes back to the welcome page. */
+  const afterClosing = (rest: readonly Tab[]) => (!get().repo && rest.length === 0 ? { view: "overview" as const } : {});
+
   /** Watches every worktree of the repository, for refreshes and live activity. */
   const watchWorktrees = () => {
     const { repo, worktrees } = get();
@@ -380,7 +399,7 @@ export const useStore = create<State>()((set, get) => {
     }
   };
 
-  /** Shows worktree `cwd` (not a viewed branch); false when that did not happen. */
+  /** Shows worktree `cwd`, leaving any branch on view; false when that did not happen. */
   const enterWorktree = async (cwd: string) => {
     showWork();
     if (get().cwd !== cwd || get().viewBranch) await showWorktree(cwd, true);
@@ -399,6 +418,7 @@ export const useStore = create<State>()((set, get) => {
     settingsLoaded: false,
     settingsSaved: 0,
     settingsQuery: "",
+    settingsSection: "appearance",
     repos: {},
     repo: null,
     repoError: null,
@@ -414,6 +434,7 @@ export const useStore = create<State>()((set, get) => {
     changeCounts: {},
     overview: null,
     overviewError: null,
+    overviewSort: DEFAULT_OVERVIEW_SORT,
     lastChange: {},
     activity: [],
     leftTab: "changes",
@@ -436,12 +457,14 @@ export const useStore = create<State>()((set, get) => {
     tick: 0,
     tabs: [],
     activeTab: null,
-    quickOpen: false,
+    palette: null,
     searchFocus: 0,
     systemDark: true,
     githubRepo: null,
     notice: null,
     connectionLost: null,
+    appWidth: 1440,
+    listOpen: true,
 
     async init() {
       let saved: unknown = null;
@@ -489,7 +512,7 @@ export const useStore = create<State>()((set, get) => {
     removeRepo(path) {
       const { settings, repo } = get();
       get().updateSettings({ repos: settings.repos.filter((r) => r !== path), lastRepo: settings.lastRepo === path ? null : settings.lastRepo });
-      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, ...keepAppTabs() });
+      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, view: "overview", overview: null, ...keepAppTabs() });
     },
 
     async selectRepo(id) {
@@ -546,6 +569,7 @@ export const useStore = create<State>()((set, get) => {
       const { repo, cwd, viewBranch } = get();
       if (!repo) return;
       showWork();
+      set({ listOpen: true });
       if (path === cwd && !viewBranch) return;
       await showWorktree(path, path === cwd);
     },
@@ -587,7 +611,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     setLeftTab(t) {
-      set({ leftTab: t });
+      set({ leftTab: t, listOpen: true });
       loadForLeftTab();
     },
 
@@ -775,6 +799,8 @@ export const useStore = create<State>()((set, get) => {
       const { tabs, repo, cwd } = get();
       if (!repo || !cwd) return;
       showWork();
+      // Below 1100px the file covers the drawer it was picked from; ListView keeps it out while arrow keys preview.
+      if (isNarrow(get().appWidth)) set({ listOpen: false });
       const existing = tabs.find((t) => t.id === tab.id);
       if (existing) {
         set({
@@ -807,7 +833,7 @@ export const useStore = create<State>()((set, get) => {
       if (idx < 0) return;
       const rest = tabs.filter((t) => t.id !== id);
       const nextActive = activeTab === id ? (rest[idx] ?? rest[idx - 1])?.id ?? null : activeTab;
-      set({ tabs: rest, activeTab: nextActive });
+      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
     },
 
     closeTabs(ids, keep) {
@@ -821,7 +847,7 @@ export const useStore = create<State>()((set, get) => {
         const before = tabs.slice(0, tabs.findIndex((t) => t.id === activeTab)).filter((t) => !gone.has(t.id));
         nextActive = (keep && !gone.has(keep) ? keep : before.at(-1)?.id ?? rest[0]?.id) ?? null;
       }
-      set({ tabs: rest, activeTab: nextActive });
+      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
     },
 
     activateTab(id) {
@@ -836,12 +862,13 @@ export const useStore = create<State>()((set, get) => {
       set({ activeTab: tabs[(idx + delta + tabs.length) % tabs.length].id });
     },
 
-    setQuickOpen(open) {
-      set({ quickOpen: open });
+    setPalette(scope) {
+      // Quick Open lists a worktree's files: with no repository there is nothing to go to.
+      if (scope !== "files" || get().repo) set({ palette: scope });
     },
 
     focusSearch() {
-      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1 }));
+      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1, listOpen: true }));
     },
 
     setSystemDark(dark) {
@@ -852,8 +879,8 @@ export const useStore = create<State>()((set, get) => {
       set({ view, settingsOpen: false });
     },
 
-    openSettings() {
-      set({ settingsOpen: true });
+    openSettings(section) {
+      set({ settingsOpen: true, settingsSection: section ?? "appearance", ...(section ? { settingsQuery: "" } : {}) });
     },
 
     closeSettings() {
@@ -875,6 +902,17 @@ export const useStore = create<State>()((set, get) => {
 
     setNotice(n) {
       set({ notice: n });
+    },
+
+    setAppWidth(width) {
+      const { appWidth } = get();
+      if (width === appWidth) return;
+      // Crossing a band resets the drawer: out on wide windows, tucked away on narrow ones.
+      set(bandOf(width) === bandOf(appWidth) ? { appWidth: width } : { appWidth: width, listOpen: !isNarrow(width) });
+    },
+
+    toggleList() {
+      set((s) => ({ listOpen: !s.listOpen }));
     },
 
     async reconnect(name) {
@@ -903,6 +941,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     loadOverview: coalesce(loadOverviewOnce),
+    setOverviewSort: (overviewSort) => set({ overviewSort }),
 
     async openWorktreeChange(cwd, path) {
       const a = (await enterWorktree(cwd)) ? at() : null;

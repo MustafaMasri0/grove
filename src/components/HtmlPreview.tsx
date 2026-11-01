@@ -76,5 +76,9 @@ export function HtmlPreview({ text, tab }: { text: string; tab: Tab }) {
 
   if (!page) return null;
   // A new frame for each page, so the sandbox it was created with always matches.
-  return <iframe key={page.url} className="html-preview" title={path} sandbox={page.scripts ? "allow-scripts" : ""} referrerPolicy="no-referrer" src={page.url} />;
+  return (
+    <div className="ui-root html-wrap">
+      <iframe key={page.url} className="html-preview" title={path} sandbox={page.scripts ? "allow-scripts" : ""} referrerPolicy="no-referrer" src={page.url} />
+    </div>
+  );
 }

@@ -1,0 +1,239 @@
+/* Settings: a modal over the app. Rows, fields and buttons come from src/ui. */
+.ui-root .set-dlg {
+  width: min(900px, 100%);
+  height: min(640px, 100%);
+
+  & .dlg-b {
+    flex-direction: column;
+  }
+
+  /* Beside the close button. */
+  & .set-json {
+    margin-left: auto;
+  }
+
+  & .dlg-x {
+    margin-left: 0;
+  }
+
+  & .set-count {
+    font-size: var(--fs-sm);
+  }
+
+  & .set-file {
+    flex: none;
+    padding: 8px 16px;
+    white-space: pre-wrap;
+    user-select: text;
+  }
+
+  & .set-split {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  /* Wide enough for "Keyboard shortcuts" at every UI font size. */
+  & .set-rail {
+    width: max(190px, 13.5em);
+    flex: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 0.5px solid var(--line);
+  }
+
+  & .set-q {
+    flex: none;
+    width: auto;
+    margin: 8px 8px 0;
+  }
+
+  & .set-nav {
+    flex: 1;
+    min-height: 0;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden auto;
+  }
+
+  & .set-foot {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px 8px;
+    padding: 8px;
+    border-top: 0.5px solid var(--line);
+  }
+
+  & .set-n {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  /* offsetTop of the sections is measured from here. */
+  & .set-b {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    padding: 4px 24px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  /* The last section needs room below it to reach the top when its nav item is chosen. */
+  & .set-sec:last-of-type {
+    min-height: 100%;
+  }
+
+  & .set-sec h2 {
+    padding-top: 16px;
+    font-size: var(--fs-lg);
+    line-height: var(--lh-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--title);
+  }
+
+  & .set-note {
+    padding: 6px 0 4px;
+    max-width: 640px;
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  & .setting-c {
+    min-width: 0;
+  }
+
+  & .setting-d {
+    user-select: text;
+  }
+
+  & .set-num {
+    flex: none;
+    width: 136px;
+  }
+
+  & .set-num .field {
+    padding-right: 64px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  & .set-txt {
+    flex: none;
+    width: 200px;
+  }
+
+  & .set-rst {
+    margin-top: 2px;
+    align-self: flex-start;
+  }
+
+  & .setting.repo {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  & .setting.repo .setting-c {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  & .setting.repo .setting-d.mono {
+    overflow-wrap: anywhere;
+  }
+
+  & .set-rm {
+    margin-left: auto;
+  }
+
+  & .set-err {
+    color: var(--err);
+  }
+
+  & .keys-t {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 4px;
+  }
+
+  & .keys-t td {
+    padding: 6px 16px 6px 0;
+    border-bottom: 0.5px solid var(--line);
+    vertical-align: top;
+  }
+
+  & .keys-t td:first-child kbd {
+    height: auto;
+    min-height: 18px;
+    text-align: left;
+    white-space: normal;
+  }
+
+  & .keys-t td:last-child {
+    padding-right: 0;
+    width: 1%;
+    white-space: nowrap;
+  }
+}
+
+/* Overlays sit outside .app, so the width bands are media queries here: the app fills the window. Below 1100px it fills the window too. */
+@media (max-width: 1099.98px) {
+  .ui-root .set-dlg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* Below 800px the rail is a band above the body: search and reset on a line, the sections in a strip under them. */
+@media (max-width: 799.98px) {
+  .ui-root .set-dlg {
+    & .set-split {
+      flex-direction: column;
+    }
+
+    & .set-rail {
+      width: auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      border-right: 0;
+      border-bottom: 0.5px solid var(--line);
+    }
+
+    & .set-foot {
+      flex-wrap: nowrap;
+      padding: 8px 8px 0 0;
+      border-top: 0;
+    }
+
+    & .set-nav {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      flex-direction: row;
+      overflow: auto hidden;
+      scrollbar-width: none;
+      padding: 6px 8px;
+    }
+
+    & .set-n {
+      width: auto;
+      flex: none;
+    }
+
+    & .set-b {
+      padding: 4px 16px 0;
+    }
+
+    & .setting {
+      flex-wrap: wrap;
+      gap: 8px 16px;
+    }
+  }
+}

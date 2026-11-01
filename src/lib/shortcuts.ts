@@ -1,4 +1,4 @@
-// The keyboard shortcuts, for the reference list on the Settings page.
+// The keyboard shortcuts, for the reference list in Settings.
 // They are handled in App.tsx (app-wide), ListView.tsx (lists) and by Monaco.
 
 export interface Shortcut {
@@ -8,12 +8,14 @@ export interface Shortcut {
 }
 
 export const SHORTCUTS: readonly Shortcut[] = [
+  { keys: "Ctrl+K", action: "Search worktrees, changed files and commands", where: "App" },
   { keys: "Ctrl+P", action: "Quick open a file", where: "App" },
   { keys: "Ctrl+Shift+F", action: "Search in files", where: "App" },
   { keys: "Ctrl+1", action: "Show Changes", where: "App" },
   { keys: "Ctrl+2", action: "Show History", where: "App" },
   { keys: "Ctrl+3", action: "Show Explorer", where: "App" },
   { keys: "Ctrl+Shift+O", action: "Open the Worktrees overview", where: "App" },
+  { keys: "Ctrl+B", action: "Fold the sidebar; below 1100px wide, the list drawer", where: "App" },
   { keys: "Ctrl+,", action: "Open Settings", where: "App" },
   { keys: "F5 / Ctrl+R", action: "Refresh", where: "App" },
   { keys: "Ctrl+= / Ctrl+-", action: "Zoom in / out", where: "App" },

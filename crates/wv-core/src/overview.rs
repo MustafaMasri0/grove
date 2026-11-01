@@ -3,7 +3,7 @@
 
 use crate::host::GitHost;
 use crate::porcelain::log::{parse_log, CommitSummary, LOG_FORMAT};
-use crate::porcelain::misc::{parse_left_right, parse_numstat, parse_path_list, FileLines};
+use crate::porcelain::misc::{parse_left_right, parse_numstat, parse_path_list};
 use crate::porcelain::name_status::ChangedFile;
 use crate::porcelain::ChangeKind;
 use crate::repo_ops::{run, run_text, status, succeeds};
@@ -32,11 +32,10 @@ pub struct WorktreeSummary {
     pub upstream_ahead: u32,
     pub upstream_behind: u32,
     pub last_commit: Option<CommitSummary>,
-    /// Files the worktree changes: uncommitted ones (untracked included) and, with a base, those
-    /// committed since it split from the base.
+    /// Files with uncommitted changes, untracked included.
     pub changed_files: u32,
-    /// Lines of those files, working tree against that same point. Untracked files have no line
-    /// counts: git does not diff them.
+    /// Lines of those files, working tree against HEAD. Untracked files have no line counts: git
+    /// does not diff them.
     pub lines_added: u32,
     pub lines_removed: u32,
 }
@@ -110,18 +109,10 @@ pub fn summary(h: &dyn GitHost, cwd: &str, base: Option<&str>, find_overlaps: bo
         }
         (s.base_behind, s.base_ahead) = parse_left_right(&run(h, cwd, &["rev-list", "--left-right", "--count", &format!("{base}...{head}")])?)?;
     }
-    let since = merge_base.as_ref().map_or(head.as_str(), |(_, m)| m.as_str());
-    count_changes(&mut s, &parse_numstat(&run(h, cwd, &["diff", "--numstat", "-z", since, "--"])?)?);
-    Ok(s)
-}
-
-/// Adds the files of a diff to the uncommitted ones: each file once, whichever side lists it.
-fn count_changes(s: &mut WorktreeSummary, diff: &[FileLines]) {
-    let mut files: BTreeSet<&str> = s.uncommitted.iter().map(|f| f.path.as_str()).collect();
-    files.extend(diff.iter().map(|f| f.path.as_str()));
-    s.changed_files = files.len() as u32;
+    let diff = parse_numstat(&run(h, cwd, &["diff", "--numstat", "-z", &head, "--"])?)?;
     s.lines_added = diff.iter().map(|f| f.added).sum();
     s.lines_removed = diff.iter().map(|f| f.removed).sum();
+    Ok(s)
 }
 
 /// Every worktree in `cwds` side by side and, for `find_overlaps`, the files they both change.

@@ -25,6 +25,11 @@ export function sshAddress(host: string, path: string): string {
   return `ssh://${where}/${on}`;
 }
 
+/** The folder a clone of `url` goes into by default, as git names it: the address's last part without `.git`. */
+export function repoNameFromUrl(url: string): string {
+  return url.trim().replace(/[/\\]+$/, "").replace(/\.git$/, "").split(/[/\\:]/).pop() ?? "";
+}
+
 /** A worktree folder and a repository-relative path. */
 export function joinPath(dir: string, rel: string): string {
   if (!rel) return dir;

@@ -7,6 +7,7 @@ function env() {
   const e = {
     copy: vi.fn(async (t: string | Promise<string>) => void copied.push(await t)),
     reveal: vi.fn(),
+    terminal: vi.fn(),
     openUrl: vi.fn(),
   } satisfies MenuEnv;
   return { e, copied };
@@ -174,7 +175,7 @@ describe("commitItems", () => {
   });
 });
 
-describe("top bar items", () => {
+describe("rail and header items", () => {
   it("repository: copy path and name, reveal, remove", async () => {
     const { e, copied } = env();
     const remove = vi.fn();
@@ -192,14 +193,16 @@ describe("top bar items", () => {
     expect(labels(repoItems(e, { name: "x", path: null, reveal: true, remove: () => {} }))).toEqual(["Copy path (off)", "Copy name", "-", "Reveal in File Explorer (off)", "-", "Remove from list"]);
   });
 
-  it("worktree: copy path and branch, reveal unless missing", async () => {
+  it("worktree: copy path and branch, open a terminal and reveal unless missing", async () => {
     const { e, copied } = env();
-    const items = worktreeItems(e, { path: "D:\\wt\\a", branch: "feat/x", missing: false, reveal: true });
-    expect(labels(items)).toEqual(["Copy path", "Copy branch name", "-", "Reveal in File Explorer"]);
+    const items = worktreeItems(e, { path: "D:\\wt\\a", cwd: "D:/wt/a", branch: "feat/x", missing: false, reveal: true });
+    expect(labels(items)).toEqual(["Copy path", "Copy branch name", "-", "Open in Terminal", "Reveal in File Explorer"]);
     await run(items, "Copy branch name");
     expect(copied).toEqual(["feat/x"]);
-    expect(labels(worktreeItems(e, { path: "D:\\wt\\b", branch: null, missing: true, reveal: true }))).toEqual(["Copy path", "Copy branch name (off)", "-", "Reveal in File Explorer (off)"]);
-    expect(labels(worktreeItems(e, { path: "/home/user/wt", branch: "x", missing: false, reveal: false }))).toEqual(["Copy path", "Copy branch name", "-", "Reveal in File Explorer (off)"]);
+    await run(items, "Open in Terminal");
+    expect(e.terminal).toHaveBeenCalledWith("D:/wt/a");
+    expect(labels(worktreeItems(e, { path: "D:\\wt\\b", cwd: "D:/wt/b", branch: null, missing: true, reveal: true }))).toEqual(["Copy path", "Copy branch name (off)", "-", "Open in Terminal (off)", "Reveal in File Explorer (off)"]);
+    expect(labels(worktreeItems(e, { path: "/home/user/wt", cwd: "/home/user/wt", branch: "x", missing: false, reveal: false }))).toEqual(["Copy path", "Copy branch name", "-", "Open in Terminal", "Reveal in File Explorer (off)"]);
   });
 
   it("branch: copy name", async () => {

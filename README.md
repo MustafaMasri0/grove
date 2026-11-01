@@ -11,8 +11,8 @@ Grove is free and open source under the [MIT licence](LICENSE).
 
 - **Safe by default.** Today Grove does not change your working tree, index,
   branches or stashes. The only git commands that write anything are `fetch`,
-  `push` (never forced) and `push -u origin <branch>`, each started by an
-  explicit button. Every git command Grove may run, in the app and in its
+  `push` (never forced), `push -u origin <branch>` and `clone` into a new
+  folder, each started by an explicit button. Every git command Grove may run, in the app and in its
   helper, is on an allowlist, and reads are limited to known commands and
   options. Editing files and more git actions are planned. They will go
   through the same allowlist.
@@ -54,27 +54,33 @@ You need:
   load keys into `ssh-agent`, and connect once from a terminal to accept a new
   host key. Fetch and push run on the host, with its credentials.
 
-Add a repository from the **Repository** menu at the top left. Pick a folder,
-paste a path, or use **Connect over SSH…**.
+Add a repository from the **Repository** menu at the top left: choose
+**Add repository…**, then pick or paste a local folder, switch to **SSH**, or
+choose **Clone** to download one from an `https://`, `ssh://` or `user@host:path`
+address.
 
 ## Features
 
-- **Top bar**: repository, worktree and branch switchers, and one action button
-  (Fetch origin / Push origin ↑N / Publish branch). Picking a branch never checks
-  it out. If a worktree has it, the app switches to that worktree. Otherwise the
-  branch is shown read-only (the files and history of its tip). Worktrees, local
-  branches checked out in one, and the Changes tab show how many files have
-  uncommitted changes.
-- **Worktrees overview** (the grid button next to the worktree switcher, or
+- **Rail**: the repository, Overview, the worktrees with what each one is doing
+  (Changing, Has changes, Clean, Push rejected), and Settings. Filter it, or show
+  only worktrees with changes. Ctrl+B folds it to icons, its edge resizes it, and
+  below 1100px wide it is icons on its own, with the left pane as a drawer that
+  Ctrl+B opens.
+- **Page header**: the worktree, its branch selector, commits ahead of and behind
+  the base, and one action button (Fetch origin / Push origin ↑N / Publish
+  branch), with Fetch origin behind its chevron. Picking a branch never checks it
+  out. If a worktree has it, the app switches to that worktree. Otherwise the
+  branch is shown read-only (the files and history of its tip).
+- **Worktrees overview** (Overview in the rail, or
   Ctrl+Shift+O): every worktree of the repository side by side, with its
   branch, uncommitted files, commits ahead of and behind the base branch and
-  origin, and its last commit. Grove watches all worktrees while it is open: a
-  worktree whose files are changing pulses green (also in the worktree list),
-  and an activity feed lists commits, branch switches and file edits in any of
+  origin, and its last commit, in a table you can sort. It keeps its order while
+  the pointer is over it. Grove watches all worktrees while it is open: a
+  worktree whose files are changing reads Changing, and an activity feed lists commits, branch switches and file edits in any of
   them. **Possible conflicts** lists files that two worktrees both
   change, committed since the base or not committed yet. A file committed on
   both sides only counts when the two versions differ and neither branch
-  already contains the other. The count shows on the grid button. A checkbox on
+  already contains the other. The rail counts them per worktree. A checkbox on
   the overview (also in Settings) turns this off, and Grove then skips the git
   commands behind it. The overview uses only read commands (`status`, `diff`,
   `rev-list`, `merge-base`, `log`).
@@ -84,7 +90,8 @@ paste a path, or use **Connect over SSH…**.
   then origin's), else the default branch of origin (`origin/HEAD`).
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base),
   History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens
-  Quick Open.
+  Quick Open. Ctrl+K finds worktrees, the files each one has changed, and
+  commands.
 - **Changed files** in Changes and in a commit show as a flat list or as a
   folder tree (the toggle next to the filter). The tree counts the files in
   each folder and joins single-child folders (`src/main/java`), like VS Code.
@@ -112,15 +119,17 @@ paste a path, or use **Connect over SSH…**.
   the page's inline scripts and its scripts from the repository run, still
   without network access (scripts from a CDN do not load), and web links ask
   before opening.
-- **Context menus** on files, folders, tabs, commits and the top-bar lists:
-  copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in
-  File Explorer (not for SSH repositories), open a commit on GitHub, and more.
-- **Settings** (gear in the top bar, or Ctrl+,): theme, zoom, editor and diff
+- **Context menus** on files, folders, tabs, commits, worktrees, repositories
+  and branches, on the rail and the overview table: open a worktree in a terminal
+  (Windows Terminal if installed; `ssh` for SSH repositories), copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`),
+  reveal in File Explorer (not for SSH repositories), open a commit on GitHub,
+  and more.
+- **Settings** (gear at the foot of the rail, or Ctrl+,): theme, zoom, editor and diff
   options, the repository list and each repository's base branch, and a list of
   shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
 
-Shortcuts: Ctrl+, settings, Ctrl+P quick open, Ctrl+Shift+F search,
-Ctrl+Shift+O worktrees overview, Ctrl+F find,
+Shortcuts: Ctrl+, settings, Ctrl+K search, Ctrl+P quick open, Ctrl+Shift+F search,
+Ctrl+Shift+O worktrees overview, Ctrl+B fold the rail, Ctrl+F find,
 Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0
 zoom.
@@ -164,6 +173,7 @@ repositories won't open.
 ```sh
 cargo test           # core parsers, path routing, helper protocol and install
 pnpm test            # UI logic (Vitest)
+pnpm ui-check        # design system and shell, in headless Edge
 ```
 
 `cargo test` covers the shared crates on any OS, against that OS's git.
@@ -219,7 +229,8 @@ Issues and pull requests are welcome.
   `crates/wv-core/src/allowlist.rs`. A new command, especially one that writes
   to a repository, needs an entry there with tests, and must be triggered by an
   explicit user action. Nothing may be forced or run in the background.
-- Run `cargo test` and `pnpm test` before sending a pull request, and add tests
+- Run `cargo test`, `pnpm test` and, for UI changes, `pnpm ui-check` before
+  sending a pull request, and add tests
   for new parsing or path logic.
 - Test fixtures are generated by `scripts/make-fixtures.sh` from throwaway
   repositories. Don't commit output captured from real repositories, or paths,

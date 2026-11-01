@@ -11,19 +11,21 @@ const MARGIN = 4;
  * and right of the point, flipped left or up when it would cross an edge, and
  * pinned inside the window (with a small margin) when it fits neither way.
  * `flipTop`: where an upward flip ends, for menus opened under a row (its top).
+ * `flipLeft`: where a leftward flip ends, for overlays opened under an element (its right edge).
  */
 export function placeMenu(
   at: { x: number; y: number },
   size: { width: number; height: number },
   view: { width: number; height: number },
   flipTop?: number,
+  flipLeft?: number,
 ): { left: number; top: number } {
   const axis = (p: number, len: number, max: number, flipAt = p) => {
     let v = p + len > max - MARGIN ? flipAt - len : p;
     v = Math.min(v, max - MARGIN - len);
     return Math.max(MARGIN, v);
   };
-  return { left: axis(at.x, size.width, view.width), top: axis(at.y, size.height, view.height, flipTop) };
+  return { left: axis(at.x, size.width, view.width, flipLeft), top: axis(at.y, size.height, view.height, flipTop) };
 }
 
 /** The next item an arrow key moves to, skipping separators and disabled items; -1 if none. */

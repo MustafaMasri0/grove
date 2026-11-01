@@ -1,0 +1,489 @@
+/* The Overview page. It is its own .ui-root; controls and tokens live in src/ui. */
+.ui-root.ov-page {
+  --gut: 16px;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--sheet);
+
+  .app[data-size="m"] &,
+  .app[data-size="s"] & {
+    --gut: 12px;
+  }
+
+  & .ov-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: var(--band);
+    padding: 0 var(--gut);
+    border-bottom: 1px solid var(--line);
+  }
+
+  & .ov-bar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px var(--gut);
+    border-bottom: 1px solid var(--line);
+    container: ov-bar / inline-size;
+  }
+
+  & .ov-head h1 {
+    flex: none;
+    margin-right: 6px;
+    font-size: var(--fs-lg);
+    line-height: var(--lh-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--title);
+  }
+
+  & .sum {
+    flex: 0 1 auto;
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  & .ov-tools {
+    flex: none;
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  & .ov-base {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  & .ov-base .sel {
+    max-width: 180px;
+  }
+
+  & .ov-note {
+    flex: none;
+    padding: 8px var(--gut);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-sm);
+  }
+
+  & .ov-warn-text {
+    color: var(--warn);
+  }
+
+  & .ov {
+    container: ov / inline-size;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  & .ov > .banner {
+    flex: none;
+    margin-bottom: 8px;
+  }
+
+  /* The table */
+  & .ov-tbl {
+    flex: none;
+  }
+
+  & .dt {
+    --dt-edge: var(--gut);
+  }
+
+  .app[data-size="m"] & .dt,
+  .app[data-size="s"] & .dt {
+    --dt-row: var(--h-md);
+  }
+
+  & .wname {
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  & .wn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  & .wn .chip {
+    flex: none;
+    color: var(--muted);
+  }
+
+  & .dt td b {
+    font-weight: 500;
+  }
+
+  & .lc {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  & .lc .muted {
+    flex: none;
+  }
+
+  & .ov-errs {
+    border-top: 0.5px solid var(--line);
+  }
+
+  & .ov-err {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+    padding: 8px var(--gut);
+    border-bottom: 0.5px solid var(--line);
+  }
+
+  & .ov-err:last-child {
+    border-bottom: 0;
+  }
+
+  & .ov-err b {
+    flex: none;
+    max-width: 30%;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  & .ov-err .err-text {
+    overflow-wrap: anywhere;
+  }
+
+  /* Possible conflicts and Activity */
+  & .ov-split {
+    flex: 1;
+    min-height: 216px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    border-top: 1px solid var(--line);
+  }
+
+  .app[data-size="m"] & .ov-split,
+  .app[data-size="s"] & .ov-split {
+    min-height: 176px;
+  }
+
+  .app[data-size="s"] & .ov-split,
+  & .ov-split.solo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  & .ov-pane {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  & .ov-pane + .ov-pane {
+    border-left: 1px solid var(--line);
+  }
+
+  .app[data-size="s"] & .ov-pane + .ov-pane {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  & .ov-pane h2 {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: var(--h-toolbar);
+    padding: 0 var(--gut);
+    font-size: var(--fs-md);
+    line-height: var(--lh-md);
+    font-weight: 600;
+    color: var(--title);
+    border-bottom: 0.5px solid var(--line);
+  }
+
+  & .live-note {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: var(--fs-sm);
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  & .ov-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 4px calc(var(--gut) - 8px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  /* The file name stays readable: its folder gives way first. */
+  & .ov-pane .path {
+    display: flex;
+    overflow: hidden;
+  }
+
+  & .ov-pane .path span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .ov-pane .path b {
+    flex: none;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* A row of chips wraps under its file when both do not fit; the rows themselves open nothing. */
+  & .ov-shared .row {
+    height: auto;
+    min-height: var(--h-md);
+    flex-wrap: wrap;
+    padding-block: 2px;
+    cursor: default;
+  }
+
+  & .ov-shared .path {
+    flex: 1 1 120px;
+  }
+
+  & .ov-shared .row-t {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  & .ov-shared .chip {
+    max-width: 200px;
+  }
+
+  & .cs {
+    margin-left: 5px;
+    font-size: var(--fs-xs);
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  & .ov-shared .ov-more {
+    display: flex;
+    margin: 4px 8px 8px;
+  }
+
+  /* Activity: a timeline */
+  & .ev {
+    position: relative;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 104px) minmax(0, 1fr) auto;
+    grid-template-rows: var(--h-lg);
+    grid-auto-rows: auto;
+    column-gap: 8px;
+    align-items: center;
+    min-height: var(--h-lg);
+    padding: 0 8px;
+  }
+
+  & .ev > * {
+    min-width: 0;
+  }
+
+  & .ev::before {
+    content: "";
+    position: absolute;
+    left: 17.5px;
+    top: -6px;
+    bottom: -6px;
+    width: 1px;
+    background: var(--line-strong);
+  }
+
+  /* The line ends at the first and last marks, however tall their entries are. */
+  & .ev:first-child::before {
+    top: calc(var(--h-lg) / 2);
+  }
+
+  & .ev:last-child::before {
+    bottom: auto;
+    height: calc(var(--h-lg) / 2 + 6px);
+  }
+
+  & .ev:only-child::before {
+    display: none;
+  }
+
+  & .ev-t {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    background: var(--card);
+    color: var(--icon);
+  }
+
+  & .ev-t::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--fill);
+  }
+
+  & .ev-t .icon {
+    position: relative;
+  }
+
+  & .ev-t.edit {
+    color: var(--live);
+  }
+
+  & .ev-t.edit::before {
+    background: var(--live-bg);
+  }
+
+  & .ev .ev-w {
+    min-width: 0;
+    max-width: 100%;
+    justify-content: flex-start;
+    padding: 0 4px;
+    margin-left: -4px;
+    color: var(--ink);
+  }
+
+  & .ev .ev-w .btn-l {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .ev .ev-w.gone {
+    padding: 0;
+    margin-left: 0;
+    color: var(--muted);
+  }
+
+  & .ev .a {
+    color: var(--muted);
+  }
+
+  & .ev .ev-link {
+    display: flex;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  & .ev .ev-link .btn-l {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .ev-files {
+    grid-column: 3 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding-bottom: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  & .ev .ev-file {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    height: var(--h-xs);
+    padding: 0 4px;
+    margin-left: -4px;
+    font-weight: 400;
+  }
+
+  & .ev .ev-more {
+    margin-top: 2px;
+  }
+
+  /* Narrow bands: the longest words and columns go first. */
+  .app[data-size="s"] & .opt-long,
+  .app[data-size="s"] & .opt-col,
+  .app[data-size="m"] & .opt-col-2,
+  .app[data-size="m"] & .b-all,
+  .app[data-size="s"] & .b-all {
+    display: none;
+  }
+
+  .app[data-size="m"] & .sum,
+  .app[data-size="s"] & .sum {
+    flex-wrap: wrap;
+    height: var(--h-xs);
+  }
+
+  .app[data-size="m"] & .b-err,
+  .app[data-size="s"] & .b-err {
+    order: -2;
+  }
+
+  .app[data-size="m"] & .b-warn,
+  .app[data-size="s"] & .b-warn {
+    order: -1;
+  }
+
+  .app[data-size="m"] & .ov-refresh,
+  .app[data-size="s"] & .ov-refresh {
+    width: var(--h-md);
+    padding: 0;
+  }
+
+  .app[data-size="m"] & .ov-refresh .btn-l,
+  .app[data-size="s"] & .ov-refresh .btn-l {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  /* In em, so a large UI font drops the long words too. */
+  @container ov-bar (max-width: 40em) {
+    & .opt-long {
+      display: none;
+    }
+  }
+
+  @container ov (max-width: 899px) {
+    & .dt .opt-col-3 {
+      display: none;
+    }
+  }
+
+  @container ov (max-width: 1079px) {
+    & .dt .opt-col-4 {
+      display: none;
+    }
+  }
+}
