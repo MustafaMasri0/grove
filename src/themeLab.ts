@@ -7,7 +7,8 @@ type Surfaces = { shell: string; sheet: string; card: string; well: string };
 type Text = { title: string; ink: string; muted: string; icon: string; faint: string };
 type Status = { live: string; changes: string; warn: string; err: string; add: string; del: string };
 type Syntax = { key: string; str: string; com: string; fn: string; type: string; num: string; macro: string; prop: string; punct: string };
-type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax; select?: [hover: number, selected: number, pressed: number] };
+type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax; select?: [hover: number, selected: number, pressed: number]; accent?: Accent };
+type Accent = { solid: string; hover: string; on: string; focus: string; link: string };
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(", ")}, ${a})`;
@@ -16,30 +17,25 @@ const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(", ")}, ${a})`;
 const softStatus: Status = { live: "#5fbf8f", changes: "#8fb0e8", warn: "#dcb468", err: "#e68d84", add: "#70c79b", del: "#ea9a91" };
 const softSyntax: Syntax = { key: "#bba8e8", str: "#a9cc8e", com: "#8d939c", fn: "#8ab3e8", type: "#74c4ba", num: "#dfb283", macro: "#dca3c6", prop: "#b9c4d6", punct: "#a2a6ad" };
 
-const fixed = {
-  surfaces: { shell: "#08090a", sheet: "#0c0d0e", card: "#18191b", well: "#1f2023" },
-  text: { title: "#e8e9eb", ink: "#d2d4d8", muted: "#9b9ea5", icon: "#8a8d94", faint: "#72757c" },
-  line: 0.11,
-  status: softStatus,
-  syntax: softSyntax,
-};
-
 const linear = {
   surfaces: { shell: "#08090a", sheet: "#0f1011", card: "#191a1b", well: "#222326" },
   text: { title: "#eef0f2", ink: "#d0d6e0", muted: "#9aa0aa", icon: "#8a8f98", faint: "#70757d" },
   line: 0.1,
   status: softStatus,
   syntax: softSyntax,
+  select: [0.025, 0.042, 0.07] as Palette["select"],
 };
 
 export const PALETTES: Palette[] = [
-  { name: "Carbon", note: "Current theme, for comparison" },
-  { ...linear, name: "Linear", note: "Near-black, cool tiered text, selection on the panel colour", select: [0.025, 0.042, 0.07] },
-  { ...linear, name: "Linear: stronger", note: "Selection one notch brighter", select: [0.03, 0.055, 0.085] },
-  { ...fixed, name: "Carbon Fixed", note: "Your previous pick, for comparison", select: [0.03, 0.05, 0.08] },
+  { ...linear, name: "White", note: "Today's white button, blue focus", accent: { solid: "#eef0f2", hover: "#d0d6e0", on: "#08090a", focus: "#8fb0e8", link: "#8fb0e8" } },
+  { ...linear, name: "Mono", note: "No hue at all, grey focus and links", accent: { solid: "#eef0f2", hover: "#d0d6e0", on: "#08090a", focus: "#b4bcc8", link: "#c4ccd8" } },
+  { ...linear, name: "Teal", note: "Cool, between the status green and blue", accent: { solid: "#3fb8ad", hover: "#5ccbc1", on: "#08090a", focus: "#5ccbc1", link: "#6fd0c7" } },
+  { ...linear, name: "Forest", note: "Grove's green, deep enough to differ from live", accent: { solid: "#1f7a5a", hover: "#27906b", on: "#ffffff", focus: "#4fb892", link: "#6cc7a6" } },
+  { ...linear, name: "Lime", note: "Loudest of the set, nothing else uses it", accent: { solid: "#b4d95f", hover: "#c5e57a", on: "#08090a", focus: "#b4d95f", link: "#c5e57a" } },
+  { ...linear, name: "Coral", note: "Warm, but near the error and warning colours", accent: { solid: "#f0876a", hover: "#f5a088", on: "#08090a", focus: "#f0876a", link: "#f5a088" } },
 ];
 
-function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select }: Palette): Record<string, string> {
+function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select, accent }: Palette): Record<string, string> {
   if (!s || !t || !c || !k) return {};
   const white = "rgba(255, 255, 255,";
   return {
@@ -59,6 +55,7 @@ function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select
     "--diff-del": alpha(c.del, 0.12), "--diff-del-word": alpha(c.del, 0.24), "--diff-del-mark": alpha(c.del, 0.75),
     "--tok-key": k.key, "--tok-str": k.str, "--tok-com": k.com, "--tok-fn": k.fn, "--tok-type": k.type,
     "--tok-num": k.num, "--tok-macro": k.macro, "--tok-prop": k.prop, "--tok-punct": k.punct,
+    ...(accent && { "--focus": accent.focus, "--focus-soft": alpha(accent.focus, 0.28), "--link": accent.link }),
   };
 }
 
@@ -83,6 +80,7 @@ const KEY = "grove-theme-lab";
 const root = document.documentElement;
 let current = 0;
 let applied: string[] = [];
+const scoped = document.head.appendChild(document.createElement("style"));
 
 function apply(index: number) {
   current = index;
@@ -94,6 +92,9 @@ function apply(index: number) {
   const next = root.dataset.theme === "light" ? {} : tokens(palette);
   Object.entries(next).forEach(([name, value]) => root.style.setProperty(name, value));
   applied = Object.keys(next);
+  // --solid also paints tooltips and the blame badge, which should stay neutral: the accent is only for these.
+  const a = root.dataset.theme === "light" ? undefined : palette.accent;
+  scoped.textContent = a ? `.btn.primary, .chk { --solid: ${a.solid}; --solid-hover: ${a.hover}; --on-solid: ${a.on}; }` : "";
   applyEditorTheme(root.dataset.theme !== "light");
   const css = getComputedStyle(root);
   const read = (name: string) => css.getPropertyValue(name).trim();
@@ -107,8 +108,9 @@ panel.setAttribute("style", "position:fixed;left:50%;bottom:14px;transform:trans
 function render(palette: Palette, read: (name: string) => string) {
   const sheet = read("--sheet");
   const buttons = PALETTES.map((p, i) => `<button data-i="${i}" title="Alt+${i + 1}" style="all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;${i === current ? "background:#fff;color:#000;" : "color:#ccc;"}">${i + 1} ${p.name}</button>`).join("");
-  const facts = [["Title", "--title"], ["Text", "--ink"], ["Muted", "--muted"], ["Faint", "--faint"], ["Comment", "--tok-com"]].map(([label, name]) => `${label} ${ratio(read(name), sheet)}`).join(" · ");
-  panel.innerHTML = `<div style="display:flex;gap:2px">${buttons}</div><div style="color:#aaa;padding:0 10px">${palette.note} — contrast on page: ${facts}</div>`;
+  const a = palette.accent;
+  const facts = a ? `button text ${ratio(a.on, a.solid)} · focus ring ${ratio(a.focus, sheet)} · link ${ratio(a.link, sheet)}` : "";
+  panel.innerHTML = `<div style="display:flex;gap:2px">${buttons}</div><div style="color:#aaa;padding:0 10px">${palette.note} — contrast: ${facts}</div>`;
 }
 
 panel.addEventListener("click", (e) => {
