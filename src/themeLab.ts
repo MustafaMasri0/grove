@@ -7,7 +7,7 @@ type Surfaces = { shell: string; sheet: string; card: string; well: string };
 type Text = { title: string; ink: string; muted: string; icon: string; faint: string };
 type Status = { live: string; changes: string; warn: string; err: string; add: string; del: string };
 type Syntax = { key: string; str: string; com: string; fn: string; type: string; num: string; macro: string; prop: string; punct: string };
-type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax; select?: [hover: number, selected: number, pressed: number]; accent?: Accent };
+type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax; select?: [hover: number, selected: number, pressed: number]; accent?: Accent; pickable?: boolean };
 type Accent = { solid: string; hover: string; on: string; focus: string; link: string };
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -27,13 +27,12 @@ const linear = {
 };
 
 export const PALETTES: Palette[] = [
+  { ...linear, name: "Blue", note: "Yours to tweak", pickable: true },
   { ...linear, name: "White", note: "Today's white button, blue focus", accent: { solid: "#eef0f2", hover: "#d0d6e0", on: "#08090a", focus: "#8fb0e8", link: "#8fb0e8" } },
-  { ...linear, name: "Mono", note: "No hue at all, grey focus and links", accent: { solid: "#eef0f2", hover: "#d0d6e0", on: "#08090a", focus: "#b4bcc8", link: "#c4ccd8" } },
-  { ...linear, name: "Teal", note: "Cool, between the status green and blue", accent: { solid: "#3fb8ad", hover: "#5ccbc1", on: "#08090a", focus: "#5ccbc1", link: "#6fd0c7" } },
-  { ...linear, name: "Forest", note: "Grove's green, deep enough to differ from live", accent: { solid: "#1f7a5a", hover: "#27906b", on: "#ffffff", focus: "#4fb892", link: "#6cc7a6" } },
-  { ...linear, name: "Lime", note: "Loudest of the set, nothing else uses it", accent: { solid: "#b4d95f", hover: "#c5e57a", on: "#08090a", focus: "#b4d95f", link: "#c5e57a" } },
-  { ...linear, name: "Coral", note: "Warm, but near the error and warning colours", accent: { solid: "#f0876a", hover: "#f5a088", on: "#08090a", focus: "#f0876a", link: "#f5a088" } },
+  { ...linear, name: "Forest", note: "Grove's green, for comparison", accent: { solid: "#1f7a5a", hover: "#27906b", on: "#ffffff", focus: "#4fb892", link: "#6cc7a6" } },
 ];
+
+const BLUES = ["#2f6fed", "#3b82f6", "#1f5fd0", "#4d8dff", "#5b8def"];
 
 function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select, accent }: Palette): Record<string, string> {
   if (!s || !t || !c || !k) return {};
@@ -76,9 +75,31 @@ function ratio(fg: string, bg: string) {
   return ((hi + 0.05) / (lo + 0.05)).toFixed(1);
 }
 
-const KEY = "grove-theme-lab";
+const mix = (hex: string, to: string, t: number) => {
+  const [from, target] = [rgb(hex), rgb(to)];
+  return `#${from.map((c, i) => Math.round(c + (target[i] - c) * t).toString(16).padStart(2, "0")).join("")}`;
+};
+
+/** `hex` lightened until it reads at `min` on the page. */
+function readable(hex: string, min: number) {
+  const steps = Array.from({ length: 21 }, (_, i) => mix(hex, "#ffffff", i / 20));
+  return steps.find((c) => Number(ratio(c, linear.surfaces.sheet)) >= min) ?? "#ffffff";
+}
+
+/** Everything an accent needs, from the one colour picked. */
+const accentFrom = (hex: string): Accent => ({
+  solid: hex,
+  hover: mix(hex, "#ffffff", 0.14),
+  on: Number(ratio("#ffffff", hex)) >= 4.5 ? "#ffffff" : "#08090a",
+  focus: readable(hex, 5),
+  link: readable(hex, 7),
+});
+
+const KEY = "grove-theme-lab-2";
+const PICK_KEY = "grove-theme-lab-pick";
 const root = document.documentElement;
 let current = 0;
+let picked = BLUES[0];
 let applied: string[] = [];
 const scoped = document.head.appendChild(document.createElement("style"));
 
@@ -88,7 +109,8 @@ function apply(index: number) {
     localStorage.setItem(KEY, String(index));
   } catch {}
   applied.forEach((name) => root.style.removeProperty(name));
-  const palette = PALETTES[index];
+  const chosen = PALETTES[index];
+  const palette = chosen.pickable ? { ...chosen, accent: accentFrom(picked) } : chosen;
   const next = root.dataset.theme === "light" ? {} : tokens(palette);
   Object.entries(next).forEach(([name, value]) => root.style.setProperty(name, value));
   applied = Object.keys(next);
@@ -104,18 +126,46 @@ function apply(index: number) {
 
 const panel = document.createElement("div");
 panel.setAttribute("style", "position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:10px;background:#000;color:#fff;font:12px 'Segoe UI',sans-serif;box-shadow:0 0 0 1px rgba(255,255,255,.25),0 10px 30px rgba(0,0,0,.6);max-width:calc(100vw - 32px)");
+const info = document.createElement("div");
+// Kept apart from `info`, which is redrawn on every change: redrawing an open picker would close it mid-drag.
+const picker = document.createElement("div");
+picker.setAttribute("style", "display:flex;align-items:center;gap:8px;padding:0 10px");
+picker.innerHTML = `<input id="lab-pick" type="color" aria-label="Accent colour" style="width:36px;height:24px;padding:0;border:0;background:none;cursor:pointer" /><input id="lab-hex" aria-label="Accent hex" spellcheck="false" style="width:72px;padding:3px 6px;border:1px solid #555;border-radius:5px;background:#111;color:#fff;font:12px Consolas,monospace" />${BLUES.map((c) => `<button data-pick="${c}" title="${c}" style="all:unset;cursor:pointer;width:18px;height:18px;border-radius:5px;background:${c}"></button>`).join("")}`;
+panel.append(info, picker);
+const pickInput = picker.querySelector<HTMLInputElement>("#lab-pick")!;
+const hexInput = picker.querySelector<HTMLInputElement>("#lab-hex")!;
+
+function pick(hex: string) {
+  picked = hex.toLowerCase();
+  try {
+    localStorage.setItem(PICK_KEY, picked);
+  } catch {}
+  apply(PALETTES.findIndex((p) => p.pickable));
+}
 
 function render(palette: Palette, read: (name: string) => string) {
   const sheet = read("--sheet");
   const buttons = PALETTES.map((p, i) => `<button data-i="${i}" title="Alt+${i + 1}" style="all:unset;cursor:pointer;padding:4px 10px;border-radius:6px;${i === current ? "background:#fff;color:#000;" : "color:#ccc;"}">${i + 1} ${p.name}</button>`).join("");
   const a = palette.accent;
   const facts = a ? `button text ${ratio(a.on, a.solid)} · focus ring ${ratio(a.focus, sheet)} · link ${ratio(a.link, sheet)}` : "";
-  panel.innerHTML = `<div style="display:flex;gap:2px">${buttons}</div><div style="color:#aaa;padding:0 10px">${palette.note} — contrast: ${facts}</div>`;
+  info.innerHTML = `<div style="display:flex;gap:2px">${buttons}</div><div style="color:#aaa;padding:6px 10px 0">${palette.note} — contrast: ${facts}</div>`;
+  picker.style.display = palette.pickable ? "flex" : "none";
+  pickInput.value = picked;
+  if (document.activeElement !== hexInput) hexInput.value = picked;
 }
 
+pickInput.addEventListener("input", () => pick(pickInput.value));
+hexInput.addEventListener("input", () => {
+  const value = hexInput.value.trim();
+  if (/^#[0-9a-f]{6}$/i.test(value)) pick(value);
+});
+
 panel.addEventListener("click", (e) => {
-  const button = (e.target as HTMLElement).closest<HTMLElement>("[data-i]");
+  const target = e.target as HTMLElement;
+  const button = target.closest<HTMLElement>("[data-i]");
+  const swatch = target.closest<HTMLElement>("[data-pick]");
   if (button) apply(Number(button.dataset.i));
+  if (swatch) pick(swatch.dataset.pick!);
 });
 window.addEventListener(
   "keydown",
@@ -135,6 +185,7 @@ document.body.append(panel);
 let saved = 0;
 try {
   saved = Number(localStorage.getItem(KEY)) || 0;
+  picked = localStorage.getItem(PICK_KEY) ?? picked;
 } catch {}
 current = saved in PALETTES ? saved : 0;
 const wanted = new URLSearchParams(location.search).get("lab");
