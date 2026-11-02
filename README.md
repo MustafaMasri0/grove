@@ -156,7 +156,8 @@ You need, on Windows:
 
 ```powershell
 # 1. Build the helpers the app embeds (Git Bash is fine; WSL is not needed).
-#    Repeat whenever crates/wv-helper or crates/wv-core changes.
+#    Repeat whenever crates/wv-helper or crates/wv-core changes: the app build
+#    stops if a helper here is older than that code.
 bash scripts/build-helpers.sh
 
 # 2. Build the app:
