@@ -24,11 +24,19 @@ const fixed = {
   syntax: softSyntax,
 };
 
+const linear = {
+  surfaces: { shell: "#08090a", sheet: "#0f1011", card: "#191a1b", well: "#222326" },
+  text: { title: "#eef0f2", ink: "#d0d6e0", muted: "#9aa0aa", icon: "#8a8f98", faint: "#70757d" },
+  line: 0.1,
+  status: softStatus,
+  syntax: softSyntax,
+};
+
 export const PALETTES: Palette[] = [
   { name: "Carbon", note: "Current theme, for comparison" },
-  { ...fixed, name: "Fixed: panel", note: "Selection lands on the panel colour", select: [0.03, 0.05, 0.08] },
-  { ...fixed, name: "Fixed: stronger", note: "Selection one notch brighter", select: [0.035, 0.065, 0.095] },
-  { ...fixed, name: "Fixed: before", note: "Selection as it was: 8% white" },
+  { ...linear, name: "Linear", note: "Near-black, cool tiered text, selection on the panel colour", select: [0.025, 0.042, 0.07] },
+  { ...linear, name: "Linear: stronger", note: "Selection one notch brighter", select: [0.03, 0.055, 0.085] },
+  { ...fixed, name: "Carbon Fixed", note: "Your previous pick, for comparison", select: [0.03, 0.05, 0.08] },
 ];
 
 function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select }: Palette): Record<string, string> {
