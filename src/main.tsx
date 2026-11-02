@@ -5,3 +5,4 @@ import "./styles.css";
 import "./ui";
 
 createRoot(document.getElementById("root")!).render(<App />);
+void import("./themeLab");

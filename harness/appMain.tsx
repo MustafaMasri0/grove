@@ -17,3 +17,4 @@ await import("../src/styles.css");
 await import("../src/ui");
 
 createRoot(document.getElementById("root")!).render(<App />);
+void import("../src/themeLab");
