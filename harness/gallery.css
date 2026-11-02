@@ -232,7 +232,7 @@ body,
   }
 
   & .btn.primary.is-hover {
-    background: var(--solid-hover);
+    background: var(--accent-hover);
     box-shadow: none;
   }
 
@@ -246,7 +246,7 @@ body,
   }
 
   & .btn.primary.is-active {
-    background: var(--solid-hover);
+    background: var(--accent-hover);
   }
 
   & .btn.link.is-hover {

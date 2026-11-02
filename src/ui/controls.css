@@ -365,7 +365,7 @@
   }
 
   & .btn.primary:active:not(:disabled):not([data-loading]):not([aria-disabled="true"]) {
-    background: var(--solid-hover);
+    background: var(--accent-hover);
   }
 
   & .btn:disabled {
@@ -399,8 +399,8 @@
   }
 
   & .btn.primary {
-    background: var(--solid);
-    color: var(--on-solid);
+    background: var(--accent);
+    color: var(--on-accent);
     box-shadow: none;
   }
 
@@ -410,7 +410,7 @@
   }
 
   & .btn.primary:hover:not(:disabled) {
-    background: var(--solid-hover);
+    background: var(--accent-hover);
     box-shadow: none;
   }
 
@@ -447,6 +447,11 @@
     color: color-mix(in srgb, currentColor 62%, transparent);
   }
 
+  /* The accent is mid-toned, so its label has less contrast to give away. */
+  & .btn.primary[data-loading] .btn-l {
+    color: color-mix(in srgb, currentColor 85%, transparent);
+  }
+
   /* Disabled controls keep focus and their reason */
   & .btn[aria-disabled="true"] {
     opacity: 0.45;
@@ -463,7 +468,7 @@
   }
 
   & .btn.primary[aria-disabled="true"]:hover {
-    background: var(--solid);
+    background: var(--accent);
     box-shadow: none;
   }
 
@@ -717,7 +722,7 @@
     width: 12px;
     height: 12px;
     fill: none;
-    stroke: var(--on-solid);
+    stroke: var(--on-accent);
     stroke-width: 1.6;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -725,7 +730,7 @@
   }
 
   & .chk input:checked + .box {
-    background: var(--solid);
+    background: var(--accent);
     box-shadow: none;
   }
 
