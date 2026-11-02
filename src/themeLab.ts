@@ -7,7 +7,7 @@ type Surfaces = { shell: string; sheet: string; card: string; well: string };
 type Text = { title: string; ink: string; muted: string; icon: string; faint: string };
 type Status = { live: string; changes: string; warn: string; err: string; add: string; del: string };
 type Syntax = { key: string; str: string; com: string; fn: string; type: string; num: string; macro: string; prop: string; punct: string };
-type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax };
+type Palette = { name: string; note: string; surfaces?: Surfaces; text?: Text; line?: number; status?: Status; syntax?: Syntax; select?: [hover: number, selected: number, pressed: number] };
 
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(", ")}, ${a})`;
@@ -16,50 +16,27 @@ const alpha = (hex: string, a: number) => `rgba(${rgb(hex).join(", ")}, ${a})`;
 const softStatus: Status = { live: "#5fbf8f", changes: "#8fb0e8", warn: "#dcb468", err: "#e68d84", add: "#70c79b", del: "#ea9a91" };
 const softSyntax: Syntax = { key: "#bba8e8", str: "#a9cc8e", com: "#8d939c", fn: "#8ab3e8", type: "#74c4ba", num: "#dfb283", macro: "#dca3c6", prop: "#b9c4d6", punct: "#a2a6ad" };
 
+const fixed = {
+  surfaces: { shell: "#08090a", sheet: "#0c0d0e", card: "#18191b", well: "#1f2023" },
+  text: { title: "#e8e9eb", ink: "#d2d4d8", muted: "#9b9ea5", icon: "#8a8d94", faint: "#72757c" },
+  line: 0.11,
+  status: softStatus,
+  syntax: softSyntax,
+};
+
 export const PALETTES: Palette[] = [
   { name: "Carbon", note: "Current theme, for comparison" },
-  {
-    name: "Carbon Fixed",
-    note: "Same blacks, only the contrast repaired",
-    surfaces: { shell: "#08090a", sheet: "#0c0d0e", card: "#18191b", well: "#1f2023" },
-    text: { title: "#e8e9eb", ink: "#d2d4d8", muted: "#9b9ea5", icon: "#8a8d94", faint: "#72757c" },
-    line: 0.11,
-    status: softStatus,
-    syntax: softSyntax,
-  },
-  {
-    name: "Linear",
-    note: "Near-black with slightly cool, tiered text",
-    surfaces: { shell: "#08090a", sheet: "#0f1011", card: "#191a1b", well: "#222326" },
-    text: { title: "#eef0f2", ink: "#d0d6e0", muted: "#9aa0aa", icon: "#8a8f98", faint: "#70757d" },
-    line: 0.1,
-    status: softStatus,
-    syntax: softSyntax,
-  },
-  {
-    name: "Carbon Lift",
-    note: "A touch lighter, so panels separate more",
-    surfaces: { shell: "#0b0c0d", sheet: "#131416", card: "#1e1f22", well: "#26272b" },
-    text: { title: "#ebecee", ink: "#d6d8dc", muted: "#a0a3aa", icon: "#8f9299", faint: "#787b82" },
-    line: 0.11,
-    status: softStatus,
-    syntax: softSyntax,
-  },
-  {
-    name: "Graphite",
-    note: "Previous round's closest, for comparison",
-    surfaces: { shell: "#141517", sheet: "#1a1b1e", card: "#24262a", well: "#2a2c31" },
-    text: { title: "#f3f4f6", ink: "#dfe1e5", muted: "#a6a9b0", icon: "#92959d", faint: "#7a7e86" },
-    line: 0.11,
-    status: softStatus,
-    syntax: softSyntax,
-  },
+  { ...fixed, name: "Fixed: panel", note: "Selection lands on the panel colour", select: [0.03, 0.05, 0.08] },
+  { ...fixed, name: "Fixed: stronger", note: "Selection one notch brighter", select: [0.035, 0.065, 0.095] },
+  { ...fixed, name: "Fixed: before", note: "Selection as it was: 8% white" },
 ];
 
-function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k }: Palette): Record<string, string> {
+function tokens({ surfaces: s, text: t, line = 0.1, status: c, syntax: k, select }: Palette): Record<string, string> {
   if (!s || !t || !c || !k) return {};
   const white = "rgba(255, 255, 255,";
   return {
+    // Translucent, not the surface itself: menus sit on --card, where a solid --card selection would vanish.
+    ...(select && { "--wash": `${white} ${select[0]})`, "--track": `${white} ${select[0]})`, "--fill": `${white} ${select[1]})`, "--press": `${white} ${select[2]})` }),
     "--shell": s.shell, "--sheet": s.sheet, "--card": s.card, "--raised": s.card, "--well": s.well,
     "--title": t.title, "--ink": t.ink, "--muted": t.muted, "--icon": t.icon, "--faint": t.faint,
     "--line": `${white} ${line})`, "--line-strong": `${white} ${line + 0.08})`,
