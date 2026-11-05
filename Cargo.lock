@@ -1405,6 +1405,7 @@ name = "grove"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "async-trait",
  "base64 0.22.1",
  "reqwest",
  "serde",

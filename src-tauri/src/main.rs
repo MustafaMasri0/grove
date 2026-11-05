@@ -2,7 +2,10 @@
 
 mod avatar;
 mod commands;
+mod github;
 mod hosts;
+mod issues;
+mod remote;
 mod terminal;
 
 use tauri::{Emitter, Manager};
@@ -60,6 +63,9 @@ fn main() {
             commands::drop_preview_page,
             commands::avatar,
             commands::github_repo,
+            commands::issue_tracker,
+            commands::issues,
+            commands::issue,
             commands::copy_text,
             terminal::open_terminal,
         ])

@@ -1,13 +1,14 @@
 //! Commit author avatars. In order: the GitHub account the commit belongs to
-//! (GitHub API, for repositories whose origin is on github.com, with the
-//! user's `gh` token), GitHub's avatar CDN for noreply addresses, Gravatar.
+//! (GitHub API through the shared client, for repositories whose origin is on
+//! github.com), GitHub's avatar CDN for noreply addresses, Gravatar.
 //! Pictures (and "this author has none") are cached on disk, so each author is
 //! looked up at most once a week. Only GET requests; nothing touches a repository.
 
+use crate::github::client::{http, ApiError};
+use crate::github::{Client, GithubRepo, Purpose};
 use base64::Engine;
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 const KEEP_FOUND: Duration = Duration::from_secs(7 * 24 * 3600);
@@ -48,41 +49,13 @@ pub fn cache_key(email: &str, size: u32) -> String {
     format!("{}-{size}-v2", sha256_hex(&normalize(email)))
 }
 
-fn is_name(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-}
-
-/// `owner/repo` when the origin remote (from `git remote -v`) is on github.com.
-pub fn github_repo(remote_v: &str) -> Option<String> {
-    let url = remote_v.lines().find_map(|l| {
-        let mut parts = l.split_whitespace();
-        (parts.next()? == "origin").then(|| parts.next()).flatten()
-    })?;
-    let path = if let Some(p) = url.strip_prefix("git@github.com:") {
-        p
-    } else {
-        let (host, path) = url.split_once("://")?.1.split_once('/')?;
-        let host = host.rsplit('@').next()?;
-        if !host.eq_ignore_ascii_case("github.com") {
-            return None;
-        }
-        path
-    };
-    let path = path.trim_end_matches('/');
-    let path = path.strip_suffix(".git").unwrap_or(path);
-    match path.split('/').collect::<Vec<_>>()[..] {
-        [owner, repo] if is_name(owner) && is_name(repo) => Some(format!("{owner}/{repo}")),
-        _ => None,
-    }
-}
-
-pub fn commit_api_url(repo: &str, sha: &str) -> Option<String> {
+pub fn commit_api_url(repo: &GithubRepo, sha: &str) -> Option<String> {
     let ok = (7..=40).contains(&sha.len()) && sha.chars().all(|c| c.is_ascii_hexdigit());
-    ok.then(|| format!("https://api.github.com/repos/{repo}/commits/{sha}"))
+    ok.then(|| repo.api_url(&format!("/commits/{sha}")))
 }
 
 /// The newest commit by this email on the default branch (works for unpushed shas too).
-pub fn author_query_url(repo: &str, email: &str) -> Option<String> {
+pub fn author_query_url(repo: &GithubRepo, email: &str) -> Option<String> {
     let e = normalize(email);
     if e.is_empty() {
         return None;
@@ -91,7 +64,7 @@ pub fn author_query_url(repo: &str, email: &str) -> Option<String> {
         .bytes()
         .map(|b| if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') { (b as char).to_string() } else { format!("%{b:02X}") })
         .collect();
-    Some(format!("https://api.github.com/repos/{repo}/commits?author={enc}&per_page=1"))
+    Some(repo.api_url(&format!("/commits?author={enc}&per_page=1")))
 }
 
 /// The author's avatar URL from a commit (or a list of commits) from the GitHub API.
@@ -120,32 +93,27 @@ pub fn sized(url: &str, size: u32) -> String {
 }
 
 /// What is needed to ask GitHub whose commit this is.
-pub struct GithubLookup {
-    pub repo: String,
+pub struct GithubLookup<'a> {
+    pub client: &'a Client,
+    pub repo: GithubRepo,
     pub sha: Option<String>,
-    pub token: String,
 }
 
 /// Ok(Some(url)): the author's GitHub picture. Ok(None): GitHub knows no account for
-/// them. Err: no answer (offline, rate limit, commit unknown): do not cache a miss.
-async fn github_avatar(g: &GithubLookup, email: &str) -> Result<Option<String>, ()> {
+/// them, or there is no login to ask with. Err: no answer (offline, few requests left,
+/// commit unknown): do not cache a miss.
+async fn github_avatar(g: &GithubLookup<'_>, email: &str) -> Result<Option<String>, ()> {
     let mut urls: Vec<String> = author_query_url(&g.repo, email).into_iter().collect();
     urls.extend(g.sha.as_deref().and_then(|sha| commit_api_url(&g.repo, sha)));
     let mut answered = false;
     for url in urls {
-        let resp = client()
-            .get(&url)
-            .bearer_auth(&g.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await;
-        let Ok(resp) = resp else { continue };
-        if !resp.status().is_success() {
-            continue;
-        }
-        let Ok(body) = resp.bytes().await else { continue };
-        match author_avatar(&body) {
+        let reply = match g.client.get(None, Purpose::Background, &url, None).await {
+            Ok(reply) => reply,
+            Err(ApiError::Paused { resets_at: None }) => return Ok(None),
+            Err(ApiError::Paused { .. } | ApiError::RateLimited { .. }) => return Err(()),
+            Err(_) => continue,
+        };
+        match author_avatar(&reply.body) {
             Some(Some(avatar)) => return Ok(Some(avatar)),
             Some(None) => answered = true,
             None => {}
@@ -181,20 +149,9 @@ enum Fetched {
     Failed,
 }
 
-fn client() -> &'static reqwest::Client {
-    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(Duration::from_secs(10))
-            .user_agent(concat!("Grove/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .expect("HTTP client")
-    })
-}
-
 async fn fetch(urls: &[String]) -> Fetched {
     for url in urls {
-        let Ok(resp) = client().get(url).send().await else { return Fetched::Failed };
+        let Ok(resp) = http().get(url).send().await else { return Fetched::Failed };
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             continue;
         }
@@ -227,7 +184,7 @@ fn write_atomic(p: &Path, bytes: &[u8]) {
 
 /// The author's picture as a data URL, from the cache in `dir` or downloaded.
 /// None when the author has no picture or it cannot be fetched right now.
-pub async fn get(dir: &Path, email: &str, size: u32, github: Option<GithubLookup>) -> Option<String> {
+pub async fn get(dir: &Path, email: &str, size: u32, github: Option<GithubLookup<'_>>) -> Option<String> {
     let mut urls = sources(email, size);
     if urls.is_empty() {
         return None;
@@ -280,49 +237,51 @@ mod tests {
 
     const DAY: Duration = Duration::from_secs(24 * 3600);
 
-    #[test]
-    fn finds_the_github_repository_of_origin() {
-        let out = "upstream\thttps://github.com/other/thing.git (fetch)\n\
-                   origin\thttps://github.com/example-org/example.git (fetch)\n\
-                   origin\thttps://github.com/example-org/example.git (push)\n";
-        assert_eq!(github_repo(out).as_deref(), Some("example-org/example"));
-        for url in [
-            "git@github.com:Owner/Repo.git",
-            "ssh://git@github.com/Owner/Repo.git",
-            "https://user@github.com/Owner/Repo",
-            "https://github.com/Owner/Repo/",
-        ] {
-            assert_eq!(github_repo(&format!("origin\t{url} (fetch)\n")).as_deref(), Some("Owner/Repo"), "{url}");
-        }
-    }
-
-    #[test]
-    fn other_hosts_and_missing_origin_have_no_github_repository() {
-        assert_eq!(github_repo("origin\thttps://gitlab.com/a/b.git (fetch)\n"), None);
-        assert_eq!(github_repo("origin\thttps://github.com.evil.example/a/b.git (fetch)\n"), None);
-        assert_eq!(github_repo("upstream\thttps://github.com/a/b.git (fetch)\n"), None);
-        assert_eq!(github_repo("origin\thttps://github.com/a (fetch)\n"), None);
-        assert_eq!(github_repo(""), None);
+    fn repo(owner: &str, name: &str) -> GithubRepo {
+        GithubRepo { owner: owner.into(), name: name.into() }
     }
 
     #[test]
     fn commit_api_url_accepts_only_hex_shas() {
         assert_eq!(
-            commit_api_url("example-org/example", "b173ed8fb").as_deref(),
+            commit_api_url(&repo("example-org", "example"), "b173ed8fb").as_deref(),
             Some("https://api.github.com/repos/example-org/example/commits/b173ed8fb")
         );
-        assert_eq!(commit_api_url("a/b", "HEAD"), None);
-        assert_eq!(commit_api_url("a/b", "../x"), None);
-        assert_eq!(commit_api_url("a/b", "abc"), None);
+        let ab = repo("a", "b");
+        assert_eq!(commit_api_url(&ab, "HEAD"), None);
+        assert_eq!(commit_api_url(&ab, "../x"), None);
+        assert_eq!(commit_api_url(&ab, "abc"), None);
     }
 
     #[test]
     fn author_query_url_encodes_the_email() {
+        let ab = repo("a", "b");
         assert_eq!(
-            author_query_url("a/b", " J.Doe+x@Example.com ").as_deref(),
+            author_query_url(&ab, " J.Doe+x@Example.com ").as_deref(),
             Some("https://api.github.com/repos/a/b/commits?author=j.doe%2Bx%40example.com&per_page=1")
         );
-        assert_eq!(author_query_url("a/b", "  "), None);
+        assert_eq!(author_query_url(&ab, "  "), None);
+    }
+
+    #[test]
+    fn github_lookups_go_through_the_shared_client_as_background_work() {
+        use crate::github::client::testing::*;
+        let rig = Rig::new(&[Some("t")]);
+        rig.answer(reply(200, &[], r#"[{"author":{"avatar_url":"https://avatars.githubusercontent.com/u/2?v=4"}}]"#));
+        let g = GithubLookup { client: &rig.client, repo: repo("a", "b"), sha: None };
+        assert_eq!(run(github_avatar(&g, "a@b.c")), Ok(Some("https://avatars.githubusercontent.com/u/2?v=4".into())));
+        // Few requests left: no answer, so the miss is not cached.
+        let rig = Rig::new(&[Some("t")]);
+        rig.answer(reply(200, &[("x-ratelimit-remaining", "10"), ("x-ratelimit-reset", "9000")], "[]"));
+        let g = GithubLookup { client: &rig.client, repo: repo("a", "b"), sha: None };
+        assert_eq!(run(github_avatar(&g, "a@b.c")), Ok(None));
+        assert_eq!(run(github_avatar(&g, "a@b.c")), Err(()));
+        assert_eq!(rig.sent().len(), 1);
+        // No login: GitHub is not asked, as before there was a shared client.
+        let rig = Rig::new(&[None]);
+        let g = GithubLookup { client: &rig.client, repo: repo("a", "b"), sha: None };
+        assert_eq!(run(github_avatar(&g, "a@b.c")), Ok(None));
+        assert!(rig.sent().is_empty());
     }
 
     #[test]

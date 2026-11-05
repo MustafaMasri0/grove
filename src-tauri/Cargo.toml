@@ -12,8 +12,9 @@ tauri-build = { version = "2.7", features = [] }
 tauri = { version = "2.12", features = [] }
 tauri-plugin-dialog = "2.8"
 tauri-plugin-opener = "2.7"
+async-trait = "0.1"
 base64.workspace = true
-# Avatars: HTTPS through Windows' own TLS (SChannel); tauri already builds reqwest without TLS.
+# Avatars and issues: HTTPS through Windows' own TLS (SChannel); tauri already builds reqwest without TLS.
 reqwest = { version = "0.13", default-features = false, features = ["native-tls"] }
 sha2 = "0.10"
 serde.workspace = true

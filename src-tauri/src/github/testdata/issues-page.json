@@ -1,0 +1,51 @@
+[
+  {
+    "url": "https://api.github.com/repos/example-org/example/issues/12",
+    "html_url": "https://github.com/example-org/example/issues/12",
+    "number": 12,
+    "title": "Crash when opening an empty folder",
+    "state": "open",
+    "labels": [
+      { "id": 1, "name": "bug", "color": "D73A4A", "description": "Something isn't working" },
+      { "id": 2, "name": "odd colour", "color": "zzz" }
+    ],
+    "user": { "login": "octo-cat", "id": 1, "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4", "type": "User" },
+    "assignees": [],
+    "milestone": null,
+    "comments": 2,
+    "created_at": "2026-10-30T08:00:00Z",
+    "updated_at": "2026-11-04T09:30:00Z",
+    "closed_at": null,
+    "body": "Steps to reproduce"
+  },
+  {
+    "url": "https://api.github.com/repos/example-org/example/issues/11",
+    "html_url": "https://github.com/example-org/example/pull/11",
+    "number": 11,
+    "title": "Fix the crash",
+    "state": "open",
+    "labels": [],
+    "user": { "login": "example-user", "id": 2, "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4" },
+    "comments": 0,
+    "created_at": "2026-11-03T08:00:00Z",
+    "updated_at": "2026-11-03T08:00:00Z",
+    "closed_at": null,
+    "body": null,
+    "pull_request": { "url": "https://api.github.com/repos/example-org/example/pulls/11", "merged_at": null }
+  },
+  {
+    "url": "https://api.github.com/repos/example-org/example/issues/9",
+    "html_url": "https://github.com/example-org/example/issues/9",
+    "number": 9,
+    "title": "Document the settings file",
+    "state": "closed",
+    "state_reason": "completed",
+    "labels": [],
+    "user": { "login": "example-user", "id": 2, "avatar_url": "https://evil.example/u/2.png" },
+    "comments": 0,
+    "created_at": "2026-09-01T08:00:00Z",
+    "updated_at": "2026-10-02T12:00:00Z",
+    "closed_at": "2026-10-02T12:00:00Z",
+    "body": ""
+  }
+]

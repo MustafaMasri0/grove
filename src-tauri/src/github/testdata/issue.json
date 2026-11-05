@@ -1,0 +1,19 @@
+{
+  "url": "https://api.github.com/repos/example-org/example/issues/12",
+  "html_url": "https://github.com/example-org/example/issues/12",
+  "number": 12,
+  "title": "Crash when opening an empty folder",
+  "state": "open",
+  "labels": [{ "id": 1, "name": "bug", "color": "d73a4a" }],
+  "user": { "login": "octo-cat", "id": 1, "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4" },
+  "assignees": [
+    { "login": "octo-cat", "id": 1, "avatar_url": "https://avatars.githubusercontent.com/u/1?v=4" },
+    { "login": "example-user", "id": 2, "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4" }
+  ],
+  "milestone": { "number": 1, "title": "1.0", "state": "open" },
+  "comments": 3,
+  "created_at": "2026-10-30T08:00:00Z",
+  "updated_at": "2026-11-04T09:30:00Z",
+  "closed_at": null,
+  "body": "Steps:\n\n1. Open an empty folder\n2. See it crash"
+}

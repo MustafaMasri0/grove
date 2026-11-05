@@ -1,0 +1,18 @@
+[
+  {
+    "id": 101,
+    "html_url": "https://github.com/example-org/example/issues/12#issuecomment-101",
+    "user": { "login": "example-user", "id": 2, "avatar_url": "https://avatars.githubusercontent.com/u/2?v=4" },
+    "created_at": "2026-10-31T08:00:00Z",
+    "updated_at": "2026-10-31T08:00:00Z",
+    "body": "I see this too."
+  },
+  {
+    "id": 102,
+    "html_url": "https://github.com/example-org/example/issues/12#issuecomment-102",
+    "user": null,
+    "created_at": "2026-11-01T08:00:00Z",
+    "updated_at": "2026-11-01T08:00:00Z",
+    "body": null
+  }
+]

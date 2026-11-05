@@ -1,8 +1,11 @@
 //! Tauri commands. Each one resolves the host from the repository path and runs
 //! the blocking repo operation off the UI thread.
 
+use crate::github::GithubRepo;
 use crate::hosts::Hosts;
+use crate::issues::{IssueDetail, IssueError, IssueTracker, ListOutcome, ListRequest, TrackerInfo};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -23,8 +26,12 @@ pub struct App {
     pub hosts: Hosts,
     /// The watched worktrees, all of one repository: (repo, watch ids).
     watches: Mutex<Option<(String, Vec<u64>)>>,
-    /// repo id → `owner/repo` on github.com (None: origin is elsewhere).
-    github_repos: Mutex<std::collections::HashMap<String, Option<String>>>,
+    /// repo id → the URL of its `origin` remote (None: it has none). Read once per run.
+    origins: Mutex<HashMap<String, Option<String>>>,
+    /// The one GitHub client: tokens and rate limits for avatars and issues alike.
+    github: Arc<crate::github::Client>,
+    /// repo id → its issue tracker, which keeps the loaded issues for the run.
+    trackers: Mutex<HashMap<String, Arc<dyn IssueTracker>>>,
     /// The repository roots `wvfile:` URLs may read from.
     pub previews: wv_core::preview::Roots,
     /// HTML previews the UI prepared, served at `wvfile:` `/~page/<id>`.
@@ -520,46 +527,59 @@ pub async fn read_image(state: State<'_, AppState>, repo: String, cwd: String, s
     })
 }
 
-/// A GitHub token for avatar lookups: GH_TOKEN / GITHUB_TOKEN, else `gh auth token`
-/// (the GitHub CLI's login). Read once per run; never stored.
-fn github_token() -> Option<String> {
-    static TOKEN: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    TOKEN
-        .get_or_init(|| {
-            for var in ["GH_TOKEN", "GITHUB_TOKEN"] {
-                if let Some(t) = std::env::var(var).ok().filter(|t| !t.trim().is_empty()) {
-                    return Some(t.trim().to_string());
-                }
-            }
-            for gh in ["gh", r"C:\Program Files\GitHub CLI\gh.exe"] {
-                let mut cmd = std::process::Command::new(gh);
-                cmd.args(["auth", "token"]).stdin(std::process::Stdio::null());
-                #[cfg(windows)]
-                {
-                    use std::os::windows::process::CommandExt;
-                    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-                }
-                if let Ok(out) = cmd.output() {
-                    let t = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    return (out.status.success() && !t.is_empty()).then_some(t);
-                }
-            }
-            None
-        })
-        .clone()
+/// The URL of the repository's `origin` remote; looked up once per repository. Only
+/// this goes through the repository's host: GitHub is always asked from the app.
+async fn origin_of(app: &AppState, repo: &str, cwd: &str) -> Res<Option<String>> {
+    if let Some(o) = app.origins.lock().unwrap().get(repo).cloned() {
+        return Ok(o);
+    }
+    let (app, repo, cwd) = (app.clone(), repo.to_string(), cwd.to_string());
+    blocking(move || {
+        // `git remote -v` is a read on the allowlist, here or through the helper.
+        let h = app.hosts.host(&repo)?;
+        let out = h.git(&cwd, &["remote".to_string(), "-v".to_string()], None)?.ok()?;
+        let origin = crate::remote::origin_url(&String::from_utf8_lossy(&out));
+        app.origins.lock().unwrap().insert(repo, origin.clone());
+        Ok(origin)
+    })
+    .await
 }
 
-/// `owner/repo` when the repository's origin is on github.com; looked up once per repository.
-fn github_repo_of(app: &App, repo: String, cwd: &str) -> Res<Option<String>> {
-    if let Some(r) = app.github_repos.lock().unwrap().get(&repo).cloned() {
-        return Ok(r);
+async fn github_repo_of(app: &AppState, repo: &str, cwd: &str) -> Res<Option<GithubRepo>> {
+    Ok(origin_of(app, repo, cwd).await?.as_deref().and_then(GithubRepo::from_url))
+}
+
+/// The repository's issue tracker, picked once from its origin.
+async fn tracker_of(app: &AppState, repo: &str, cwd: &str) -> Result<Arc<dyn IssueTracker>, IssueError> {
+    if let Some(t) = app.trackers.lock().unwrap().get(repo).cloned() {
+        return Ok(t);
     }
-    // `git remote -v` is a read on the allowlist, here or through the helper.
-    let h = app.hosts.host(&repo)?;
-    let out = h.git(cwd, &["remote".to_string(), "-v".to_string()], None)?.ok()?;
-    let r = crate::avatar::github_repo(&String::from_utf8_lossy(&out));
-    app.github_repos.lock().unwrap().insert(repo, r.clone());
-    Ok(r)
+    let origin = origin_of(app, repo, cwd).await.map_err(|message| IssueError::Git { message })?;
+    let tracker = crate::issues::tracker_for(origin.as_deref(), &app.github)?;
+    Ok(app.trackers.lock().unwrap().entry(repo.to_string()).or_insert(tracker).clone())
+}
+
+/// The account setting as the UI sends it: empty means the default login.
+fn account(a: &Option<String>) -> Option<&str> {
+    a.as_deref().map(str::trim).filter(|a| !a.is_empty())
+}
+
+/// Which tracker the repository's issues come from, or why there is none. Sends nothing.
+#[tauri::command]
+pub async fn issue_tracker(state: State<'_, AppState>, repo: String, cwd: String) -> Result<TrackerInfo, IssueError> {
+    Ok(tracker_of(state.inner(), &repo, &cwd).await?.info())
+}
+
+/// The repository's issues: the first ones, a check for changes, or the next older ones.
+#[tauri::command]
+pub async fn issues(state: State<'_, AppState>, repo: String, cwd: String, account: Option<String>, request: ListRequest) -> Result<ListOutcome, IssueError> {
+    tracker_of(state.inner(), &repo, &cwd).await?.list(self::account(&account), request).await
+}
+
+/// One issue with all its comments.
+#[tauri::command]
+pub async fn issue(state: State<'_, AppState>, repo: String, cwd: String, account: Option<String>, number: u64) -> Result<IssueDetail, IssueError> {
+    tracker_of(state.inner(), &repo, &cwd).await?.issue(self::account(&account), number).await
 }
 
 /// Puts text on the clipboard, for the context menus' copy options. Done here rather
@@ -572,8 +592,7 @@ pub async fn copy_text(text: String) -> Res<()> {
 /// For "Open on GitHub": the repository's `owner/repo` on github.com, or None.
 #[tauri::command]
 pub async fn github_repo(state: State<'_, AppState>, repo: String, cwd: String) -> Res<Option<String>> {
-    let app = state.inner().clone();
-    blocking(move || github_repo_of(&app, repo, &cwd)).await
+    Ok(github_repo_of(state.inner(), &repo, &cwd).await?.map(|r| r.full_name()))
 }
 
 /// The commit author's picture as a data URL (None: no picture, use initials).
@@ -595,17 +614,11 @@ pub async fn avatar(
     }
     .join("avatars");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let github = match (repo, cwd) {
-        (Some(repo), Some(cwd)) => {
-            let app = state.inner().clone();
-            blocking(move || {
-                let gh_repo = github_repo_of(&app, repo, &cwd)?;
-                Ok(gh_repo.and_then(|repo| github_token().map(|token| crate::avatar::GithubLookup { repo, sha, token })))
-            })
-            .await
-            .unwrap_or(None)
-        }
+    let app = state.inner();
+    let gh_repo = match (repo, cwd) {
+        (Some(repo), Some(cwd)) => github_repo_of(app, &repo, &cwd).await.unwrap_or(None),
         _ => None,
     };
+    let github = gh_repo.map(|repo| crate::avatar::GithubLookup { client: &app.github, repo, sha });
     Ok(crate::avatar::get(&dir, &email, size.clamp(16, 256), github).await)
 }
