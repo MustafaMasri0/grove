@@ -43,11 +43,17 @@ export function assigneeChoices(issues: readonly IssueSummary[]): string[] {
   return [...new Set(issues.flatMap((i) => i.assignees.map((p) => p.name)))].sort(byName);
 }
 
-/** What the list pane says instead of the list. */
+/** What the list pane says instead of the list, with what can be done about it. */
 export interface IssueProblem {
   title: string;
   text: string;
+  action?: IssueAction;
 }
+
+/** Choose account: the repository's account setting. Open: a page on the tracker. */
+export type IssueAction = { kind: "chooseAccount"; label: string } | { kind: "open"; label: string; url: string };
+
+const chooseAccount: IssueAction = { kind: "chooseAccount", label: "Choose account" };
 
 const clock = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -67,11 +73,15 @@ export function issueProblem(e: IssueError, tracker: TrackerInfo | null, loaded:
     case "git":
       return { title: "Couldn't read origin", text: e.message };
     case "notFound":
-      if (e.account) return { title: `${project} wasn't found with account ${e.account}`, text: "If it's private, pick an account that can see it." };
+      if (e.account) return { title: `${project} wasn't found with account ${e.account}`, text: "If it's private, pick an account that can see it.", action: chooseAccount };
       if (!e.signedIn) return { title: `${project} wasn't found without a login`, text: "If it's private, run gh auth login, then refresh." };
-      return { title: `${project} wasn't found`, text: "If it's private, the signed-in account can't see it." };
+      return { title: `${project} wasn't found`, text: "If it's private, the signed-in account can't see it. Pick one that can.", action: chooseAccount };
     case "singleSignOn":
-      return { title: `${name} needs single sign-on approval`, text: "The organisation requires single sign-on, and this login isn't approved for it yet. Approve it, then refresh." };
+      return {
+        title: `${name} needs single sign-on approval`,
+        text: `The organisation requires single sign-on, and this login isn't approved for it yet. Approve it on ${name}, then refresh.`,
+        action: e.url ? { kind: "open", label: `Open on ${name}`, url: e.url } : undefined,
+      };
     case "issuesDisabled":
       return { title: `Issues are turned off for ${project}`, text: `They are turned off on ${name}, which is common for forks. Grove reads issues from origin.` };
     case "unauthorized":
@@ -86,8 +96,38 @@ export function issueProblem(e: IssueError, tracker: TrackerInfo | null, loaded:
     case "network":
       return { title: `Couldn't reach ${name}`, text: e.message };
     case "unexpected":
-      return { title: `${name} answered with an error`, text: `Status ${e.status}. Try again with Refresh.` };
+      return { title: `${name} answered with an error`, text: `Status ${e.status}. Refresh to ask again.` };
   }
+}
+
+/** When a rate limit still holds back requests (unix seconds), else null: once it resets, Refresh works again. */
+export function limitResetsAt(e: IssueError | null, now: number): number | null {
+  return e?.kind === "rateLimited" && now < e.resetsAt ? e.resetsAt : null;
+}
+
+/** A banner over the loaded issues: why they may be out of date, or read without a login. */
+export interface IssueNotice {
+  tone: "warn" | "error" | "neutral";
+  title?: string;
+  text: string;
+}
+
+/**
+ * The banner for a list that has issues to show; null when there is nothing to say. Errors
+ * that leave nothing to show are `issueProblem`'s. `account` is the repository's account
+ * setting, `now` unix seconds.
+ */
+export function issueNotice(list: { error: IssueError | null; loaded: boolean; signedIn: boolean | null; tracker: TrackerInfo | null }, account: string | null, now: number): IssueNotice | null {
+  if (!list.loaded) return null;
+  const name = list.tracker?.name ?? "The tracker";
+  const kept = "Showing the issues already loaded.";
+  const e = list.error;
+  const resets = limitResetsAt(e, now);
+  if (resets !== null) return { tone: "warn", title: `${name} rate limit reached`, text: `${account ? `for ${account}. ` : ""}Resets at ${clock(resets)}. ${kept}` };
+  if (e?.kind === "network") return { tone: "error", title: `Couldn't reach ${name}`, text: kept };
+  if (e?.kind === "unexpected") return { tone: "error", title: `${name} answered with an error`, text: `Status ${e.status}. ${kept}` };
+  if (list.signedIn === false) return { tone: "neutral", text: "Reading public issues without a login, so auto-refresh is off. Run gh auth login for private repositories and auto-refresh." };
+  return null;
 }
 
 /** A label's badge colours from its hex: lightness fixed per theme (`--label-l`), saturation capped, so any colour reads. */
@@ -122,7 +162,7 @@ export function linkedIssue(href: string, tracker: TrackerInfo | null): number |
 /** Why one issue cannot be shown. */
 export function issueViewProblem(e: IssueError, number: number, tracker: TrackerInfo | null): IssueProblem {
   if (e.kind === "notFound") return { title: `Issue #${number} wasn't found`, text: "It may have been deleted or moved, or be a pull request." };
-  return issueProblem(e, tracker, false) ?? { title: `Issue #${number} couldn't be loaded`, text: "Try again with Refresh." };
+  return issueProblem(e, tracker, false) ?? { title: `Issue #${number} couldn't be loaded`, text: "Refresh to ask again." };
 }
 
 /** Initials for a tracker login: "octo-cat" → "OC". */

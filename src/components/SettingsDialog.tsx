@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { errorText } from "../api";
+import { loginReader, type RepoLogins } from "../lib/issueLogins";
 import { RANGES, defaultSettings, getSetting, isDefault, resetAll, withSetting, type SettingPath } from "../lib/settings";
 import { SECTIONS, SETTINGS, filterSettings, groupBySection, matchesQuery, type Control, type SectionId, type SettingDef } from "../lib/settingsSchema";
 import { SHORTCUTS } from "../lib/shortcuts";
@@ -24,6 +25,8 @@ export function SettingsDialog() {
   const [spied, setSpied] = useState(opensAt);
   const search = useRef<HTMLInputElement>(null);
   const body = useRef<HTMLDivElement>(null);
+  // Logins are read once per visit to Settings.
+  const [readLogins] = useState(loginReader);
 
   useEffect(() => {
     if (!confirmReset) return;
@@ -32,26 +35,36 @@ export function SettingsDialog() {
   }, [confirmReset]);
 
   const groups = groupBySection(filterSettings(SETTINGS, query));
-  const repos = settings.repos.filter((r) => matchesQuery(query, sectionTitle("repositories"), r, "base branch", settings.base[r] ?? ""));
+  const repos = settings.repos.filter((r) => matchesQuery(query, sectionTitle("repositories"), r, "base branch", settings.base[r] ?? "", "issues github account login", settings.issueAccounts[r] ?? ""));
   const noRepos = settings.repos.length === 0 && matchesQuery(query, sectionTitle("repositories"));
   const shortcuts = SHORTCUTS.filter((s) => matchesQuery(query, sectionTitle("shortcuts"), "keyboard keys", s.keys, s.action, s.where));
   const modified = ALL_PATHS.filter((p) => !isDefault(settings, p)).length;
 
   const sections: { id: SectionId; content: ReactNode }[] = groups.map(({ section, settings: defs }) => ({ id: section.id, content: defs.map((d) => <SettingLine key={d.path} def={d} />) }));
-  if (repos.length > 0 || noRepos)
-    sections.push({
-      id: "repositories",
-      content: noRepos ? (
-        <p className="muted set-note">No repositories yet. Add one from the Repository menu at the top left.</p>
-      ) : (
+  if (repos.length > 0 || noRepos) {
+    const list = noRepos ? (
+      <p className="muted set-note">No repositories yet. Add one from the Repository menu at the top left.</p>
+    ) : (
+      <>
+        <p className="muted set-note">
+          The repositories in the Repository menu. Removing one only takes it off the list. The base branch is what “Branch vs base” compares against; leave it empty to pick development, main or master automatically. The account is the login a repository's issues are read with.
+        </p>
+        {repos.map((r, i) => (
+          <RepoRow key={r} id={r} n={i} readLogins={readLogins} />
+        ))}
+      </>
+    );
+    // The section's own settings (auto-refresh) come first, then the repositories.
+    const own = sections.find((s) => s.id === "repositories");
+    if (own)
+      own.content = (
         <>
-          <p className="muted set-note">The repositories in the Repository menu. Removing one only takes it off the list. The base branch is what “Branch vs base” compares against; leave it empty to pick development, main or master automatically.</p>
-          {repos.map((r, i) => (
-            <RepoRow key={r} id={r} n={i} />
-          ))}
+          {own.content}
+          {list}
         </>
-      ),
-    });
+      );
+    else sections.push({ id: "repositories", content: list });
+  }
   if (shortcuts.length > 0)
     sections.push({
       id: "shortcuts",
@@ -141,7 +154,7 @@ export function SettingsDialog() {
               text={confirmReset ? "Click again to reset all" : "Reset all"}
               on={confirmReset}
               disabled={modified === 0 ? "No settings have been changed" : undefined}
-              tip="Put every setting on this page back to its default. Added repositories and their base branches are kept."
+              tip="Put every setting on this page back to its default. Added repositories, their base branches and accounts are kept."
               onClick={() => {
                 if (!confirmReset) return setConfirmReset(true);
                 updateSettings(resetAll(settings, ALL_PATHS));
@@ -270,9 +283,10 @@ function TextInput(p: { id: string; label: string; value: string; placeholder?: 
   );
 }
 
-function RepoRow({ id, n }: { id: string; n: number }) {
+function RepoRow({ id, n, readLogins }: { id: string; n: number; readLogins: ReturnType<typeof loginReader> }) {
   const info = useStore((s) => s.repos[id]);
   const saved = useStore((s) => s.settings.base[id] ?? "");
+  const account = useStore((s) => s.settings.issueAccounts[id] ?? "");
   const isCurrent = useStore((s) => s.repo?.id === id);
   const resolved = useStore((s) => (s.repo?.id === id ? s.base : null));
   const branches = useStore((s) => (s.repo?.id === id ? s.branches : null));
@@ -290,7 +304,7 @@ function RepoRow({ id, n }: { id: string; n: number }) {
       label={name}
       description={id}
       mono
-      modified={!!saved}
+      modified={!!saved || !!account}
       after={
         <>
           {isCurrent && <Badge>open</Badge>}
@@ -305,8 +319,50 @@ function RepoRow({ id, n }: { id: string; n: number }) {
           </label>
           <Select id={selectId} label="Base branch" value={saved} placeholder={automatic} searchable free popWidth={240} options={[{ value: "", label: automatic }, ...choices.map((b) => ({ value: b, label: b }))]} onPick={(v) => setRepoBase(id, v || null)} />
           {saved && <Button kind="link" size="sm" text="Reset to default" tip="Pick the base branch automatically again" onClick={() => setRepoBase(id, null)} />}
+          {info && "root" in info && <IssueAccount id={id} n={n} at={{ repo: id, cwd: info.root }} readLogins={readLogins} />}
         </>
       }
     />
+  );
+}
+
+/** The login the repository's issues are read with; shown once its tracker and logins are known. */
+function IssueAccount({ id, n, at, readLogins }: { id: string; n: number; at: { repo: string; cwd: string }; readLogins: ReturnType<typeof loginReader> }) {
+  const saved = useStore((s) => s.settings.issueAccounts[id] ?? "");
+  const setIssueAccount = useStore((s) => s.setIssueAccount);
+  const [read, setRead] = useState<RepoLogins | null>(null);
+  useEffect(() => {
+    let live = true;
+    void readLogins(at).then((r) => live && setRead(r));
+    return () => {
+      live = false;
+    };
+  }, [readLogins, at.repo, at.cwd]);
+  if (!read) return null;
+
+  const { tracker, logins } = read;
+  const label = `${tracker.name} account`;
+  const selectId = `repo-account-${n}`;
+  const fallback = logins.default ? `Default (${logins.default})` : "Default login";
+  const names = [...new Set([...logins.accounts, ...(saved ? [saved] : [])])];
+  const fixed = logins.fixedBy ? `${logins.fixedBy} is set, so Grove uses that token for every repository.` : undefined;
+  return (
+    <>
+      <label className="muted" htmlFor={selectId}>
+        {label}
+      </label>
+      <Select
+        id={selectId}
+        label={label}
+        value={fixed ? null : saved}
+        placeholder={fixed ? `From ${logins.fixedBy}` : fallback}
+        disabled={fixed}
+        searchable
+        free
+        popWidth={240}
+        options={[{ value: "", label: fallback }, ...names.map((a) => ({ value: a, label: a }))]}
+        onPick={(v) => setIssueAccount(id, v || null)}
+      />
+    </>
   );
 }

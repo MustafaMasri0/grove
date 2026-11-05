@@ -3,7 +3,7 @@
 
 use super::client::{ApiError, Client, Purpose, Reply};
 use super::GithubRepo;
-use crate::issues::{Comment, Issue, IssueDetail, IssueError, IssueState, IssueSummary, IssueTracker, Label, ListOutcome, ListRequest, Person, TrackerInfo};
+use crate::issues::{Comment, Issue, IssueDetail, IssueError, IssueState, IssueSummary, IssueTracker, Label, ListAnswer, ListOutcome, ListRequest, Logins, Person, TrackerInfo};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -256,7 +256,7 @@ impl IssueTracker for GithubIssues {
         TrackerInfo { name: "GitHub", project: self.repo.full_name(), web_url: format!("{}/issues", self.repo.web_url()) }
     }
 
-    async fn list(&self, account: Option<&str>, request: ListRequest) -> Result<ListOutcome, IssueError> {
+    async fn list(&self, account: Option<&str>, request: ListRequest) -> Result<ListAnswer, IssueError> {
         let cell = self.lists.lock().unwrap().entry(account.map(str::to_string)).or_default().clone();
         // One request at a time per account, so checks and Load more do not race.
         let mut l = cell.lock().await;
@@ -266,7 +266,8 @@ impl IssueTracker for GithubIssues {
             ListRequest::LoadMore => self.load_more(&mut l, account).await,
             ListRequest::Refresh | ListRequest::TimedCheck => self.refresh(&mut l, account, purpose).await,
         };
-        result.map_err(|e| self.error(e, account))
+        let outcome = result.map_err(|e| self.error(e, account))?;
+        Ok(ListAnswer { outcome, signed_in: self.client.signed_in(account).await })
     }
 
     async fn issue(&self, account: Option<&str>, number: u64) -> Result<IssueDetail, IssueError> {
@@ -286,6 +287,11 @@ impl IssueTracker for GithubIssues {
             url = reply.next_link();
         }
         Ok(IssueDetail { issue: issue(&gh), comments })
+    }
+
+    async fn logins(&self) -> Logins {
+        let a = self.client.accounts().await;
+        Logins { accounts: a.logins, default: a.active, fixed_by: a.env.map(str::to_string) }
     }
 }
 
@@ -326,11 +332,18 @@ mod tests {
         serde_json::to_string(&items).unwrap()
     }
 
-    fn numbers(o: &ListOutcome) -> (Vec<u64>, bool) {
-        match o {
+    fn numbers(a: &ListAnswer) -> (Vec<u64>, bool) {
+        match &a.outcome {
             ListOutcome::Issues { issues, more } => (issues.iter().map(|i| i.number).collect(), *more),
             ListOutcome::Unchanged => panic!("unchanged"),
         }
+    }
+
+    #[test]
+    fn logins_come_from_the_client() {
+        let rig = Rig::new(&[Some("t")]);
+        let logins = run(tracker(&rig).logins());
+        assert_eq!(logins, Logins { accounts: vec!["octo".into(), "work-login".into()], default: Some("octo".into()), fixed_by: None });
     }
 
     #[test]
@@ -338,7 +351,8 @@ mod tests {
         let rig = Rig::new(&[Some("t")]);
         rig.answer(reply(200, &[("etag", "W/\"one\"")], LIST));
         let out = run(tracker(&rig).list(None, ListRequest::Refresh)).unwrap();
-        let ListOutcome::Issues { issues, more } = out else { panic!() };
+        assert!(out.signed_in);
+        let ListOutcome::Issues { issues, more } = out.outcome else { panic!() };
         assert!(!more);
         assert_eq!(issues.iter().map(|i| i.number).collect::<Vec<_>>(), [12, 9]);
         let first = &issues[0];
@@ -378,7 +392,7 @@ mod tests {
         rig.answer(reply(200, &[("etag", "W/\"one\"")], &issues(&[(2, 2), (1, 1)]))).answer(reply(304, &[], ""));
         let t = tracker(&rig);
         run(t.list(None, ListRequest::Refresh)).unwrap();
-        assert_eq!(run(t.list(None, ListRequest::TimedCheck)).unwrap(), ListOutcome::Unchanged);
+        assert_eq!(run(t.list(None, ListRequest::TimedCheck)).unwrap().outcome, ListOutcome::Unchanged);
         assert_eq!(rig.sent()[1].header("if-none-match"), Some("W/\"one\""));
     }
 
@@ -420,7 +434,7 @@ mod tests {
         run(t.list(None, ListRequest::Refresh)).unwrap();
         assert_eq!(run(t.list(None, ListRequest::TimedCheck)).unwrap_err(), IssueError::Paused { resets_at: Some(9000) });
         rig.answer(reply(304, &low, ""));
-        assert_eq!(run(t.list(None, ListRequest::Refresh)).unwrap(), ListOutcome::Unchanged);
+        assert_eq!(run(t.list(None, ListRequest::Refresh)).unwrap().outcome, ListOutcome::Unchanged);
         assert_eq!(rig.sent().len(), 2);
     }
 
@@ -429,7 +443,7 @@ mod tests {
         let rig = Rig::new(&[None]);
         rig.answer(reply(200, &[], &issues(&[(1, 1)])));
         let t = tracker(&rig);
-        run(t.list(None, ListRequest::Refresh)).unwrap();
+        assert!(!run(t.list(None, ListRequest::Refresh)).unwrap().signed_in);
         assert_eq!(run(t.list(None, ListRequest::TimedCheck)).unwrap_err(), IssueError::Paused { resets_at: None });
     }
 

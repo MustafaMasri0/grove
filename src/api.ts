@@ -281,6 +281,18 @@ export type IssueListRequest = "refresh" | "timedCheck" | "loadMore";
 
 export type IssueListOutcome = { kind: "unchanged" } | { kind: "issues"; issues: IssueSummary[]; more: boolean };
 
+/** A list answer, and whether it was read with a login: without one only public issues can be read, and there are no timed checks. */
+export type IssueListAnswer = IssueListOutcome & { signedIn: boolean };
+
+/** The logins a repository's account setting can pick from. */
+export interface IssueLogins {
+  accounts: string[];
+  /** Used when no account is set. */
+  default: string | null;
+  /** An environment variable that supplies the login for every repository, so the setting is not used. */
+  fixedBy: string | null;
+}
+
 /** Why issues cannot be shown; times are unix seconds. */
 export type IssueError =
   | { kind: "noOrigin" }
@@ -351,9 +363,11 @@ export const api = {
   /** Which tracker the repository's issues come from; rejects with an `IssueError`. Sends nothing to it. */
   issueTracker: (a: At) => invoke<TrackerInfo>("issue_tracker", a),
   /** The loaded issues, most recently updated first; rejects with an `IssueError`. `account` null: the default login. */
-  issues: (a: At, account: string | null, request: IssueListRequest) => invoke<IssueListOutcome>("issues", { ...a, account, request }),
+  issues: (a: At, account: string | null, request: IssueListRequest) => invoke<IssueListAnswer>("issues", { ...a, account, request }),
   /** One issue with all its comments; rejects with an `IssueError`. */
   issue: (a: At, account: string | null, number: number) => invoke<IssueDetail>("issue", { ...a, account, number }),
+  /** The accounts signed in to the repository's tracker, read fresh; rejects with an `IssueError` when it has none. */
+  issueLogins: (a: At) => invoke<IssueLogins>("issue_logins", a),
   readImage: (a: At, source: Source) => invoke<string | null>("read_image", { ...a, source }),
   imageSources: (a: At, sources: Source[]) => invoke<ImageSource[]>("image_sources", { ...a, sources }),
   /** The wvfile: URL of the repository root at `rev` (null: the worktree), for HTML previews. */

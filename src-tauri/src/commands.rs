@@ -3,7 +3,7 @@
 
 use crate::github::GithubRepo;
 use crate::hosts::Hosts;
-use crate::issues::{IssueDetail, IssueError, IssueTracker, ListOutcome, ListRequest, TrackerInfo};
+use crate::issues::{IssueDetail, IssueError, IssueTracker, ListAnswer, ListRequest, Logins, TrackerInfo};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -572,7 +572,7 @@ pub async fn issue_tracker(state: State<'_, AppState>, repo: String, cwd: String
 
 /// The repository's issues: the first ones, a check for changes, or the next older ones.
 #[tauri::command]
-pub async fn issues(state: State<'_, AppState>, repo: String, cwd: String, account: Option<String>, request: ListRequest) -> Result<ListOutcome, IssueError> {
+pub async fn issues(state: State<'_, AppState>, repo: String, cwd: String, account: Option<String>, request: ListRequest) -> Result<ListAnswer, IssueError> {
     tracker_of(state.inner(), &repo, &cwd).await?.list(self::account(&account), request).await
 }
 
@@ -580,6 +580,12 @@ pub async fn issues(state: State<'_, AppState>, repo: String, cwd: String, accou
 #[tauri::command]
 pub async fn issue(state: State<'_, AppState>, repo: String, cwd: String, account: Option<String>, number: u64) -> Result<IssueDetail, IssueError> {
     tracker_of(state.inner(), &repo, &cwd).await?.issue(self::account(&account), number).await
+}
+
+/// The logins the repository's account setting can pick from, read fresh.
+#[tauri::command]
+pub async fn issue_logins(state: State<'_, AppState>, repo: String, cwd: String) -> Result<Logins, IssueError> {
+    Ok(tracker_of(state.inner(), &repo, &cwd).await?.logins().await)
 }
 
 /// Puts text on the clipboard, for the context menus' copy options. Done here rather

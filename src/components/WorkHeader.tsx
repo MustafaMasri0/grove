@@ -1,16 +1,17 @@
 import { useRef, useState } from "react";
-import { useIssueList, useIssues } from "../issuesStore";
+import { accountOf, useIssueList, useIssues } from "../issuesStore";
 import { branchAction } from "../lib/branchAction";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems } from "../lib/contextMenus";
 import { relativeTime } from "../lib/format";
+import { issueNotice, limitResetsAt } from "../lib/issues";
 import { branchLabel } from "../lib/rail";
 import { isNarrow } from "../lib/shell";
 import { useNow } from "../lib/useNow";
 import { worktreeName } from "../lib/worktrees";
 import { menuEnv } from "../menuEnv";
 import { actionOf, useStore } from "../store";
-import { Badge, Banner, Button, Count, menuAtElement, Picker, ProgressLine, SplitButton, Toggle, type ButtonProps, type PickerItem } from "../ui";
+import { Badge, Banner, Button, Count, menuAtElement, Picker, ProgressLine, SplitButton, Toggle, WarnTriangle, type ButtonProps, type PickerItem } from "../ui";
 import { Icon } from "./Icon";
 
 function BranchSelector() {
@@ -133,19 +134,23 @@ export function WorkHeader() {
 /** Origin is unusable: there is nothing a refresh could load. */
 const NO_TRACKER = new Set(["noOrigin", "unsupportedHost", "git"]);
 
-/** The issues page's header: the project, when the list last answered, Refresh. */
+/** The issues page's header: the project, when the list last answered, Refresh; under it, why the issues shown may be out of date. */
 function IssuesHeader() {
   const list = useIssueList();
   const refresh = useIssues((s) => s.refresh);
+  const account = useStore((s) => (s.repo ? accountOf(s.settings.issueAccounts, s.repo.id) : null));
   const narrow = useStore((s) => isNarrow(s.appWidth));
   const listOpen = useStore((s) => s.listOpen);
   const toggleList = useStore((s) => s.toggleList);
   const now = useNow(10_000);
   const { error, tracker, checkedAt } = list;
-  const busy = list.loading === "refresh" || list.loading === "timedCheck";
-  const limited = error?.kind === "rateLimited" ? error : null;
-  const resets = limited && new Date(limited.resetsAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  const updated = !list.loaded && busy ? "Loading…" : checkedAt !== null ? `Updated ${relativeTime(checkedAt / 1000, now)}` : "";
+  const busy = list.loading === "refresh" || list.loading === "timedCheck" || list.refreshQueued;
+  // Held back only until the reset: the error stays until the next answer, the limit does not.
+  const resetsAt = limitResetsAt(error, now);
+  const limitTip = resetsAt !== null ? `Rate limit reached. Resets at ${new Date(resetsAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : undefined;
+  const paused = error?.kind === "paused" && error.resetsAt !== null ? " · checks paused" : "";
+  const updated = !list.loaded && busy ? "Loading…" : checkedAt !== null ? `Updated ${relativeTime(checkedAt / 1000, now)}${paused}` : "";
+  const notice = issueNotice(list, account, now);
 
   return (
     <div className="ui-root work-top">
@@ -159,18 +164,10 @@ function IssuesHeader() {
         </div>
         <div className="head-tools">
           {updated && <span className="cap muted">{updated}</span>}
-          {!(error && NO_TRACKER.has(error.kind)) && (
-            <Button
-              icon="sync"
-              text="Refresh"
-              tip={limited ? `Rate limit reached. Resets at ${resets}.` : "Refresh (F5)"}
-              loading={busy}
-              disabled={limited ? `Rate limit reached. Resets at ${resets}.` : undefined}
-              onClick={() => void refresh()}
-            />
-          )}
+          {!(error && NO_TRACKER.has(error.kind)) && <Button icon="sync" text="Refresh" tip={limitTip ?? "Refresh (F5)"} loading={busy} disabled={limitTip} onClick={() => void refresh()} />}
         </div>
       </header>
+      {notice && <Banner flush tone={notice.tone} lead={notice.tone === "warn" ? <WarnTriangle /> : undefined} title={notice.title} text={notice.text} />}
     </div>
   );
 }

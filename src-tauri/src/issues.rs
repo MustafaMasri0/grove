@@ -13,10 +13,14 @@ pub trait IssueTracker: Send + Sync {
 
     /// The loaded issues, most recently updated first. `account` picks whose login is
     /// used, None for the default one.
-    async fn list(&self, account: Option<&str>, request: ListRequest) -> Result<ListOutcome, IssueError>;
+    async fn list(&self, account: Option<&str>, request: ListRequest) -> Result<ListAnswer, IssueError>;
 
     /// One issue with all its comments.
     async fn issue(&self, account: Option<&str>, number: u64) -> Result<IssueDetail, IssueError>;
+
+    /// The accounts this computer is signed in to the tracker with, for the account
+    /// setting. Reads them fresh; may take a moment.
+    async fn logins(&self) -> Logins;
 }
 
 /// Picks the tracker for a repository from its origin URL. Sends nothing.
@@ -58,6 +62,29 @@ pub enum ListOutcome {
     Unchanged,
     /// Every loaded issue; `more` when older ones can be loaded.
     Issues { issues: Vec<IssueSummary>, more: bool },
+}
+
+/// A list answer and whether it was read with a login: without one only public issues
+/// can be read, and there are no timed checks.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAnswer {
+    #[serde(flatten)]
+    pub outcome: ListOutcome,
+    pub signed_in: bool,
+}
+
+/// The logins the account setting can pick from.
+#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Logins {
+    /// The accounts signed in, by name.
+    pub accounts: Vec<String>,
+    /// The account used when none is set.
+    pub default: Option<String>,
+    /// An environment variable that supplies the login for every repository, so the
+    /// account setting is not used.
+    pub fixed_by: Option<String>,
 }
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +211,12 @@ mod tests {
         assert_eq!(json, serde_json::json!({ "kind": "notFound", "account": "octo", "signedIn": true }));
         let json = serde_json::to_value(IssueError::RateLimited { resets_at: 7 }).unwrap();
         assert_eq!(json, serde_json::json!({ "kind": "rateLimited", "resetsAt": 7 }));
+    }
+
+    #[test]
+    fn list_answers_carry_the_login_beside_the_outcome() {
+        let json = serde_json::to_value(ListAnswer { outcome: ListOutcome::Unchanged, signed_in: false }).unwrap();
+        assert_eq!(json, serde_json::json!({ "kind": "unchanged", "signedIn": false }));
     }
 
     #[test]

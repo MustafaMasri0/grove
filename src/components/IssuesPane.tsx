@@ -1,9 +1,10 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useRef } from "react";
 import type { IssueSummary } from "../api";
 import { useIssueList, useIssues, type IssueList } from "../issuesStore";
 import { isoToUnix, relativeTime } from "../lib/format";
 import { useNow } from "../lib/useNow";
-import { assigneeChoices, filterIssues, issueProblem, labelChoices, labelColors } from "../lib/issues";
+import { assigneeChoices, filterIssues, issueProblem, labelChoices, labelColors, type IssueAction } from "../lib/issues";
 import { Badge, Button, Count, Empty, Field, Row, Select, Skeleton, Tray, type SelectOption } from "../ui";
 import { IssueStateMark } from "./IssueStateIcon";
 import { ListView, useCommitRowHeight, type ListRow } from "./ListView";
@@ -38,9 +39,15 @@ export function IssuesPane() {
 
   return (
     <aside ref={pane} className="ui-root left issues-pane">
-      {problem ? <Empty title={problem.title} text={problem.text} /> : list.loaded ? <IssueBrowser list={list} /> : <IssueSkeleton />}
+      {problem ? <Empty title={problem.title} text={problem.text} action={problem.action && <ProblemAction action={problem.action} />} /> : list.loaded ? <IssueBrowser list={list} /> : <IssueSkeleton />}
     </aside>
   );
+}
+
+function ProblemAction({ action }: { action: IssueAction }) {
+  const openSettings = useStore((s) => s.openSettings);
+  const run = () => (action.kind === "open" ? void openUrl(action.url) : openSettings("repositories"));
+  return <Button text={action.label} onClick={run} />;
 }
 
 function IssueSkeleton() {

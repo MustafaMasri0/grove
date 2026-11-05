@@ -23,6 +23,10 @@ export interface IssueList {
   loaded: boolean;
   /** The request running, one at a time. */
   loading: IssueListRequest | null;
+  /** A refresh asked for while another request ran; it is sent when that one is done. */
+  refreshQueued: boolean;
+  /** The last answer was read with a login; null before the first. Without one there are no timed checks. */
+  signedIn: boolean | null;
   /** Why the last request failed; the issues loaded before it stay. */
   error: IssueError | null;
   /** When the last answer came (ms), for "checked … ago" and checks on focus. */
@@ -43,6 +47,8 @@ export const EMPTY_ISSUE_LIST: IssueList = {
   more: false,
   loaded: false,
   loading: null,
+  refreshQueued: false,
+  signedIn: null,
   error: null,
   checkedAt: null,
   filter: DEFAULT_ISSUE_FILTER,
@@ -59,7 +65,7 @@ interface IssuesState {
   focused: boolean;
 
   setFocused(focused: boolean): void;
-  /** Asked for by the user (refresh button, F5): loads the list, or checks it for changes. */
+  /** Asked for by the user (refresh button, F5): loads the list, or checks it for changes; after the request running, if any. */
   refresh(): Promise<void>;
   /** The auto-refresh's check; held back by the backend when few requests are left. */
   check(): Promise<void>;
@@ -91,6 +97,10 @@ function target(): Target | null {
 }
 
 let timer: number | undefined;
+/** List key → its request running. */
+const running = new Map<string, Promise<void>>();
+/** List key → the refresh waiting for it. */
+const queued = new Map<string, Promise<void>>();
 
 export const useIssues = create<IssuesState>()((set, get) => {
   const listOf = (key: string) => get().lists[key] ?? EMPTY_ISSUE_LIST;
@@ -99,7 +109,8 @@ export const useIssues = create<IssuesState>()((set, get) => {
 
   const fetchIssue = async (t: Target, number: number) => {
     const key = issueViewKey(t.key, number);
-    patchView(key, { loading: true });
+    // A retry shows "Loading…", not the error it is retrying.
+    patchView(key, { loading: true, error: null });
     let answer: Partial<IssueView>;
     try {
       answer = { detail: await api.issue(t.at, t.account, number), loading: false, error: null };
@@ -119,30 +130,57 @@ export const useIssues = create<IssuesState>()((set, get) => {
     }
   };
 
-  const request = async (kind: IssueListRequest) => {
-    const t = target();
-    if (!t) return;
+  const send = async (kind: IssueListRequest, t: Target) => {
     const list = listOf(t.key);
-    if (list.loading || (kind === "loadMore" && !(list.loaded && list.more))) return;
     patchList(t.key, { loading: kind });
     try {
       // Picking the tracker sends nothing, and tells "no usable origin" apart before any request.
       // Kept even when the list request fails, so its error can name the project.
       if (!list.tracker) patchList(t.key, { tracker: await api.issueTracker(t.at) });
       const out = await api.issues(t.at, t.account, kind);
-      const done = { loading: null, error: null, checkedAt: Date.now() };
-      if (out.kind === "unchanged") return patchList(t.key, done);
-      patchList(t.key, { ...done, issues: out.issues, more: out.more, loaded: true });
-      reloadChanged(t, out.issues);
+      const done = { loading: null, error: null, checkedAt: Date.now(), signedIn: out.signedIn };
+      if (out.kind === "unchanged") patchList(t.key, done);
+      else {
+        patchList(t.key, { ...done, issues: out.issues, more: out.more, loaded: true });
+        reloadChanged(t, out.issues);
+      }
     } catch (e) {
       patchList(t.key, { loading: null, error: issueError(e) });
     }
+    // Whether there is a login decides the timed checks.
+    syncTimer();
+  };
+
+  /** One request at a time per list. A refresh asked for meanwhile is sent after it, once; a check or Load more is not repeated. */
+  const request = (kind: IssueListRequest, t = target()): Promise<void> => {
+    if (!t) return Promise.resolve();
+    const busy = running.get(t.key);
+    if (busy) {
+      if (kind !== "refresh" || listOf(t.key).loading === "refresh") return busy;
+      let next = queued.get(t.key);
+      if (!next) {
+        patchList(t.key, { refreshQueued: true });
+        next = busy.then(() => {
+          queued.delete(t.key);
+          patchList(t.key, { refreshQueued: false });
+          return request("refresh", t);
+        });
+        queued.set(t.key, next);
+      }
+      return next;
+    }
+    const list = listOf(t.key);
+    if (kind === "loadMore" && !(list.loaded && list.more)) return Promise.resolve();
+    const run = send(kind, t).finally(() => running.delete(t.key));
+    running.set(t.key, run);
+    return run;
   };
 
   /** Runs only while the list is on screen, the window has focus and the setting is on. */
   const syncTimer = () => {
     const app = useStore.getState();
-    const want = issuesOnScreen(app) && get().focused && app.settings.issuesAutoRefresh;
+    const t = target();
+    const want = !!t && issuesOnScreen(app) && get().focused && app.settings.issuesAutoRefresh && listOf(t.key).signedIn !== false;
     if (want && timer === undefined) timer = window.setInterval(() => void get().check(), AUTO_REFRESH_MS);
     if (!want && timer !== undefined) {
       window.clearInterval(timer);
@@ -161,8 +199,9 @@ export const useIssues = create<IssuesState>()((set, get) => {
     const onScreen = issuesOnScreen(s);
     const cameOn = onScreen && !issuesOnScreen(prev);
     const accountChanged = s.repo && accountOf(s.settings.issueAccounts, s.repo.id) !== accountOf(prev.settings.issueAccounts, s.repo.id);
-    if (onScreen !== issuesOnScreen(prev) || s.settings.issuesAutoRefresh !== prev.settings.issuesAutoRefresh) syncTimer();
-    if (cameOn || s.repo?.id !== prev.repo?.id || accountChanged) ensureLoaded();
+    const otherList = s.repo?.id !== prev.repo?.id || accountChanged;
+    if (onScreen !== issuesOnScreen(prev) || s.settings.issuesAutoRefresh !== prev.settings.issuesAutoRefresh || otherList) syncTimer();
+    if (cameOn || otherList) ensureLoaded();
     if (s.tabs !== prev.tabs) dropClosed(s.tabs, s.settings.issueAccounts);
   });
 

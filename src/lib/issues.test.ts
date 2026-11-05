@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IssueSummary } from "../api";
-import { assigneeChoices, DEFAULT_ISSUE_FILTER, filterIssues, issueProblem, issueViewProblem, labelChoices, labelColors, linkedIssue, loginInitials, splitIssueRefs, type IssueFilter } from "./issues";
+import { assigneeChoices, DEFAULT_ISSUE_FILTER, filterIssues, issueNotice, issueProblem, issueViewProblem, limitResetsAt, labelChoices, labelColors, linkedIssue, loginInitials, splitIssueRefs, type IssueFilter } from "./issues";
 
 const issue = (number: number, title: string, extra: Partial<IssueSummary> = {}): IssueSummary => ({
   number,
@@ -77,6 +77,54 @@ describe("issueProblem", () => {
     expect(issueProblem({ kind: "network", message: "offline" }, tracker, false)).toEqual({ title: "Couldn't reach GitHub", text: "offline" });
     // A held-back check before anything loaded is not a problem: the user's own load follows.
     expect(issueProblem({ kind: "paused", resetsAt: null }, tracker, false)).toBeNull();
+  });
+
+  it("offers a way out where there is one", () => {
+    expect(issueProblem({ kind: "notFound", account: "work-login", signedIn: true }, tracker, false)?.action).toEqual({ kind: "chooseAccount", label: "Choose account" });
+    expect(issueProblem({ kind: "notFound", account: null, signedIn: true }, tracker, false)?.action?.kind).toBe("chooseAccount");
+    // Without a login an account cannot help: the text says to sign in.
+    expect(issueProblem({ kind: "notFound", account: null, signedIn: false }, tracker, false)?.action).toBeUndefined();
+    expect(issueProblem({ kind: "singleSignOn", url: "https://github.com/orgs/example-org/sso" }, tracker, false)?.action).toEqual({ kind: "open", label: "Open on GitHub", url: "https://github.com/orgs/example-org/sso" });
+    expect(issueProblem({ kind: "singleSignOn", url: null }, tracker, false)?.action).toBeUndefined();
+  });
+});
+
+describe("limitResetsAt", () => {
+  it("holds only until the reset", () => {
+    expect(limitResetsAt({ kind: "rateLimited", resetsAt: 100 }, 99)).toBe(100);
+    expect(limitResetsAt({ kind: "rateLimited", resetsAt: 100 }, 100)).toBeNull();
+    expect(limitResetsAt({ kind: "paused", resetsAt: 100 }, 50)).toBeNull();
+    expect(limitResetsAt(null, 50)).toBeNull();
+  });
+});
+
+describe("issueNotice", () => {
+  const tracker = { name: "GitHub", project: "example-org/example", webUrl: "https://github.com/example-org/example/issues" };
+  const list = (patch: Partial<Parameters<typeof issueNotice>[0]>) => ({ error: null, loaded: true, signedIn: true, tracker, ...patch });
+
+  it("says nothing over a list read normally, or before one loaded", () => {
+    expect(issueNotice(list({}), null, 0)).toBeNull();
+    expect(issueNotice(list({ loaded: false, signedIn: false }), null, 0)).toBeNull();
+    expect(issueNotice(list({ error: { kind: "paused", resetsAt: 100 } }), null, 0)).toBeNull();
+  });
+
+  it("warns of a rate limit until it resets, naming the account", () => {
+    const limited = list({ error: { kind: "rateLimited", resetsAt: 100 } });
+    expect(issueNotice(limited, "work-login", 50)).toMatchObject({ tone: "warn", title: "GitHub rate limit reached" });
+    expect(issueNotice(limited, "work-login", 50)?.text).toMatch(/^for work-login\. Resets at .+\. Showing the issues already loaded\.$/);
+    expect(issueNotice(limited, null, 50)?.text).toMatch(/^Resets at /);
+    expect(issueNotice(limited, null, 100)).toBeNull();
+  });
+
+  it("says when the loaded issues may be out of date", () => {
+    expect(issueNotice(list({ error: { kind: "network", message: "offline" } }), null, 0)).toEqual({ tone: "error", title: "Couldn't reach GitHub", text: "Showing the issues already loaded." });
+    expect(issueNotice(list({ error: { kind: "unexpected", status: 502 } }), null, 0)?.text).toBe("Status 502. Showing the issues already loaded.");
+  });
+
+  it("says when public issues are read without a login", () => {
+    expect(issueNotice(list({ signedIn: false }), null, 0)).toMatchObject({ tone: "neutral", text: expect.stringContaining("gh auth login") });
+    // An error says more than the missing login.
+    expect(issueNotice(list({ signedIn: false, error: { kind: "network", message: "x" } }), null, 0)?.tone).toBe("error");
   });
 });
 

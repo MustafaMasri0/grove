@@ -287,6 +287,15 @@ export const SETTINGS: readonly SettingDef[] = [
     keywords: "overlap shared files overview merge",
     control: { kind: "toggle" },
   },
+
+  {
+    path: "issuesAutoRefresh",
+    section: "repositories",
+    label: "Auto-refresh issues",
+    description: "Every 60 seconds while the Issues page is open and Grove has focus. Needs a GitHub login.",
+    keywords: "issues github poll check automatic",
+    control: { kind: "toggle" },
+  },
 ];
 
 /** True when every word of the query appears in one of the texts (case-insensitive). */

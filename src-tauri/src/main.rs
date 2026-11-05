@@ -66,6 +66,7 @@ fn main() {
             commands::issue_tracker,
             commands::issues,
             commands::issue,
+            commands::issue_logins,
             commands::copy_text,
             terminal::open_terminal,
         ])

@@ -11,6 +11,8 @@ const query = new URLSearchParams(location.search);
 // ?many=1 gives agent-01 a long list of changes and the repository a long history, for the lists' keyboard use.
 // ?ov=loading|fail|nobase|errors|many|one|odd picks what the Worktrees overview gets.
 const OV = query.get("ov");
+// ?issues=anonymous|limited|offline|notFound|sso|noOrigin|envToken picks what the issue commands answer; the default is a signed-in list.
+const ISSUES = query.get("issues");
 const UNUSUAL = [
   { path: "/home/user/src/agent-09", branch: "agent/old-spike", isMain: false, missing: true, prunable: "gitdir file points to non-existent location", bare: false },
   { path: "/home/user/src/shop-platform.git", branch: null, isMain: false, missing: false, prunable: null, bare: true },
@@ -120,6 +122,31 @@ const auto = () => {
   return { ...none, ...given };
 };
 
+const TRACKER = { name: "GitHub", project: "example-org/shop-platform", webUrl: "https://github.com/example-org/shop-platform/issues" };
+const person = (name: string) => ({ name, avatarUrl: null });
+const ISSUE_LIST = [
+  { number: 142, title: "Refunds round the wrong way for some currencies", state: "open", labels: [{ name: "bug", color: "#d73a4a" }], author: person("ada-l"), assignees: [person("ada-l")], commentCount: 3, updatedAt: "2026-11-05T09:00:00Z" },
+  { number: 139, title: "Export to CSV drops the last column", state: "open", labels: [{ name: "bug", color: "#d73a4a" }, { name: "performance", color: "#fbca04" }], author: person("noor-h"), assignees: [], commentCount: 1, updatedAt: "2026-11-04T09:00:00Z" },
+  { number: 128, title: "Add a keyboard shortcut for the search box", state: "open", labels: [{ name: "enhancement", color: "#a2eeef" }], author: person("rui-p"), assignees: [], commentCount: 0, updatedAt: "2026-11-02T09:00:00Z" },
+  { number: 116, title: "Avatar placeholder is clipped in the profile menu", state: "closed", labels: [], author: person("rui-p"), assignees: [], commentCount: 1, updatedAt: "2026-10-20T09:00:00Z" },
+];
+const issueList = () => {
+  const soon = Math.floor(Date.now() / 1000) + 1800;
+  switch (ISSUES) {
+    case "noOrigin":
+      throw { kind: "noOrigin" };
+    case "notFound":
+      throw { kind: "notFound", account: "work-login", signedIn: true };
+    case "sso":
+      throw { kind: "singleSignOn", url: "https://github.com/orgs/example-org/sso" };
+    // The first load succeeds; Refresh shows the trouble over the loaded issues.
+    case "limited":
+    case "offline":
+      if (window.__ipc.filter((c) => c.cmd === "issues").length > 1) throw ISSUES === "limited" ? { kind: "rateLimited", resetsAt: soon } : { kind: "network", message: "offline" };
+  }
+  return { kind: "issues", issues: ISSUE_LIST, more: false, signedIn: ISSUES !== "anonymous" };
+};
+
 const repoInfo = (path: string) => ({ id: path, name: path.split("/").filter(Boolean).pop(), kind: path.startsWith("ssh://") ? "ssh" : "local", distro: null, separator: "/", root: path.startsWith("ssh://") ? "/home/user/src/example" : ROOT });
 
 declare global {
@@ -208,6 +235,17 @@ export function respondApp(cmd: string, args?: unknown): unknown {
       };
     case "avatar":
       return null;
+    case "issue_tracker":
+      if (ISSUES === "noOrigin") throw { kind: "noOrigin" };
+      return TRACKER;
+    case "issues":
+      return issueList();
+    case "issue": {
+      const s = ISSUE_LIST.find((i) => i.number === a.number) ?? ISSUE_LIST[0];
+      return { issue: { ...s, body: "Steps to reproduce are in the first comment.", milestone: null, createdAt: s.updatedAt, closedAt: null, webUrl: `${TRACKER.webUrl}/${s.number}` }, comments: [] };
+    }
+    case "issue_logins":
+      return { accounts: ["octo", "work-login"], default: "octo", fixedBy: ISSUES === "envToken" ? "GH_TOKEN" : null };
     case "run_action":
       return query.has("reject") ? { ok: false, rejected: true, text: "! [rejected] agent/orders-refund -> agent/orders-refund (fetch first)" } : { ok: true, rejected: false, text: "" };
     default:

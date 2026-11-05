@@ -34,7 +34,7 @@ let host: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
-  vi.mocked(api.issues).mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: false });
+  vi.mocked(api.issues).mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: false, signedIn: true });
   useStore.setState({ repo: { id: "r", root: "/r" } as RepoInfo, cwd: "/r", tabs: [], activeTab: null, view: "work", listPane: "worktree", appWidth: 1440, issuesFocus: false });
   useIssues.setState(useIssues.getInitialState());
   host = document.createElement("div");

@@ -130,10 +130,25 @@ impl Transport for Https {
     }
 }
 
-/// Finds the login token for an account (None: the default one). May block.
+/// Finds the login token for an account (None: the default one), and the accounts
+/// there are. May block.
 pub trait TokenSource: Send + Sync {
     fn read(&self, account: Option<&str>) -> Option<String>;
+    fn accounts(&self) -> Accounts;
 }
+
+/// The GitHub logins on this computer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Accounts {
+    /// The GitHub CLI's accounts on github.com.
+    pub logins: Vec<String>,
+    /// The CLI's active account.
+    pub active: Option<String>,
+    /// GH_TOKEN or GITHUB_TOKEN, when one is set: it is used for every account.
+    pub env: Option<&'static str>,
+}
+
+const TOKEN_VARS: [&str; 2] = ["GH_TOKEN", "GITHUB_TOKEN"];
 
 /// GH_TOKEN, GITHUB_TOKEN, then the GitHub CLI's login, as on the desktop.
 struct DesktopTokens;
@@ -142,16 +157,42 @@ impl TokenSource for DesktopTokens {
     fn read(&self, account: Option<&str>) -> Option<String> {
         read_token(|var| std::env::var(var).ok(), run_gh, account)
     }
+
+    fn accounts(&self) -> Accounts {
+        let env = TOKEN_VARS.into_iter().find(|var| std::env::var(var).is_ok_and(|t| !t.trim().is_empty()));
+        // Without --json (older CLIs) the list stays empty; a login can still be typed.
+        let (logins, active) = gh(&["auth", "status", "--hostname", "github.com", "--json", "hosts"]).map(|out| parse_accounts(&out)).unwrap_or_default();
+        Accounts { logins, active, env }
+    }
 }
 
 /// The token order. Environment tokens win and make the account setting moot.
 pub fn read_token(env: impl Fn(&str) -> Option<String>, gh: impl Fn(Option<&str>) -> Option<String>, account: Option<&str>) -> Option<String> {
     let clean = |t: String| Some(t.trim().to_string()).filter(|t| !t.is_empty());
-    ["GH_TOKEN", "GITHUB_TOKEN"].iter().find_map(|var| env(var).and_then(clean)).or_else(|| gh(account).and_then(clean))
+    TOKEN_VARS.iter().find_map(|var| env(var).and_then(clean)).or_else(|| gh(account).and_then(clean))
 }
 
 fn is_login(s: &str) -> bool {
     !s.is_empty() && !s.starts_with('-') && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// The github.com accounts in `gh auth status --json hosts`, and the active one.
+fn parse_accounts(json: &str) -> (Vec<String>, Option<String>) {
+    #[derive(serde::Deserialize)]
+    struct Status {
+        hosts: HashMap<String, Vec<Entry>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Entry {
+        login: String,
+        #[serde(default)]
+        active: bool,
+    }
+    let Ok(status) = serde_json::from_str::<Status>(json) else { return Default::default() };
+    let entries = status.hosts.get("github.com").map_or(&[][..], Vec::as_slice);
+    let entries = entries.iter().filter(|e| is_login(&e.login));
+    let active = entries.clone().find(|e| e.active).map(|e| e.login.clone());
+    (entries.map(|e| e.login.clone()).collect(), active)
 }
 
 /// `gh auth token [--user <login>]`.
@@ -163,9 +204,14 @@ fn run_gh(account: Option<&str>) -> Option<String> {
         }
         args.extend(["--user", login]);
     }
+    gh(&args)
+}
+
+/// Runs the GitHub CLI without a window; its output when it succeeds.
+fn gh(args: &[&str]) -> Option<String> {
     for gh in ["gh", r"C:\Program Files\GitHub CLI\gh.exe"] {
         let mut cmd = std::process::Command::new(gh);
-        cmd.args(&args).stdin(std::process::Stdio::null());
+        cmd.args(args).stdin(std::process::Stdio::null());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -296,6 +342,17 @@ impl Client {
         token
     }
 
+    /// Whether `account` has a login, as last read; reads it only if it never was.
+    pub async fn signed_in(&self, account: Option<&str>) -> bool {
+        self.token(account, false).await.is_some()
+    }
+
+    /// The GitHub logins on this computer, read fresh.
+    pub async fn accounts(&self) -> Accounts {
+        let tokens = self.tokens.clone();
+        tauri::async_runtime::spawn_blocking(move || tokens.accounts()).await.unwrap_or_default()
+    }
+
     /// GETs an API URL as `account`, with `If-None-Match` when `etag` is given (check
     /// `Reply::not_modified`). After a 401 the token is read again and the request sent once more.
     pub async fn get(&self, account: Option<&str>, purpose: Purpose, url: &str, etag: Option<&str>) -> Result<Reply, ApiError> {
@@ -388,6 +445,10 @@ pub mod testing {
             let mut list = self.list.lock().unwrap();
             if list.len() > 1 { list.pop_front().flatten() } else { list.front().cloned().flatten() }
         }
+
+        fn accounts(&self) -> Accounts {
+            Accounts { logins: vec!["octo".into(), "work-login".into()], active: Some("octo".into()), env: None }
+        }
     }
 
     pub struct Rig {
@@ -444,6 +505,14 @@ mod tests {
         assert_eq!(read_token(|_| Some("  ".into()), gh, Some("octo")).as_deref(), Some("gh-octo"));
         assert_eq!(read_token(|_| None, gh, None).as_deref(), Some("gh-active"));
         assert_eq!(read_token(|_| None, |_| Some("\n".into()), None), None);
+    }
+
+    #[test]
+    fn reads_the_cli_accounts_on_github_com() {
+        let json = r#"{"hosts":{"github.com":[{"login":"octo","active":false,"state":"success"},{"login":"work-login","active":true,"state":"error"},{"login":"--bad","active":false}],"ghe.example":[{"login":"other","active":true}]}}"#;
+        assert_eq!(parse_accounts(json), (vec!["octo".to_string(), "work-login".to_string()], Some("work-login".to_string())));
+        assert_eq!(parse_accounts(r#"{"hosts":{}}"#), (vec![], None));
+        assert_eq!(parse_accounts("not json"), (vec![], None));
     }
 
     #[test]

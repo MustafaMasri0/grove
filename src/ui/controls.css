@@ -1196,6 +1196,11 @@
     max-width: 52ch;
   }
 
+  /* An Empty's action, a step below its text. */
+  & .empty > .btn {
+    margin-top: 8px;
+  }
+
   & .empty-line {
     padding: 8px;
     font-size: var(--fs-sm);

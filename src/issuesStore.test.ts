@@ -62,7 +62,7 @@ afterEach(() => {
 
 describe("the issues list", () => {
   it("loads when first shown, from the repository root, with the default login", async () => {
-    issues.mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: true });
+    issues.mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: true, signedIn: true });
     showList();
     await flush();
     expect(issues).toHaveBeenCalledWith({ repo: "r", cwd: "/src/r" }, null, "refresh");
@@ -76,12 +76,12 @@ describe("the issues list", () => {
   });
 
   it("keeps the issues on unchanged, and replaces them on a changed answer", async () => {
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
     await useIssues.getState().refresh();
-    issues.mockResolvedValueOnce({ kind: "unchanged" });
+    issues.mockResolvedValueOnce({ kind: "unchanged", signedIn: true });
     await useIssues.getState().refresh();
     expect(list().issues.map((i) => i.number)).toEqual([1]);
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(3), summary(1)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(3), summary(1)], more: false, signedIn: true });
     await useIssues.getState().refresh();
     expect(list().issues.map((i) => i.number)).toEqual([3, 1]);
     // The tracker is picked once.
@@ -89,7 +89,7 @@ describe("the issues list", () => {
   });
 
   it("keeps what is loaded when a request fails, and shows why", async () => {
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
     await useIssues.getState().refresh();
     issues.mockRejectedValueOnce({ kind: "rateLimited", resetsAt: 9000 });
     await useIssues.getState().refresh();
@@ -111,24 +111,58 @@ describe("the issues list", () => {
   it("loads more only when there is more, and one request at a time", async () => {
     await useIssues.getState().loadMore();
     expect(issues).not.toHaveBeenCalled();
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(2)], more: true });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(2)], more: true, signedIn: true });
     await useIssues.getState().refresh();
     let finish = (_: unknown) => {};
     issues.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
     const more = useIssues.getState().loadMore();
-    void useIssues.getState().refresh();
     void useIssues.getState().loadMore();
-    finish({ kind: "issues", issues: [summary(2), summary(1)], more: false });
+    finish({ kind: "issues", issues: [summary(2), summary(1)], more: false, signedIn: true });
     await more;
     expect(issues.mock.calls.map((c) => c[2])).toEqual(["refresh", "loadMore"]);
     expect(list()).toMatchObject({ more: false, loading: null });
   });
 
+  it("sends a refresh asked for during Load more or a check after it, once", async () => {
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(2)], more: true, signedIn: true });
+    await useIssues.getState().refresh();
+    let finish = (_: unknown) => {};
+    issues.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
+    issues.mockResolvedValue({ kind: "unchanged", signedIn: true });
+    void useIssues.getState().loadMore();
+    const first = useIssues.getState().refresh();
+    const second = useIssues.getState().refresh();
+    expect(list()).toMatchObject({ loading: "loadMore", refreshQueued: true });
+    finish({ kind: "issues", issues: [summary(2), summary(1)], more: false, signedIn: true });
+    await Promise.all([first, second]);
+    expect(issues.mock.calls.map((c) => c[2])).toEqual(["refresh", "loadMore", "refresh"]);
+    expect(list()).toMatchObject({ loading: null, refreshQueued: false });
+
+    issues.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
+    void useIssues.getState().check();
+    const after = useIssues.getState().refresh();
+    finish({ kind: "unchanged", signedIn: true });
+    await after;
+    expect(issues.mock.calls.map((c) => c[2]).slice(3)).toEqual(["timedCheck", "refresh"]);
+  });
+
+  it("does not repeat a refresh asked for during a refresh", async () => {
+    let finish = (_: unknown) => {};
+    issues.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
+    const first = useIssues.getState().refresh();
+    await flush();
+    void useIssues.getState().refresh();
+    finish({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
+    await first;
+    await flush();
+    expect(issues).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps lists apart per repository and per account", async () => {
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
     await useIssues.getState().refresh();
     useStore.getState().updateSettings({ issueAccounts: { r: " work-login " } });
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(2)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(2)], more: false, signedIn: true });
     await useIssues.getState().refresh();
     expect(issues.mock.calls[1][1]).toBe("work-login");
     expect(list("r", "work-login").issues.map((i) => i.number)).toEqual([2]);
@@ -136,7 +170,7 @@ describe("the issues list", () => {
   });
 
   it("loads the next repository's list when it is shown while the list is open", async () => {
-    issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false });
+    issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
     showList();
     await flush();
     useStore.setState({ repo: repo("other") });
@@ -156,11 +190,11 @@ describe("the issues list", () => {
 
 describe("auto-refresh", () => {
   beforeEach(async () => {
-    issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false });
+    issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false, signedIn: true });
     showList();
     await flush();
     issues.mockClear();
-    issues.mockResolvedValue({ kind: "unchanged" });
+    issues.mockResolvedValue({ kind: "unchanged", signedIn: true });
   });
 
   const tick = async () => {
@@ -218,6 +252,17 @@ describe("auto-refresh", () => {
     expect(issues.mock.calls.map((c) => c[2])).toEqual(["timedCheck"]);
   });
 
+  it("does not check without a login, and starts once there is one", async () => {
+    issues.mockResolvedValueOnce({ kind: "unchanged", signedIn: false });
+    await useIssues.getState().refresh();
+    expect(list().signedIn).toBe(false);
+    await tick();
+    expect(issues.mock.calls.map((c) => c[2])).toEqual(["refresh"]);
+    await useIssues.getState().refresh();
+    await tick();
+    expect(issues.mock.calls.map((c) => c[2])).toEqual(["refresh", "refresh", "timedCheck"]);
+  });
+
   it("a held-back check keeps the list and says why", async () => {
     issues.mockRejectedValueOnce({ kind: "paused", resetsAt: null });
     await tick();
@@ -236,11 +281,11 @@ describe("single issues", () => {
     await useIssues.getState().loadIssue(5, true);
     expect(issue).toHaveBeenCalledTimes(2);
 
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(5)], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(5)], more: false, signedIn: true });
     await useIssues.getState().refresh();
     expect(issue).toHaveBeenCalledTimes(2);
     issue.mockResolvedValue(detail(5, "2026-11-05T10:00:00Z"));
-    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(5, "2026-11-05T10:00:00Z")], more: false });
+    issues.mockResolvedValueOnce({ kind: "issues", issues: [summary(5, "2026-11-05T10:00:00Z")], more: false, signedIn: true });
     await useIssues.getState().refresh();
     await flush();
     expect(issue).toHaveBeenCalledTimes(3);
@@ -250,6 +295,18 @@ describe("single issues", () => {
     issue.mockRejectedValueOnce({ kind: "notFound", account: null, signedIn: true });
     await useIssues.getState().loadIssue(8);
     expect(useIssues.getState().views[`${issueListKey("r", null)}\n8`]).toMatchObject({ detail: null, loading: false, error: { kind: "notFound" } });
+  });
+
+  it("shows a retry as loading, not as the error it retries", async () => {
+    issue.mockRejectedValueOnce({ kind: "network", message: "offline" });
+    await useIssues.getState().loadIssue(8);
+    let finish = (_: IssueDetail) => {};
+    issue.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
+    const retry = useIssues.getState().loadIssue(8, true);
+    expect(useIssues.getState().views[`${issueListKey("r", null)}
+8`]).toMatchObject({ loading: true, error: null });
+    finish(detail(8));
+    await retry;
   });
 
   it("drops an issue whose tab closed while it loaded", async () => {

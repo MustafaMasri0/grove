@@ -175,6 +175,8 @@ interface State {
   setBase(b: string): void;
   /** Sets (or with null clears) the remembered base branch of any added repository. */
   setRepoBase(repoId: string, base: string | null): void;
+  /** The login a repository's issues are read with; null or blank: the default one. */
+  setIssueAccount(repoId: string, login: string | null): void;
   loadBaseDiff(): Promise<void>;
   loadMoreCommits(): Promise<void>;
   selectCommit(sha: string): Promise<void>;
@@ -659,6 +661,13 @@ export const useStore = create<State>()((set, get) => {
       set({ base: b, baseDiff: null });
       void get().loadBaseDiff();
       void get().loadOverview();
+    },
+
+    setIssueAccount(repoId, login) {
+      const issueAccounts = { ...get().settings.issueAccounts };
+      if (login?.trim()) issueAccounts[repoId] = login.trim();
+      else delete issueAccounts[repoId];
+      get().updateSettings({ issueAccounts });
     },
 
     setRepoBase(repoId, b) {
