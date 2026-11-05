@@ -42,6 +42,12 @@ of file lists, to show a few rows per worktree. It is one request now, and
 `WorktreeSummary::committed` never leaves the host. Add to this rather than to the
 chattiness of the protocol.
 
+GitHub is never asked from the host. For issues and author pictures the host only
+reports the `origin` URL (`git remote -v`); the requests go from the app, with the
+desktop's login (`GH_TOKEN`, `GITHUB_TOKEN` or the GitHub CLI on Windows). A host
+needs no GitHub login and no network access to GitHub, and no token is ever sent to
+it.
+
 ## Large replies
 
 Replies over `protocol::LARGE_REPLY` travel in parts, each sent after the client asks

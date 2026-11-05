@@ -84,6 +84,13 @@ address.
   the overview (also in Settings) turns this off, and Grove then skips the git
   commands behind it. The overview uses only read commands (`status`, `diff`,
   `rev-list`, `merge-base`, `log`).
+- **Issues** (Issues in the rail, or Ctrl+I): the issues of the repository at
+  `origin`, when it is on github.com, read-only. The list filters the loaded
+  issues by open or closed, text or number, label and assignee, and loads more
+  on request. Issues open as tabs beside files, with their comments as
+  sanitised Markdown; web images stay blocked until clicked, which opens them in
+  the browser. While the list is shown and the window has focus it checks for
+  changes every minute (a Settings option turns this off).
 - **Base branch**: what "Branch vs base" and the Worktrees overview compare
   with. Pick it with **Base** on either, or in Settings; it is remembered per
   repository. Until then Grove uses development, main or master (local first,
@@ -125,11 +132,11 @@ address.
   reveal in File Explorer (not for SSH repositories), open a commit on GitHub,
   and more.
 - **Settings** (gear at the foot of the rail, or Ctrl+,): theme, zoom, editor and diff
-  options, the repository list and each repository's base branch, and a list of
-  shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
+  options, the repository list with each repository's base branch and GitHub
+  account for issues, and a list of shortcuts. Stored in `%APPDATA%\app.grove.desktop\settings.json`.
 
 Shortcuts: Ctrl+, settings, Ctrl+K search, Ctrl+P quick open, Ctrl+Shift+F search,
-Ctrl+Shift+O worktrees overview, Ctrl+B fold the rail, Ctrl+F find,
+Ctrl+Shift+O worktrees overview, Ctrl+I issues, Ctrl+B fold the rail, Ctrl+F find,
 Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0
 zoom.
@@ -137,13 +144,32 @@ zoom.
 ### Network use
 
 Apart from `fetch` and `push`, the app's only network traffic is author
-pictures. For a repository whose `origin` is on github.com, it asks GitHub's API
-which account a commit author's email belongs to. It uses `GH_TOKEN` /
-`GITHUB_TOKEN`, or the GitHub CLI's login (`gh auth token`), if either is
-available. The token is read once per run and never stored. Otherwise it uses
-GitHub's avatar CDN for `…@users.noreply.github.com` addresses and Gravatar (a
-SHA-256 of the email). Pictures are cached under
-`%LOCALAPPDATA%\app.grove.desktop\avatars` for a week.
+pictures and issues. Both are asked for by the app itself: a WSL distro or an
+SSH host only reports `origin`, and sends nothing to GitHub.
+
+- **Author pictures.** For a repository whose `origin` is on github.com, the app
+  asks GitHub's API which account a commit author's email belongs to.
+  Otherwise it uses GitHub's avatar CDN for `…@users.noreply.github.com`
+  addresses and Gravatar (a SHA-256 of the email). Pictures are cached under
+  `%LOCALAPPDATA%\app.grove.desktop\avatars` for a week.
+- **Issues**, for a repository whose `origin` is on github.com, while the Issues
+  list or an issue is open: the first 300 issues (Load more for older ones), a
+  check for changes every minute while the list is shown and the window has
+  focus, and an issue's comments when it is opened. The check is a conditional
+  request, so an unchanged list costs little. Issues are kept in memory only and
+  dropped when the app closes. Nothing is ever written to GitHub.
+
+Requests to GitHub's API use `GH_TOKEN` or `GITHUB_TOKEN` if set, else the GitHub
+CLI's login (`gh auth token`). A repository's issues can be read with another of
+the CLI's accounts (its GitHub account in Settings, read with
+`gh auth token --user`); an environment token applies to every repository. The
+token is kept in memory, read again after GitHub refuses it or on a refresh when
+there was none, and never stored. Without a login, public issues can still be
+read, without the minute checks.
+
+Grove keeps to GitHub's rate limit per token: below 500 requests left it stops
+the minute checks and picture lookups, and at none it sends nothing until the
+limit resets.
 
 ## Building from source
 
