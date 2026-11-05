@@ -204,7 +204,7 @@ function entryOf(it: PaletteItem): Entry {
       label: c.label,
       lead: <Icon name={c.icon} size={13} />,
       trailing: c.keys && <Keys keys={c.keys} />,
-      run: () => ("go" in c ? (c.go === "issues" ? s.showIssues() : s.setView(c.go)) : s.openSettings(c.settings ?? undefined)),
+      run: () => ("go" in c ? (c.go === "issues" ? s.showIssues(true) : s.setView(c.go)) : s.openSettings(c.settings ?? undefined)),
     };
   }
   const { path } = it.row.worktree;

@@ -323,3 +323,39 @@ describe("the issues list pane", () => {
     expect(useStore.getState().listPane).toBe("worktree");
   });
 });
+
+describe("issue tabs", () => {
+  beforeEach(() => {
+    useStore.setState({ repo: { id: "r", root: "/r" } as RepoInfo, cwd: "/r", tabs: [], activeTab: null, view: "work", appWidth: 1440 });
+  });
+
+  it("open as a preview that the next preview replaces, or kept with pin", () => {
+    useStore.getState().openIssue(1, "One", false);
+    useStore.getState().openIssue(2, "Two", false);
+    expect(useStore.getState().tabs.map((t) => t.title)).toEqual(["#2 Two"]);
+    useStore.getState().openIssue(2, "Two", true);
+    useStore.getState().openIssue(3, "Three", false);
+    expect(useStore.getState().tabs.map((t) => [t.title, t.isPreview])).toEqual([
+      ["#2 Two", false],
+      ["#3 Three", true],
+    ]);
+    expect(useStore.getState().activeTab).toBe("issue:3");
+  });
+
+  it("keep a known title when opened again from a bare reference", () => {
+    useStore.getState().openIssue(5, "Five", true);
+    useStore.getState().openIssue(5, undefined, false);
+    expect(useStore.getState().tabs.map((t) => t.title)).toEqual(["#5 Five"]);
+    useStore.getState().setTabTitle("issue:5", "#5 Renamed");
+    expect(useStore.getState().tabs[0].title).toBe("#5 Renamed");
+  });
+
+  it("close with the repository", async () => {
+    useStore.getState().openIssue(5, "Five", true);
+    vi.mocked(api.worktrees).mockResolvedValueOnce([]);
+    const openRepo = vi.fn(async () => ({ id: "other", root: "/o" }) as RepoInfo);
+    (api as unknown as { openRepo: typeof openRepo }).openRepo = openRepo;
+    await useStore.getState().selectRepo("other");
+    expect(useStore.getState().tabs).toEqual([]);
+  });
+});

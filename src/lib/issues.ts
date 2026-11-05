@@ -96,3 +96,38 @@ export function labelColors(hex: string | null): { color: string; background: st
   const c = `oklch(from ${hex} var(--label-l) min(c, 0.1) h`;
   return { color: `${c})`, background: `${c} / 0.16)` };
 }
+
+/** Splits text at issue references (`#123`) that stand alone: the numbers come back as numbers. */
+export function splitIssueRefs(text: string): (string | number)[] {
+  const parts: (string | number)[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/(^|[\s([{,;])#(\d{1,9})\b/g)) {
+    const at = m.index + m[1].length;
+    if (at > last) parts.push(text.slice(last, at));
+    parts.push(Number(m[2]));
+    last = at + 1 + m[2].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+/** The issue number a link to the tracker's own issue page points at, else null. */
+export function linkedIssue(href: string, tracker: TrackerInfo | null): number | null {
+  if (!tracker) return null;
+  const rest = href.startsWith(`${tracker.webUrl}/`) ? href.slice(tracker.webUrl.length + 1) : null;
+  const m = rest && /^(\d{1,9})(?:[#?].*)?$/.exec(rest);
+  return m ? Number(m[1]) : null;
+}
+
+/** Why one issue cannot be shown. */
+export function issueViewProblem(e: IssueError, number: number, tracker: TrackerInfo | null): IssueProblem {
+  if (e.kind === "notFound") return { title: `Issue #${number} wasn't found`, text: "It may have been deleted or moved, or be a pull request." };
+  return issueProblem(e, tracker, false) ?? { title: `Issue #${number} couldn't be loaded`, text: "Try again with Refresh." };
+}
+
+/** Initials for a tracker login: "octo-cat" → "OC". */
+export function loginInitials(login: string): string {
+  const words = login.split(/[-_.\s]+/).filter(Boolean);
+  const pick = words.length > 1 ? words[0][0] + words[words.length - 1][0] : (words[0] ?? "?").slice(0, 2);
+  return pick.toUpperCase();
+}

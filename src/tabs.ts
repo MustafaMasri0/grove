@@ -40,7 +40,14 @@ export interface SettingsTab extends TabBase {
   path: string;
 }
 
-export type Tab = FileTab | DiffTab | SettingsTab;
+/** An issue of the repository: kept while worktrees change, closed with the repository. */
+export interface IssueTab extends TabBase {
+  kind: "issue";
+  repo: string;
+  number: number;
+}
+
+export type Tab = FileTab | DiffTab | SettingsTab | IssueTab;
 export type TabKind = Tab["kind"];
 
 /** Tabs the document view shows: text, diffs and pictures, in Monaco or rendered. */
@@ -61,6 +68,20 @@ export function isAppTab(t: Tab): t is SettingsTab {
 
 export function isWorktreeTab(t: Tab): t is WorktreeTab {
   return t.kind === "file" || t.kind === "diff";
+}
+
+export function isDocumentTab(t: Tab): t is DocumentTab {
+  return t.kind !== "issue";
+}
+
+/** "#12 Crash on start"; just the number until the title is known. */
+export const issueTabTitle = (number: number, title?: string) => (title ? `#${number} ${title}` : `#${number}`);
+
+export const issueTabId = (number: number) => `issue:${number}`;
+
+/** An issue's tab; `title` is the issue's own title, when known. */
+export function issueTab(repo: string, number: number, title?: string): IssueTab {
+  return { kind: "issue", id: issueTabId(number), repo, number, title: issueTabTitle(number, title), description: `Issue #${number}`, isPreview: false };
 }
 
 /** Working tree vs HEAD for one entry of `git status`. */

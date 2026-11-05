@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { IssueSummary } from "../api";
-import { assigneeChoices, DEFAULT_ISSUE_FILTER, filterIssues, issueProblem, labelChoices, labelColors, type IssueFilter } from "./issues";
+import { assigneeChoices, DEFAULT_ISSUE_FILTER, filterIssues, issueProblem, issueViewProblem, labelChoices, labelColors, linkedIssue, loginInitials, splitIssueRefs, type IssueFilter } from "./issues";
 
 const issue = (number: number, title: string, extra: Partial<IssueSummary> = {}): IssueSummary => ({
   number,
@@ -84,5 +84,38 @@ describe("labelColors", () => {
   it("derives both colours from the label's hex, and none without one", () => {
     expect(labelColors("#d73a4a")).toEqual({ color: "oklch(from #d73a4a var(--label-l) min(c, 0.1) h)", background: "oklch(from #d73a4a var(--label-l) min(c, 0.1) h / 0.16)" });
     expect(labelColors(null)).toBeUndefined();
+  });
+});
+
+describe("issue references", () => {
+  it("finds #numbers that stand alone", () => {
+    expect(splitIssueRefs("See #131 and (#7), not a#12 or #x.")).toEqual(["See ", 131, " and (", 7, "), not a#12 or #x."]);
+    expect(splitIssueRefs("#5")).toEqual([5]);
+    expect(splitIssueRefs("nothing here")).toEqual(["nothing here"]);
+  });
+
+  it("reads links to the tracker's own issues", () => {
+    const tracker = { name: "GitHub", project: "example-org/example", webUrl: "https://github.com/example-org/example/issues" };
+    expect(linkedIssue("https://github.com/example-org/example/issues/42", tracker)).toBe(42);
+    expect(linkedIssue("https://github.com/example-org/example/issues/42#issuecomment-1", tracker)).toBe(42);
+    expect(linkedIssue("https://github.com/example-org/other/issues/42", tracker)).toBeNull();
+    expect(linkedIssue("https://github.com/example-org/example/issues/new", tracker)).toBeNull();
+    expect(linkedIssue("https://github.com/example-org/example/issues/42", null)).toBeNull();
+  });
+});
+
+describe("issueViewProblem", () => {
+  it("names the issue when it is not found", () => {
+    expect(issueViewProblem({ kind: "notFound", account: null, signedIn: true }, 9, null).title).toBe("Issue #9 wasn't found");
+    expect(issueViewProblem({ kind: "paused", resetsAt: null }, 9, null).title).toBe("Issue #9 couldn't be loaded");
+  });
+});
+
+describe("loginInitials", () => {
+  it("takes the first and last word, or two letters of one", () => {
+    expect(loginInitials("octo-cat")).toBe("OC");
+    expect(loginInitials("example_user.name")).toBe("EN");
+    expect(loginInitials("ada")).toBe("AD");
+    expect(loginInitials("")).toBe("?");
   });
 });

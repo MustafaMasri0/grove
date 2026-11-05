@@ -3,10 +3,11 @@ import { useEffect, useRef } from "react";
 import { tabItems } from "../lib/contextMenus";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { useStore } from "../store";
-import { revealPathOf, tabsToClose, type CloseWhich, type Tab } from "../tabs";
+import { isDocumentTab, revealPathOf, tabsToClose, type CloseWhich, type Tab } from "../tabs";
 import { menuEnv } from "../menuEnv";
 import { EditorTab, menuAtElement, menuAtPointer } from "../ui";
 import { DocumentView, Message } from "./DocumentView";
+import { IssueView } from "./IssueView";
 import { kindOf } from "./tabKinds";
 import "../editor.css";
 
@@ -40,6 +41,7 @@ export function EditorArea() {
   const pinTab = useStore((s) => s.pinTab);
   const strip = useRef<HTMLDivElement>(null);
   const active = tabs.find((t) => t.id === activeId) ?? null;
+  const issues = useStore((s) => s.listPane === "issues");
 
   // The strip has no scrollbar, so the active tab brings itself into view.
   useEffect(() => {
@@ -89,10 +91,14 @@ export function EditorArea() {
           </div>
         </div>
       </div>
-      <DocumentView tab={active} />
+      <DocumentView tab={active && isDocumentTab(active) ? active : null} />
+      {active?.kind === "issue" && <IssueView key={active.id} tab={active} />}
       {!active && (
         <div className="editor-stack">
-          <Message text="Select a changed file, a commit file or a file in Explorer." hint="Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings" />
+          <Message
+            text={issues ? "Select an issue, a changed file or a file in Explorer." : "Select a changed file, a commit file or a file in Explorer."}
+            hint="Ctrl+P open file · Ctrl+Shift+F search · Ctrl+1/2/3 switch panes · F5 refresh · Ctrl+, settings"
+          />
         </div>
       )}
     </section>

@@ -61,7 +61,7 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (ctrl && !e.shiftKey && key === "k") s.setPalette("all");
   else if (ctrl && !e.shiftKey && key === "p") s.setPalette("files");
   else if (ctrl && e.shiftKey && key === "o") s.setView("overview");
-  else if (ctrl && !e.shiftKey && key === "i") s.showIssues();
+  else if (ctrl && !e.shiftKey && key === "i") s.showIssues(true);
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
@@ -77,6 +77,8 @@ function onKeyDown(e: KeyboardEvent) {
   else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) {
     void s.refresh();
     if (atWork && s.listPane === "issues") void useIssues.getState().refresh();
+    const tab = atWork ? s.tabs.find((t) => t.id === s.activeTab) : undefined;
+    if (tab?.kind === "issue") void useIssues.getState().loadIssue(tab.number, true);
   }
   // While an image is shown these zoom the image, not the window.
   else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);

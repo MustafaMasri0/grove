@@ -25,7 +25,7 @@ import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readableP
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
-import { fileTab, isAppTab, parkTabs, revisionTab, settingsTab, uncommittedTab, unparkTabs, type ParkedTab, type Tab, type TabDraft } from "./tabs";
+import { fileTab, isAppTab, issueTab, parkTabs, revisionTab, settingsTab, uncommittedTab, unparkTabs, type ParkedTab, type Tab, type TabDraft } from "./tabs";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
@@ -143,6 +143,8 @@ interface State {
   /** What the palette is searching while it is open: everything (Ctrl+K), or the worktree's files (Ctrl+P). */
   palette: PaletteScope | null;
   searchFocus: number;
+  /** The issue list is to take the keyboard as soon as it shows (Ctrl+I); it clears this when it does. */
+  issuesFocus: boolean;
   systemDark: boolean;
   /** `owner/repo` when the repository's origin is on github.com. */
   githubRepo: string | null;
@@ -165,8 +167,8 @@ interface State {
   refresh(): Promise<void>;
   /** Shows a worktree pane in the list pane. */
   setLeftTab(t: LeftTab): void;
-  /** Shows the repository's issues in the list pane (the rail's Issues row, Ctrl+I). */
-  showIssues(): void;
+  /** Shows the repository's issues in the list pane (the rail's Issues row, Ctrl+I); `focus` puts the keyboard in the list. */
+  showIssues(focus?: boolean): void;
   /** Shows Explorer with `path` selected and its folders expanded. */
   revealInExplorer(path: string): void;
   setChangesMode(m: ChangesMode): void;
@@ -189,6 +191,9 @@ interface State {
   runAction(kind: "fetch" | "push" | "publish"): Promise<void>;
   clearActionError(): void;
   openTab(tab: TabDraft, pin: boolean): void;
+  /** Opens an issue of the repository as a tab (a preview unless `pin`); `title` when already known. */
+  openIssue(number: number, title: string | undefined, pin: boolean): void;
+  setTabTitle(id: string, title: string): void;
   pinTab(id: string): void;
   closeTab(id: string): void;
   /** Closes several tabs; `keep` becomes active if the active tab is among them. */
@@ -394,6 +399,26 @@ export const useStore = create<State>()((set, get) => {
     return get().cwd === cwd && !get().viewBranch;
   };
 
+  /**
+   * Shows `next` in the work view: an open tab of the same id is updated (and kept open with `pin`);
+   * else `next` takes the preview tab's place, or opens right of the active tab.
+   */
+  const placeTab = (next: Tab, pin: boolean) => {
+    const { tabs } = get();
+    showWork();
+    // Below 1100px the tab covers the drawer it was picked from; ListView keeps it out while arrow keys preview.
+    if (isNarrow(get().appWidth)) set({ listOpen: false });
+    if (tabs.some((t) => t.id === next.id)) {
+      set({ tabs: tabs.map((t) => (t.id === next.id ? { ...next, isPreview: t.isPreview && !pin } : t)), activeTab: next.id });
+      return;
+    }
+    const copy = [...tabs];
+    const previewIdx = tabs.findIndex((t) => t.isPreview);
+    if (!pin && previewIdx >= 0) copy[previewIdx] = next;
+    else copy.splice(tabs.findIndex((t) => t.id === get().activeTab) + 1, 0, next);
+    set({ tabs: copy, activeTab: next.id });
+  };
+
   /** Shows worktree pane `t` unless it is already shown (it would load again). */
   const showLeftTab = (t: LeftTab) => {
     const { leftTab, listPane } = get();
@@ -454,6 +479,7 @@ export const useStore = create<State>()((set, get) => {
     activeTab: null,
     palette: null,
     searchFocus: 0,
+    issuesFocus: false,
     systemDark: true,
     githubRepo: null,
     notice: null,
@@ -611,9 +637,9 @@ export const useStore = create<State>()((set, get) => {
       loadForLeftTab();
     },
 
-    showIssues() {
+    showIssues(focus = false) {
       if (!get().repo) return;
-      set({ view: "work", settingsOpen: false, listPane: "issues", listOpen: true });
+      set((s) => ({ view: "work", settingsOpen: false, listPane: "issues", listOpen: true, issuesFocus: s.issuesFocus || focus }));
     },
 
     revealInExplorer(path) {
@@ -797,31 +823,22 @@ export const useStore = create<State>()((set, get) => {
     },
 
     openTab(tab, pin) {
-      const { tabs, repo, cwd } = get();
+      const { repo, cwd } = get();
       if (!repo || !cwd) return;
-      showWork();
-      // Below 1100px the file covers the drawer it was picked from; ListView keeps it out while arrow keys preview.
-      if (isNarrow(get().appWidth)) set({ listOpen: false });
-      const existing = tabs.find((t) => t.id === tab.id);
-      if (existing) {
-        set({
-          tabs: tabs.map((t) => (t.id === tab.id ? { ...tab, repo: repo.id, cwd, isPreview: t.isPreview && !pin } : t)),
-          activeTab: tab.id,
-        });
-        return;
-      }
-      const next: Tab = { ...tab, isPreview: !pin, repo: repo.id, cwd };
-      const previewIdx = tabs.findIndex((t) => t.isPreview);
-      if (!pin && previewIdx >= 0) {
-        const copy = [...tabs];
-        copy[previewIdx] = next;
-        set({ tabs: copy, activeTab: next.id });
-      } else {
-        const activeIdx = tabs.findIndex((t) => t.id === get().activeTab);
-        const copy = [...tabs];
-        copy.splice(activeIdx + 1, 0, next);
-        set({ tabs: copy, activeTab: next.id });
-      }
+      placeTab({ ...tab, isPreview: !pin, repo: repo.id, cwd }, pin);
+    },
+
+    openIssue(number, title, pin) {
+      const { repo, tabs } = get();
+      if (!repo) return;
+      // A title already known (from the loaded issue) is kept over a bare number.
+      const open = tabs.find((t) => t.kind === "issue" && t.number === number);
+      const tab = issueTab(repo.id, number, title);
+      placeTab({ ...tab, title: title === undefined && open ? open.title : tab.title, isPreview: !pin }, pin);
+    },
+
+    setTabTitle(id, title) {
+      if (get().tabs.some((t) => t.id === id && t.title !== title)) set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, title } : t)) }));
     },
 
     pinTab(id) {

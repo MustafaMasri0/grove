@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { IssueSummary } from "../api";
 import { useIssueList, useIssues, type IssueList } from "../issuesStore";
 import { isoToUnix, relativeTime } from "../lib/format";
 import { assigneeChoices, filterIssues, issueProblem, labelChoices, labelColors } from "../lib/issues";
 import { Badge, Button, Count, Empty, Field, Row, Select, Skeleton, Tray, type SelectOption } from "../ui";
-import { Icon } from "./Icon";
+import { IssueStateMark } from "./IssueStateIcon";
 import { ListView, useCommitRowHeight, type ListRow } from "./ListView";
+import { useStore } from "../store";
+import { issueTabId } from "../tabs";
 import "../panes.css";
 
 /** Labels shown on a row before the rest become "+n". */
@@ -51,17 +53,27 @@ const choices = (any: string, names: readonly string[]): SelectOption[] => [{ va
 function IssueBrowser({ list }: { list: IssueList }) {
   const setFilter = useIssues((s) => s.setFilter);
   const loadMore = useIssues((s) => s.loadMore);
+  const openIssue = useStore((s) => s.openIssue);
+  // The row of the issue shown in the editor area.
+  const selected = useStore((s) => s.tabs.find((t) => t.id === s.activeTab && t.kind === "issue")?.id ?? null);
   const rowHeight = useCommitRowHeight();
-  // Opening an issue as a tab comes with the issue view; until then a row is only selected.
-  const [selected, setSelected] = useState<number | null>(null);
+  // A request made before the issues arrived is taken when they do.
+  const wantsFocus = useStore((s) => s.issuesFocus);
+  const body = useRef<HTMLDivElement>(null);
   const { filter, issues, more, tracker } = list;
   const shown = useMemo(() => filterIssues(issues, filter), [issues, filter]);
   const labels = useMemo(() => choices("Any label", labelChoices(issues)), [issues]);
   const assignees = useMemo(() => choices("Anyone", assigneeChoices(issues)), [issues]);
 
+  useEffect(() => {
+    if (!wantsFocus) return;
+    body.current?.querySelector<HTMLElement>(".lbox")?.focus();
+    useStore.setState({ issuesFocus: false });
+  }, [wantsFocus]);
+
   const loadMoreButton = more && <Button kind="link" text="Load more" loading={list.loading === "loadMore"} onClick={() => void loadMore()} />;
   return (
-    <div className="pane-body">
+    <div ref={body} className="pane-body">
       <div className="pane-seg">
         <Tray<"open" | "closed">
           label="State"
@@ -95,9 +107,9 @@ function IssueBrowser({ list }: { list: IssueList }) {
         className="commits"
         items={shown}
         rowHeight={rowHeight}
-        getKey={(i) => String(i.number)}
-        selectedKey={selected === null ? null : String(selected)}
-        onSelect={(i) => setSelected(i.number)}
+        getKey={(i) => issueTabId(i.number)}
+        selectedKey={selected}
+        onSelect={(i, pin) => openIssue(i.number, i.title, pin)}
         render={issueRow}
         empty={
           <>
@@ -117,17 +129,12 @@ function IssueBrowser({ list }: { list: IssueList }) {
 }
 
 function issueRow(i: IssueSummary): ListRow {
-  const open = i.state === "open";
   const sub = [`#${i.number}`, i.author?.name, relativeTime(isoToUnix(i.updatedAt))].filter(Boolean).join(" · ");
   const extra = i.labels.length - ROW_LABELS;
   return {
     className: "commit",
     title: `#${i.number} ${i.title}`,
-    lead: (
-      <span title={open ? "Open" : "Closed"} className={open ? undefined : "muted"}>
-        <Icon name={open ? "issues" : "pass"} size={16} />
-      </span>
-    ),
+    lead: <IssueStateMark state={i.state} />,
     main: (
       <span className="cm">
         <span className="s ell">{i.title}</span>

@@ -2,8 +2,9 @@
 import type { ReactNode } from "react";
 import { displayPath, joinPath } from "../lib/hostPaths";
 import { useStore } from "../store";
-import type { DiffTab, FileTab, SettingsTab, Tab, TabKind } from "../tabs";
+import type { DiffTab, FileTab, IssueTab, SettingsTab, Tab, TabKind } from "../tabs";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { IssueStateIcon } from "./IssueStateIcon";
 
 interface TabKindView<T extends Tab> {
   /** Shown before the title. */
@@ -46,7 +47,14 @@ const settings: TabKindView<SettingsTab> = {
   history: () => null,
 };
 
-const kinds: { [K in TabKind]: TabKindView<Extract<Tab, { kind: K }>> } = { file, diff, settings };
+const issue: TabKindView<IssueTab> = {
+  lead: (t) => <IssueStateIcon number={t.number} />,
+  tip: (t) => t.title,
+  path: () => null,
+  history: () => null,
+};
+
+const kinds: { [K in TabKind]: TabKindView<Extract<Tab, { kind: K }>> } = { file, diff, settings, issue };
 
 export function kindOf<T extends Tab>(t: T): TabKindView<T> {
   return kinds[t.kind] as unknown as TabKindView<T>;

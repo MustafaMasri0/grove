@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { api, issueError, type IssueDetail, type IssueError, type IssueListRequest, type IssueSummary, type TrackerInfo } from "./api";
 import { DEFAULT_ISSUE_FILTER, type IssueFilter } from "./lib/issues";
 import { useStore } from "./store";
+import type { Tab } from "./tabs";
 
 /** How often the shown list checks for changes while the window has focus. */
 export const AUTO_REFRESH_MS = 60_000;
@@ -70,8 +71,6 @@ interface IssuesState {
   loadMore(): Promise<void>;
   /** Loads an issue with its comments; again only with `force`. */
   loadIssue(number: number, force?: boolean): Promise<void>;
-  /** Drops an issue nothing shows any more. */
-  forgetIssue(number: number): void;
   setFilter(patch: Partial<IssueFilter>): void;
 }
 
@@ -166,7 +165,16 @@ export const useIssues = create<IssuesState>()((set, get) => {
     const accountChanged = s.repo && accountOf(s.settings.issueAccounts, s.repo.id) !== accountOf(prev.settings.issueAccounts, s.repo.id);
     if (s.repo?.id !== prev.repo?.id || accountChanged) ensureLoaded();
     if (s.repo !== prev.repo || s.settings.issuesAutoRefresh !== prev.settings.issuesAutoRefresh) syncTimer();
+    if (s.tabs !== prev.tabs) dropClosed(s.tabs, s.settings.issueAccounts);
   });
+
+  /** An issue's comments are kept only while its tab is open. */
+  const dropClosed = (tabs: readonly Tab[], accounts: Record<string, string>) => {
+    const open = new Set(tabs.flatMap((t) => (t.kind === "issue" ? [issueViewKey(issueListKey(t.repo, accountOf(accounts, t.repo)), t.number)] : [])));
+    const { views } = get();
+    if (Object.keys(views).every((k) => open.has(k))) return;
+    set({ views: Object.fromEntries(Object.entries(views).filter(([k]) => open.has(k))) });
+  };
 
   return {
     lists: {},
@@ -205,13 +213,6 @@ export const useIssues = create<IssuesState>()((set, get) => {
       const v = get().views[issueViewKey(t.key, number)];
       if (v?.loading || (v?.detail && !force)) return;
       await fetchIssue(t, number);
-    },
-
-    forgetIssue(number) {
-      const t = target();
-      if (!t) return;
-      const { [issueViewKey(t.key, number)]: _, ...views } = get().views;
-      set({ views });
     },
 
     setFilter(patch) {

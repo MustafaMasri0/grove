@@ -236,7 +236,7 @@ export function Rail() {
       <RailTop icons={icons} />
       <div>
         <Nav icon="home" label="Overview" tip="Overview (Ctrl+Shift+O)" on={atOverview} onClick={() => setView("overview")} />
-        {hasRepo && <Nav icon="issues" label="Issues" tip="Issues (Ctrl+I)" on={atIssues} onClick={showIssues} />}
+        {hasRepo && <Nav icon="issues" label="Issues" tip="Issues (Ctrl+I)" on={atIssues} onClick={() => showIssues()} />}
         {icons && <Nav icon="search" label="Search" tip="Search (Ctrl+K)" onClick={() => setPalette("all")} />}
       </div>
       {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} />}

@@ -32,6 +32,24 @@ function blockImage(img: HTMLImageElement, tip?: string) {
   img.replaceWith(box);
 }
 
+/** Markdown as sanitised HTML; GitHub-flavoured. */
+export const markdownHtml = (text: string) => DOMPurify.sanitize(marked.parse(text, { gfm: true, async: false }) as string);
+
+/** Fenced code in rendered Markdown gets the same highlighting as the editor. */
+export function highlightCode(el: HTMLElement, cancelled: () => boolean) {
+  el.querySelectorAll("pre > code").forEach((code) => {
+    const lang = /language-([\w+#-]+)/.exec(code.className)?.[1];
+    if (!lang) return;
+    const id = languageFor(`x.${lang}`) !== "plaintext" ? languageFor(`x.${lang}`) : lang;
+    monaco.editor.colorize(code.textContent ?? "", id, { tabSize: 4 }).then(
+      (colored) => {
+        if (!cancelled()) code.innerHTML = colored;
+      },
+      () => {},
+    );
+  });
+}
+
 /**
  * Rendered Markdown for a file tab. The HTML is sanitised before it reaches
  * the page; links never navigate the app window.
@@ -42,7 +60,7 @@ export function MarkdownPreview({ text, tab }: { text: string; tab: FileTab }) {
   const rev = tab.source.kind === "rev" ? tab.source.rev : null;
   const path = tab.path;
 
-  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { gfm: true, async: false }) as string), [text]);
+  const html = useMemo(() => markdownHtml(text), [text]);
 
   useEffect(() => {
     const el = ref.current;
@@ -79,18 +97,7 @@ export function MarkdownPreview({ text, tab }: { text: string; tab: FileTab }) {
       );
     });
 
-    // Fenced code gets the same highlighting as the editor.
-    el.querySelectorAll("pre > code").forEach((code) => {
-      const lang = /language-([\w+#-]+)/.exec(code.className)?.[1];
-      if (!lang) return;
-      const id = languageFor(`x.${lang}`) !== "plaintext" ? languageFor(`x.${lang}`) : lang;
-      monaco.editor.colorize(code.textContent ?? "", id, { tabSize: 4 }).then(
-        (colored) => {
-          if (!cancelled) code.innerHTML = colored;
-        },
-        () => {},
-      );
-    });
+    highlightCode(el, () => cancelled);
     return () => {
       cancelled = true;
     };

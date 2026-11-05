@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type IssueDetail, type IssueSummary, type RepoInfo } from "./api";
 import { AUTO_REFRESH_MS, issueListKey, useIssues } from "./issuesStore";
 import { useStore } from "./store";
+import { issueTab } from "./tabs";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -228,12 +229,18 @@ describe("single issues", () => {
     expect(issue).toHaveBeenCalledTimes(3);
   });
 
-  it("keeps an error per issue, and forgets an issue on request", async () => {
+  it("keeps an error per issue", async () => {
     issue.mockRejectedValueOnce({ kind: "notFound", account: null, signedIn: true });
     await useIssues.getState().loadIssue(8);
-    const key = `${issueListKey("r", null)}\n8`;
-    expect(useIssues.getState().views[key]).toMatchObject({ detail: null, loading: false, error: { kind: "notFound" } });
-    useIssues.getState().forgetIssue(8);
-    expect(useIssues.getState().views[key]).toBeUndefined();
+    expect(useIssues.getState().views[`${issueListKey("r", null)}\n8`]).toMatchObject({ detail: null, loading: false, error: { kind: "notFound" } });
+  });
+
+  it("keeps an issue only while its tab is open", async () => {
+    issue.mockImplementation(async (_, __, n) => detail(n));
+    useStore.setState({ tabs: [issueTab("r", 4), issueTab("r", 5)] });
+    await useIssues.getState().loadIssue(4);
+    await useIssues.getState().loadIssue(5);
+    useStore.getState().closeTab(issueTab("r", 4).id);
+    expect(Object.keys(useIssues.getState().views)).toEqual([`${issueListKey("r", null)}\n5`]);
   });
 });

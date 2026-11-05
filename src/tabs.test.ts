@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commitFileTab, fileTab, parkTabs, revealPathOf, settingsTab, tabsToClose, uncommittedTab, unparkTabs, type Tab, type TabDraft } from "./tabs";
+import { commitFileTab, fileTab, isAppTab, isDocumentTab, issueTab, parkTabs, revealPathOf, settingsTab, tabsToClose, uncommittedTab, unparkTabs, type Tab, type TabDraft } from "./tabs";
 
 const tabs = ["a", "b", "c", "d"].map((id) => ({ id }));
 
@@ -97,5 +97,27 @@ describe("parking a worktree's tabs", () => {
   it("puts them at the end when the tabs that stayed were closed meanwhile", () => {
     const { parked } = parkTabs([own("a.ts"), settings, own("b.ts")]);
     expect(titles(unparkTabs([], parked))).toEqual(["a.ts", "b.ts"]);
+  });
+});
+
+describe("issue tabs", () => {
+  const issue = issueTab("/src/example", 12, "Crash on start");
+
+  it("are named by number and title, or by number alone", () => {
+    expect(issue).toMatchObject({ kind: "issue", id: "issue:12", title: "#12 Crash on start", number: 12 });
+    expect(issueTab("/src/example", 7).title).toBe("#7");
+  });
+
+  it("stay where they are while worktrees change, and close with the repository", () => {
+    const file: Tab = { ...fileTab("/wt", "a.ts", null), isPreview: false, repo: "/src/example", cwd: "/wt" };
+    const { staying, parked } = parkTabs([file, issue]);
+    expect(staying).toEqual([issue]);
+    expect(parked.map((p) => p.tab)).toEqual([file]);
+    expect(isAppTab(issue)).toBe(false);
+  });
+
+  it("are not shown by the document view", () => {
+    expect(isDocumentTab(issue)).toBe(false);
+    expect(isDocumentTab(settingsTab("settings.json"))).toBe(true);
   });
 });
