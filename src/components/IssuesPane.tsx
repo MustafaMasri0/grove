@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef } from "react";
 import type { IssueSummary } from "../api";
 import { useIssueList, useIssues, type IssueList } from "../issuesStore";
 import { isoToUnix, relativeTime } from "../lib/format";
+import { useNow } from "../lib/useNow";
 import { assigneeChoices, filterIssues, issueProblem, labelChoices, labelColors } from "../lib/issues";
 import { Badge, Button, Count, Empty, Field, Row, Select, Skeleton, Tray, type SelectOption } from "../ui";
 import { IssueStateMark } from "./IssueStateIcon";
 import { ListView, useCommitRowHeight, type ListRow } from "./ListView";
-import { useStore } from "../store";
+import { issuesOnScreen, useStore } from "../store";
 import { issueTabId } from "../tabs";
 import "../panes.css";
 
@@ -16,18 +17,27 @@ const ROW_LABELS = 2;
 const ANY = "";
 const SKELETON = ["78%", "62%", "84%", "55%", "70%", "66%", "74%", "58%"];
 
-/** The repository's issues in the list pane: loaded while it is shown, checked every minute. */
+/** The repository's issues in the list pane; the issues store loads them while they are on screen. */
 export function IssuesPane() {
   const list = useIssueList();
-
-  useEffect(() => {
-    useIssues.getState().show();
-    return () => useIssues.getState().hide();
-  }, []);
-
+  const pane = useRef<HTMLElement>(null);
+  const onScreen = useStore(issuesOnScreen);
+  // A request for the keyboard (Ctrl+I) made before the issues arrived.
+  const wantsFocus = useStore((s) => s.issuesFocus);
   const problem = list.error && issueProblem(list.error, list.tracker, list.loaded);
+  const ready = list.loaded && !problem;
+
+  // Taken once the list is there; dropped when there is none to take it, so it cannot steal the keyboard later.
+  useEffect(() => {
+    if (!wantsFocus) return;
+    if (!ready && !problem && onScreen) return;
+    if (ready && onScreen) pane.current?.querySelector<HTMLElement>(".lbox")?.focus();
+    useStore.setState({ issuesFocus: false });
+  }, [wantsFocus, ready, !!problem, onScreen]);
+  useEffect(() => () => useStore.setState({ issuesFocus: false }), []);
+
   return (
-    <aside className="ui-root left issues-pane">
+    <aside ref={pane} className="ui-root left issues-pane">
       {problem ? <Empty title={problem.title} text={problem.text} /> : list.loaded ? <IssueBrowser list={list} /> : <IssueSkeleton />}
     </aside>
   );
@@ -57,23 +67,15 @@ function IssueBrowser({ list }: { list: IssueList }) {
   // The row of the issue shown in the editor area.
   const selected = useStore((s) => s.tabs.find((t) => t.id === s.activeTab && t.kind === "issue")?.id ?? null);
   const rowHeight = useCommitRowHeight();
-  // A request made before the issues arrived is taken when they do.
-  const wantsFocus = useStore((s) => s.issuesFocus);
-  const body = useRef<HTMLDivElement>(null);
+  const now = useNow(30_000);
   const { filter, issues, more, tracker } = list;
   const shown = useMemo(() => filterIssues(issues, filter), [issues, filter]);
   const labels = useMemo(() => choices("Any label", labelChoices(issues)), [issues]);
   const assignees = useMemo(() => choices("Anyone", assigneeChoices(issues)), [issues]);
 
-  useEffect(() => {
-    if (!wantsFocus) return;
-    body.current?.querySelector<HTMLElement>(".lbox")?.focus();
-    useStore.setState({ issuesFocus: false });
-  }, [wantsFocus]);
-
   const loadMoreButton = more && <Button kind="link" text="Load more" loading={list.loading === "loadMore"} onClick={() => void loadMore()} />;
   return (
-    <div ref={body} className="pane-body">
+    <div className="pane-body">
       <div className="pane-seg">
         <Tray<"open" | "closed">
           label="State"
@@ -110,7 +112,7 @@ function IssueBrowser({ list }: { list: IssueList }) {
         getKey={(i) => issueTabId(i.number)}
         selectedKey={selected}
         onSelect={(i, pin) => openIssue(i.number, i.title, pin)}
-        render={issueRow}
+        render={(i) => issueRow(i, now)}
         empty={
           <>
             {issues.length ? `No loaded issues match. More may be on ${tracker?.name ?? "the tracker"}.` : "No issues yet."}
@@ -128,8 +130,8 @@ function IssueBrowser({ list }: { list: IssueList }) {
   );
 }
 
-function issueRow(i: IssueSummary): ListRow {
-  const sub = [`#${i.number}`, i.author?.name, relativeTime(isoToUnix(i.updatedAt))].filter(Boolean).join(" · ");
+function issueRow(i: IssueSummary, now: number): ListRow {
+  const sub = [`#${i.number}`, i.author?.name, relativeTime(isoToUnix(i.updatedAt), now)].filter(Boolean).join(" · ");
   const extra = i.labels.length - ROW_LABELS;
   return {
     className: "commit",

@@ -1007,6 +1007,11 @@ export function useAt() {
   return repo && cwd ? { repo: repo.id, cwd } : null;
 }
 
+/** The issues list is on screen: the work view shows it, not covered by the overview nor folded away in the drawer. */
+export function issuesOnScreen(s: Pick<State, "repo" | "view" | "listPane" | "appWidth" | "listOpen">): boolean {
+  return s.repo !== null && s.view === "work" && s.listPane === "issues" && (!isNarrow(s.appWidth) || s.listOpen);
+}
+
 export function effectiveDark(s: { settings: Settings; systemDark: boolean }): boolean {
   return s.settings.theme === "dark" || (s.settings.theme === "system" && s.systemDark);
 }

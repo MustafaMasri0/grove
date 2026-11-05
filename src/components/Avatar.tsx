@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { avatarHue, createAvatarLoader, initials } from "../lib/avatar";
 import { useAt } from "../store";
@@ -27,13 +27,18 @@ export function Avatar({ name, email, size, sha }: { name: string; email: string
   }, [email]);
 
   return (
-    <span
-      className="avatar"
-      aria-hidden="true"
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${avatarHue(email)} 42% var(--avatar-lightness, 44%))` }}
-    >
-      {initials(name, email)}
+    <InitialsAvatar seed={email} text={initials(name, email)} size={size}>
       {url && <img src={url} alt="" draggable={false} onError={() => setUrl(null)} />}
+    </InitialsAvatar>
+  );
+}
+
+/** Initials on a colour picked from `seed`; a picture given as `children` covers them. */
+export function InitialsAvatar({ seed, text, size, children }: { seed: string; text: string; size: number; children?: ReactNode }) {
+  return (
+    <span className="avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${avatarHue(seed)} 42% var(--avatar-lightness, 44%))` }}>
+      {text}
+      {children}
     </span>
   );
 }

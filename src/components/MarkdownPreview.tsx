@@ -16,13 +16,22 @@ const slug = (s: string) =>
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/\s+/g, "-");
 
-/** Stands in for a picture that is not shown: its alternative text in a frame. */
-function blockImage(img: HTMLImageElement, tip?: string) {
-  const alt = img.getAttribute("alt") ?? "";
-  const box = document.createElement("span");
+/**
+ * Stands in for a picture that is not shown: its alternative text in a frame. With `href` it is
+ * a button whose `data-href` the view opens in the browser.
+ */
+export function blockImage(img: HTMLImageElement, { tip, href }: { tip?: string; href?: string } = {}) {
+  const alt = img.getAttribute("alt") || "Image";
+  const box = document.createElement(href ? "button" : "span");
   box.className = "md-blocked";
-  box.setAttribute("role", "img");
-  box.setAttribute("aria-label", alt);
+  if (href) {
+    box.setAttribute("type", "button");
+    box.dataset.href = href;
+    box.setAttribute("aria-label", `Open image in browser: ${alt}`);
+  } else {
+    box.setAttribute("role", "img");
+    box.setAttribute("aria-label", alt);
+  }
   if (tip) box.dataset.tip = tip;
   box.innerHTML = iconMarkup("file-media");
   const label = document.createElement("span");
@@ -81,7 +90,7 @@ export function MarkdownPreview({ text, tab }: { text: string; tab: FileTab }) {
     el.querySelectorAll("img").forEach((img) => {
       const src = img.getAttribute("src") ?? "";
       img.removeAttribute("src");
-      if (classifyLink(src) !== "repo") return blockImage(img, `Remote image not loaded: ${src}`);
+      if (classifyLink(src) !== "repo") return blockImage(img, { tip: `Remote image not loaded: ${src}` });
       const resolved = resolveRepoPath(path, src);
       if (!resolved) return blockImage(img);
       const source: Source = rev ? { kind: "rev", rev, path: resolved } : { kind: "worktree", path: resolved };

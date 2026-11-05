@@ -41,33 +41,37 @@ const list = (repoId = "r", account: string | null = null) => useIssues.getState
 const flush = async () => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
+/** The rail's Issues row; the list is on screen. */
+const showList = () => useStore.getState().showIssues();
+/** Back to the worktree panes; the list is off screen. */
+const hideList = () => useStore.setState({ listPane: "worktree" });
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
   issues.mockReset();
   issue.mockReset();
   tracker.mockClear();
-  useStore.setState({ repo: repo("r"), settings: { ...useStore.getInitialState().settings, issuesAutoRefresh: true, issueAccounts: {} } });
+  useStore.setState({ repo: repo("r"), view: "work", listPane: "worktree", appWidth: 1440, listOpen: true, tabs: [], settings: { ...useStore.getInitialState().settings, issuesAutoRefresh: true, issueAccounts: {} } });
   useIssues.setState({ ...useIssues.getInitialState(), focused: true });
 });
 
 afterEach(() => {
-  useIssues.getState().hide();
+  hideList();
   vi.useRealTimers();
 });
 
 describe("the issues list", () => {
   it("loads when first shown, from the repository root, with the default login", async () => {
     issues.mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: true });
-    useIssues.getState().show();
+    showList();
     await flush();
     expect(issues).toHaveBeenCalledWith({ repo: "r", cwd: "/src/r" }, null, "refresh");
     expect(list()).toMatchObject({ loaded: true, more: true, error: null, tracker: { name: "GitHub" } });
     expect(list().issues.map((i) => i.number)).toEqual([2, 1]);
 
     // Shown again: already loaded, nothing is asked.
-    useIssues.getState().hide();
-    useIssues.getState().show();
+    hideList();
+    showList();
     expect(issues).toHaveBeenCalledTimes(1);
   });
 
@@ -133,7 +137,7 @@ describe("the issues list", () => {
 
   it("loads the next repository's list when it is shown while the list is open", async () => {
     issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false });
-    useIssues.getState().show();
+    showList();
     await flush();
     useStore.setState({ repo: repo("other") });
     await flush();
@@ -153,7 +157,7 @@ describe("the issues list", () => {
 describe("auto-refresh", () => {
   beforeEach(async () => {
     issues.mockResolvedValue({ kind: "issues", issues: [summary(1)], more: false });
-    useIssues.getState().show();
+    showList();
     await flush();
     issues.mockClear();
     issues.mockResolvedValue({ kind: "unchanged" });
@@ -170,10 +174,23 @@ describe("auto-refresh", () => {
     expect(issues.mock.calls.map((c) => c[2])).toEqual(["timedCheck", "timedCheck"]);
   });
 
-  it("stops when hidden, unfocused or turned off", async () => {
-    useIssues.getState().hide();
+  it("stops while the overview covers the list, or the drawer is folded", async () => {
+    useStore.getState().setView("overview");
     await tick();
-    useIssues.getState().show();
+    expect(issues).not.toHaveBeenCalled();
+    showList();
+    useStore.setState({ appWidth: 900, listOpen: false });
+    await tick();
+    expect(issues).not.toHaveBeenCalled();
+    useStore.setState({ listOpen: true });
+    await tick();
+    expect(issues).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops when hidden, unfocused or turned off", async () => {
+    hideList();
+    await tick();
+    showList();
     useIssues.getState().setFocused(false);
     await tick();
     expect(issues).not.toHaveBeenCalled();
@@ -233,6 +250,17 @@ describe("single issues", () => {
     issue.mockRejectedValueOnce({ kind: "notFound", account: null, signedIn: true });
     await useIssues.getState().loadIssue(8);
     expect(useIssues.getState().views[`${issueListKey("r", null)}\n8`]).toMatchObject({ detail: null, loading: false, error: { kind: "notFound" } });
+  });
+
+  it("drops an issue whose tab closed while it loaded", async () => {
+    let finish = (_: IssueDetail) => {};
+    issue.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
+    useStore.setState({ tabs: [issueTab("r", 4)] });
+    const loading = useIssues.getState().loadIssue(4);
+    useStore.getState().closeTab(issueTab("r", 4).id);
+    finish(detail(4));
+    await loading;
+    expect(useIssues.getState().views).toEqual({});
   });
 
   it("keeps an issue only while its tab is open", async () => {

@@ -35,7 +35,7 @@ let root: ReturnType<typeof createRoot>;
 
 beforeEach(() => {
   vi.mocked(api.issues).mockResolvedValue({ kind: "issues", issues: [summary(2), summary(1)], more: false });
-  useStore.setState({ repo: { id: "r", root: "/r" } as RepoInfo, cwd: "/r", tabs: [], activeTab: null, issuesFocus: false });
+  useStore.setState({ repo: { id: "r", root: "/r" } as RepoInfo, cwd: "/r", tabs: [], activeTab: null, view: "work", listPane: "worktree", appWidth: 1440, issuesFocus: false });
   useIssues.setState(useIssues.getInitialState());
   host = document.createElement("div");
   document.body.append(host);
@@ -67,7 +67,17 @@ describe("IssuesPane", () => {
     expect(document.activeElement?.classList.contains("lbox")).toBe(false);
   });
 
+  it("drops the request when there is no list to take it, so it cannot steal the keyboard later", async () => {
+    vi.mocked(api.issues).mockRejectedValueOnce({ kind: "network", message: "offline" });
+    useStore.getState().showIssues(true);
+    await act(async () => root.render(<IssuesPane />));
+    await vi.waitFor(() => expect(useIssues.getState().lists[issueListKey("r", null)]?.error).not.toBeNull());
+    await act(async () => {});
+    expect(useStore.getState().issuesFocus).toBe(false);
+  });
+
   it("opens the chosen issue as a tab, and marks its row", async () => {
+    useStore.getState().showIssues();
     await render();
     act(() => useStore.getState().openIssue(1, "Issue 1", true));
     expect(useStore.getState().tabs.map((t) => t.title)).toEqual(["#1 Issue 1"]);

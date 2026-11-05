@@ -4,7 +4,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react";
 import type { IssueComment, IssuePerson, TrackerInfo } from "../api";
 import { useIssueList, useIssues, useIssueView } from "../issuesStore";
-import { avatarHue } from "../lib/avatar";
 import { isoToUnix, relativeTime } from "../lib/format";
 import { issueViewProblem, labelColors, linkedIssue, loginInitials, splitIssueRefs } from "../lib/issues";
 import { classifyLink } from "../lib/mdLinks";
@@ -13,8 +12,9 @@ import { useStore } from "../store";
 import { issueTabTitle, type IssueTab } from "../tabs";
 import { Badge, Button, Chip, SectionLabel, Toolbar } from "../ui";
 import { Message } from "./DocumentView";
-import { Icon, iconMarkup } from "./Icon";
-import { highlightCode, markdownHtml } from "./MarkdownPreview";
+import { InitialsAvatar } from "./Avatar";
+import { Icon } from "./Icon";
+import { blockImage, highlightCode, markdownHtml } from "./MarkdownPreview";
 
 /** Each issue's scroll, kept while the app runs: switching tabs comes back to the same place. */
 const scrolls = new Map<string, number>();
@@ -23,13 +23,7 @@ const ago = (iso: string, now: number) => relativeTime(isoToUnix(iso), now);
 const dash = <span className="muted">–</span>;
 
 /** A login's initials in its own colour; tracker pictures are not loaded. */
-function PersonMark({ person, size }: { person: IssuePerson; size: number }) {
-  return (
-    <span className="avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: Math.round(size * 0.42), background: `hsl(${avatarHue(person.name)} 42% var(--avatar-lightness, 44%))` }}>
-      {loginInitials(person.name)}
-    </span>
-  );
-}
+const PersonMark = ({ person, size }: { person: IssuePerson; size: number }) => <InitialsAvatar seed={person.name} text={loginInitials(person.name)} size={size} />;
 
 const Who = ({ person }: { person: IssuePerson }) => (
   <span className="iss-who">
@@ -38,25 +32,11 @@ const Who = ({ person }: { person: IssuePerson }) => (
   </span>
 );
 
-/** Stands in for a web image: its alternative text, and a click opens it in the browser. */
-function blockImage(img: HTMLImageElement) {
+/** Stands in for an image: issue text loads none. A web image opens in the browser. */
+function blockIssueImage(img: HTMLImageElement) {
   const src = img.getAttribute("src") ?? "";
-  const alt = img.getAttribute("alt") || "Image";
-  const web = classifyLink(src) === "external";
-  const box = document.createElement(web ? "button" : "span");
-  box.className = "md-blocked";
-  if (web) {
-    box.setAttribute("type", "button");
-    box.dataset.href = src;
-    box.setAttribute("aria-label", `Open image in browser: ${alt}`);
-    box.dataset.tip = "Remote image not loaded. Click to open it in your browser.";
-  } else box.setAttribute("aria-label", alt);
-  box.innerHTML = iconMarkup("file-media");
-  const label = document.createElement("span");
-  label.className = "ell";
-  label.textContent = alt;
-  box.append(label);
-  img.replaceWith(box);
+  if (classifyLink(src) === "external") blockImage(img, { href: src, tip: "Remote image not loaded. Click to open it in your browser." });
+  else blockImage(img);
 }
 
 /** Turns `#123` in plain text (not code, not links) into links that open the issue as a tab. */
@@ -82,17 +62,16 @@ function linkIssueRefs(root: HTMLElement) {
   }
 }
 
-/** Issue text as GitHub-flavoured Markdown. */
-function IssueMarkdown({ text, tracker }: { text: string; tracker: TrackerInfo | null }) {
+/** Issue text as GitHub-flavoured Markdown; `onIssue` follows a reference to an issue. */
+function IssueMarkdown({ text, tracker, onIssue }: { text: string; tracker: TrackerInfo | null; onIssue: (n: number) => void }) {
   const ref = useRef<HTMLElement>(null);
-  const openIssue = useStore((s) => s.openIssue);
   const html = useMemo(() => markdownHtml(text), [text]);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     let cancelled = false;
-    el.querySelectorAll("img").forEach(blockImage);
+    el.querySelectorAll("img").forEach(blockIssueImage);
     linkIssueRefs(el);
     highlightCode(el, () => cancelled);
     return () => {
@@ -109,14 +88,14 @@ function IssueMarkdown({ text, tracker }: { text: string; tracker: TrackerInfo |
     e.preventDefault();
     const href = a.getAttribute("href") ?? "";
     const n = a.dataset.issue ? Number(a.dataset.issue) : linkedIssue(href, tracker);
-    if (n !== null) openIssue(n, undefined, false);
+    if (n !== null) onIssue(n);
     else if (classifyLink(href) === "external") void openUrl(href);
   };
 
   return <article ref={ref} className="md-preview" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-function CommentCard({ c, author, tracker, now }: { c: IssueComment; author: string | null; tracker: TrackerInfo | null; now: number }) {
+function CommentCard({ c, author, tracker, now, onIssue }: { c: IssueComment; author: string | null; tracker: TrackerInfo | null; now: number; onIssue: (n: number) => void }) {
   const name = c.author?.name ?? "ghost";
   return (
     <div className="iss-c">
@@ -130,7 +109,7 @@ function CommentCard({ c, author, tracker, now }: { c: IssueComment; author: str
           <span className="spacer" />
           {author !== null && c.author?.name === author && <Chip>Author</Chip>}
         </Toolbar>
-        {c.body.trim() ? <IssueMarkdown text={c.body} tracker={tracker} /> : <p className="md-preview muted">No text.</p>}
+        {c.body.trim() ? <IssueMarkdown text={c.body} tracker={tracker} onIssue={onIssue} /> : <p className="md-preview muted">No text.</p>}
       </div>
     </div>
   );
@@ -142,10 +121,19 @@ export function IssueView({ tab }: { tab: IssueTab }) {
   const tracker = useIssueList().tracker;
   const loadIssue = useIssues((s) => s.loadIssue);
   const setTabTitle = useStore((s) => s.setTabTitle);
+  const pinTab = useStore((s) => s.pinTab);
+  const openIssue = useStore((s) => s.openIssue);
   const scroller = useRef<HTMLDivElement>(null);
   const now = useNow(30_000);
   const { detail, error } = view;
   const scrollKey = `${tab.repo}\n${tab.number}`;
+
+  // The issue being read stays open; the followed one comes up as the preview.
+  const follow = (n: number) => {
+    if (n === tab.number) return;
+    pinTab(tab.id);
+    openIssue(n, undefined, false);
+  };
 
   useEffect(() => {
     void loadIssue(tab.number);
@@ -205,10 +193,10 @@ export function IssueView({ tab }: { tab: IssueTab }) {
             <dt>Milestone</dt>
             <dd>{i.milestone ?? dash}</dd>
           </dl>
-          {i.body.trim() ? <IssueMarkdown text={i.body} tracker={tracker} /> : <p className="muted">No description.</p>}
+          {i.body.trim() ? <IssueMarkdown text={i.body} tracker={tracker} onIssue={follow} /> : <p className="muted">No description.</p>}
           {comments > 0 && <SectionLabel text={`${comments} ${comments === 1 ? "comment" : "comments"}`} />}
           {detail.comments.map((c, k) => (
-            <CommentCard key={c.webUrl || k} c={c} author={i.author?.name ?? null} tracker={tracker} now={now} />
+            <CommentCard key={c.webUrl || k} c={c} author={i.author?.name ?? null} tracker={tracker} now={now} onIssue={follow} />
           ))}
         </div>
       </div>

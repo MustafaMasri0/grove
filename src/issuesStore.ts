@@ -5,7 +5,7 @@
 import { create } from "zustand";
 import { api, issueError, type IssueDetail, type IssueError, type IssueListRequest, type IssueSummary, type TrackerInfo } from "./api";
 import { DEFAULT_ISSUE_FILTER, type IssueFilter } from "./lib/issues";
-import { useStore } from "./store";
+import { issuesOnScreen, useStore } from "./store";
 import type { Tab } from "./tabs";
 
 /** How often the shown list checks for changes while the window has focus. */
@@ -55,14 +55,9 @@ interface IssuesState {
   lists: Record<string, IssueList>;
   /** `issueViewKey` → that issue. */
   views: Record<string, IssueView>;
-  /** The issues list is on screen. */
-  shown: boolean;
   /** The window has focus. */
   focused: boolean;
 
-  /** The list came on screen: loads it the first time and starts the auto-refresh. */
-  show(): void;
-  hide(): void;
   setFocused(focused: boolean): void;
   /** Asked for by the user (refresh button, F5): loads the list, or checks it for changes. */
   refresh(): Promise<void>;
@@ -105,12 +100,14 @@ export const useIssues = create<IssuesState>()((set, get) => {
   const fetchIssue = async (t: Target, number: number) => {
     const key = issueViewKey(t.key, number);
     patchView(key, { loading: true });
+    let answer: Partial<IssueView>;
     try {
-      const detail = await api.issue(t.at, t.account, number);
-      patchView(key, { detail, loading: false, error: null });
+      answer = { detail: await api.issue(t.at, t.account, number), loading: false, error: null };
     } catch (e) {
-      patchView(key, { loading: false, error: issueError(e) });
+      answer = { loading: false, error: issueError(e) };
     }
+    // Its tab closed while it loaded: the view was dropped and stays dropped.
+    if (key in get().views) patchView(key, answer);
   };
 
   /** Opened issues that the list now shows as updated are loaded again. */
@@ -144,9 +141,8 @@ export const useIssues = create<IssuesState>()((set, get) => {
 
   /** Runs only while the list is on screen, the window has focus and the setting is on. */
   const syncTimer = () => {
-    const { shown, focused } = get();
-    const { repo, settings } = useStore.getState();
-    const want = shown && focused && repo !== null && settings.issuesAutoRefresh;
+    const app = useStore.getState();
+    const want = issuesOnScreen(app) && get().focused && app.settings.issuesAutoRefresh;
     if (want && timer === undefined) timer = window.setInterval(() => void get().check(), AUTO_REFRESH_MS);
     if (!want && timer !== undefined) {
       window.clearInterval(timer);
@@ -157,14 +153,16 @@ export const useIssues = create<IssuesState>()((set, get) => {
   /** The shown list is loaded when it never was (or its first load failed). */
   const ensureLoaded = () => {
     const t = target();
-    if (t && get().shown && !listOf(t.key).loaded) void get().refresh();
+    if (t && issuesOnScreen(useStore.getState()) && !listOf(t.key).loaded) void get().refresh();
   };
 
-  // Another repository, another account or the setting turned over: the timer and the list follow.
+  // The list came on screen or went, another repository or account, the setting turned over: the timer and the list follow.
   useStore.subscribe((s, prev) => {
+    const onScreen = issuesOnScreen(s);
+    const cameOn = onScreen && !issuesOnScreen(prev);
     const accountChanged = s.repo && accountOf(s.settings.issueAccounts, s.repo.id) !== accountOf(prev.settings.issueAccounts, s.repo.id);
-    if (s.repo?.id !== prev.repo?.id || accountChanged) ensureLoaded();
-    if (s.repo !== prev.repo || s.settings.issuesAutoRefresh !== prev.settings.issuesAutoRefresh) syncTimer();
+    if (onScreen !== issuesOnScreen(prev) || s.settings.issuesAutoRefresh !== prev.settings.issuesAutoRefresh) syncTimer();
+    if (cameOn || s.repo?.id !== prev.repo?.id || accountChanged) ensureLoaded();
     if (s.tabs !== prev.tabs) dropClosed(s.tabs, s.settings.issueAccounts);
   });
 
@@ -179,19 +177,7 @@ export const useIssues = create<IssuesState>()((set, get) => {
   return {
     lists: {},
     views: {},
-    shown: false,
     focused: typeof document !== "undefined" && document.hasFocus(),
-
-    show() {
-      set({ shown: true });
-      syncTimer();
-      ensureLoaded();
-    },
-
-    hide() {
-      set({ shown: false });
-      syncTimer();
-    },
 
     setFocused(focused) {
       if (focused === get().focused) return;
