@@ -131,9 +131,10 @@ export const useIssues = create<IssuesState>()((set, get) => {
     patchList(t.key, { loading: kind });
     try {
       // Picking the tracker sends nothing, and tells "no usable origin" apart before any request.
-      const tracker = list.tracker ?? (await api.issueTracker(t.at));
+      // Kept even when the list request fails, so its error can name the project.
+      if (!list.tracker) patchList(t.key, { tracker: await api.issueTracker(t.at) });
       const out = await api.issues(t.at, t.account, kind);
-      const done = { tracker, loading: null, error: null, checkedAt: Date.now() };
+      const done = { loading: null, error: null, checkedAt: Date.now() };
       if (out.kind === "unchanged") return patchList(t.key, done);
       patchList(t.key, { ...done, issues: out.issues, more: out.more, loaded: true });
       reloadChanged(t, out.issues);

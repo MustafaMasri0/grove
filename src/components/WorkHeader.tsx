@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useIssueList, useIssues } from "../issuesStore";
 import { branchAction } from "../lib/branchAction";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems } from "../lib/contextMenus";
@@ -119,11 +120,57 @@ function PushButton() {
 /** The worktree's page header. Its empty space moves the window. */
 export function WorkHeader() {
   const hasRepo = useStore((s) => !!s.repo);
-  if (hasRepo) return <RepoHeader />;
+  const issues = useStore((s) => s.listPane === "issues");
+  if (hasRepo) return issues ? <IssuesHeader /> : <RepoHeader />;
   // settings.json with no repository: nothing to name here, but the top of the page still moves the window.
   return (
     <div className="ui-root work-top">
       <div className="page-band" data-tauri-drag-region="deep" />
+    </div>
+  );
+}
+
+/** Origin is unusable: there is nothing a refresh could load. */
+const NO_TRACKER = new Set(["noOrigin", "unsupportedHost", "git"]);
+
+/** The issues page's header: the project, when the list last answered, Refresh. */
+function IssuesHeader() {
+  const list = useIssueList();
+  const refresh = useIssues((s) => s.refresh);
+  const narrow = useStore((s) => isNarrow(s.appWidth));
+  const listOpen = useStore((s) => s.listOpen);
+  const toggleList = useStore((s) => s.toggleList);
+  const now = useNow(10_000);
+  const { error, tracker, checkedAt } = list;
+  const busy = list.loading === "refresh" || list.loading === "timedCheck";
+  const limited = error?.kind === "rateLimited" ? error : null;
+  const resets = limited && new Date(limited.resetsAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const updated = !list.loaded && busy ? "Loading…" : checkedAt !== null ? `Updated ${relativeTime(checkedAt / 1000, now)}` : "";
+
+  return (
+    <div className="ui-root work-top">
+      <header className="head" data-tauri-drag-region="deep">
+        {narrow && <Toggle icon="layout-sidebar-left" label="Toggle list" tip="Toggle list (Ctrl+B)" on={listOpen} aria-expanded={listOpen} onClick={toggleList} />}
+        <div className="head-id">
+          <h1>
+            <span className="ell">Issues</span>
+            {tracker && <span className="head-ab">{tracker.project}</span>}
+          </h1>
+        </div>
+        <div className="head-tools">
+          {updated && <span className="cap muted">{updated}</span>}
+          {!(error && NO_TRACKER.has(error.kind)) && (
+            <Button
+              icon="sync"
+              text="Refresh"
+              tip={limited ? `Rate limit reached. Resets at ${resets}.` : "Refresh (F5)"}
+              loading={busy}
+              disabled={limited ? `Rate limit reached. Resets at ${resets}.` : undefined}
+              onClick={() => void refresh()}
+            />
+          )}
+        </div>
+      </header>
     </div>
   );
 }

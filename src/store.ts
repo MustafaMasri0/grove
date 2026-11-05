@@ -33,6 +33,9 @@ export type LeftTab = "changes" | "history" | "explorer" | "search";
 /** What fills the window: every worktree side by side, or one worktree's files. */
 export type View = "overview" | "work";
 
+/** What the work view's list pane shows: the worktree's panes, or the repository's issues. */
+export type ListPane = "worktree" | "issues";
+
 /** A branch shown read-only because no worktree has it checked out. */
 export interface ViewBranch {
   name: string;
@@ -97,6 +100,7 @@ interface State {
   /** Worktree path → what it had open, for every worktree but the shown one. */
   parked: Record<string, WorktreeView>;
   view: View;
+  listPane: ListPane;
   settingsOpen: boolean;
   status: Status | null;
   statusError: string | null;
@@ -159,7 +163,10 @@ interface State {
   selectWorktree(path: string): Promise<void>;
   selectBranch(b: BranchRef): Promise<void>;
   refresh(): Promise<void>;
+  /** Shows a worktree pane in the list pane. */
   setLeftTab(t: LeftTab): void;
+  /** Shows the repository's issues in the list pane (the rail's Issues row, Ctrl+I). */
+  showIssues(): void;
   /** Shows Explorer with `path` selected and its folders expanded. */
   revealInExplorer(path: string): void;
   setChangesMode(m: ChangesMode): void;
@@ -387,6 +394,12 @@ export const useStore = create<State>()((set, get) => {
     return get().cwd === cwd && !get().viewBranch;
   };
 
+  /** Shows worktree pane `t` unless it is already shown (it would load again). */
+  const showLeftTab = (t: LeftTab) => {
+    const { leftTab, listPane } = get();
+    if (leftTab !== t || listPane !== "worktree") get().setLeftTab(t);
+  };
+
   const loadForLeftTab = () => {
     const { leftTab, settings } = get();
     if (leftTab === "history" && get().commits.length === 0 && !get().fileHistory) void get().loadMoreCommits();
@@ -409,6 +422,7 @@ export const useStore = create<State>()((set, get) => {
     viewBranch: null,
     parked: {},
     view: "overview",
+    listPane: "worktree",
     settingsOpen: false,
     status: null,
     statusError: null,
@@ -505,6 +519,7 @@ export const useStore = create<State>()((set, get) => {
         leftTab: "changes",
         actions: {},
         view: "overview",
+        listPane: "worktree",
         settingsOpen: false,
         ...keepAppTabs(),
         worktrees: [],
@@ -550,7 +565,7 @@ export const useStore = create<State>()((set, get) => {
       const { repo, cwd, viewBranch } = get();
       if (!repo) return;
       showWork();
-      set({ listOpen: true });
+      set({ listOpen: true, listPane: "worktree" });
       if (path === cwd && !viewBranch) return;
       await showWorktree(path, path === cwd);
     },
@@ -592,13 +607,18 @@ export const useStore = create<State>()((set, get) => {
     },
 
     setLeftTab(t) {
-      set({ leftTab: t, listOpen: true });
+      set({ leftTab: t, listOpen: true, listPane: "worktree" });
       loadForLeftTab();
+    },
+
+    showIssues() {
+      if (!get().repo) return;
+      set({ view: "work", settingsOpen: false, listPane: "issues", listOpen: true });
     },
 
     revealInExplorer(path) {
       set({ explorerReveal: { path } });
-      if (get().leftTab !== "explorer") get().setLeftTab("explorer");
+      showLeftTab("explorer");
     },
 
     setChangesMode(m) {
@@ -674,13 +694,13 @@ export const useStore = create<State>()((set, get) => {
     },
 
     async showCommit(sha) {
-      if (get().leftTab !== "history") get().setLeftTab("history");
+      showLeftTab("history");
       await get().selectCommit(sha);
     },
 
     async openFileHistory(path, rev) {
       set({ fileHistory: { path, rev: rev ?? currentRev(), entries: [], done: false, error: null } });
-      if (get().leftTab !== "history") get().setLeftTab("history");
+      showLeftTab("history");
       await get().loadMoreFileHistory();
     },
 
@@ -849,7 +869,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     focusSearch() {
-      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1, listOpen: true }));
+      set((s) => ({ leftTab: "search", searchFocus: s.searchFocus + 1, listOpen: true, listPane: "worktree" }));
     },
 
     setSystemDark(dark) {

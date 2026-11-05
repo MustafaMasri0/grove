@@ -8,6 +8,7 @@ import { editorCommands } from "./components/DocumentView";
 import { previewForTest } from "./components/HtmlPreview";
 import { foldRail } from "./components/foldRail";
 import { imageCommands } from "./components/ImageView";
+import { IssuesPane } from "./components/IssuesPane";
 import { LeftPane } from "./components/LeftPane";
 import { Palette } from "./components/Palette";
 import { dragWidth, nudgeWidth } from "./components/paneWidth";
@@ -17,6 +18,7 @@ import { WindowControls } from "./components/WindowControls";
 import { WorkHeader } from "./components/WorkHeader";
 import { WorktreesPage } from "./components/WorktreesPage";
 import { api, type WorktreeChanged } from "./api";
+import { useIssues } from "./issuesStore";
 import { ZOOM_STEPS } from "./lib/settingsSchema";
 import { applyEditorTheme } from "./monaco";
 import { commitFileTab, fileTab, revisionTab } from "./tabs";
@@ -59,6 +61,7 @@ function onKeyDown(e: KeyboardEvent) {
   } else if (ctrl && !e.shiftKey && key === "k") s.setPalette("all");
   else if (ctrl && !e.shiftKey && key === "p") s.setPalette("files");
   else if (ctrl && e.shiftKey && key === "o") s.setView("overview");
+  else if (ctrl && !e.shiftKey && key === "i") s.showIssues();
   else if (ctrl && e.shiftKey && key === "f") s.focusSearch();
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
@@ -71,7 +74,10 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && !e.shiftKey && tabs[key]) s.setLeftTab(tabs[key]);
   else if (ctrl && !e.shiftKey && key === "b") isNarrow(s.appWidth) ? s.toggleList() : foldRail();
   else if (ctrl && !e.shiftKey && key === ",") s.openSettings();
-  else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) void s.refresh();
+  else if ((key === "F5" && !e.ctrlKey) || (ctrl && key === "r")) {
+    void s.refresh();
+    if (atWork && s.listPane === "issues") void useIssues.getState().refresh();
+  }
   // While an image is shown these zoom the image, not the window.
   else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);
   else if (ctrl && key === "-") imageCommands.active ? imageCommands.zoom(-1) : stepZoom(-1);
@@ -96,7 +102,8 @@ export function App() {
   // With no repository the work view has only settings.json to show, so the editor takes the whole page.
   const editorOnly = narrow || !repo;
   const listOpen = useStore((s) => s.listOpen);
-  const commitColumn = useStore((s) => s.leftTab === "history" && s.selectedCommit !== null && !commitInList(s.appWidth));
+  const issues = useStore((s) => s.listPane === "issues");
+  const commitColumn = useStore((s) => s.listPane === "worktree" && s.leftTab === "history" && s.selectedCommit !== null && !commitInList(s.appWidth));
   const overview = useStore((s) => s.view === "overview");
   const dark = useStore(effectiveDark);
   const zoom = useStore((s) => s.settings.zoom);
@@ -136,11 +143,14 @@ export function App() {
     mq.addEventListener("change", onScheme);
 
     const onFocus = () => {
+      useIssues.getState().setFocused(true);
       if (Date.now() - lastFocusRefresh.current < 2000) return;
       lastFocusRefresh.current = Date.now();
       void useStore.getState().refresh();
     };
     window.addEventListener("focus", onFocus);
+    const onBlur = () => useIssues.getState().setFocused(false);
+    window.addEventListener("blur", onBlur);
 
     const unlisten = [
       listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
@@ -151,6 +161,7 @@ export function App() {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("contextmenu", blockMenu, true);
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
       mq.removeEventListener("change", onScheme);
       unlisten.forEach((p) => void p.then((f) => f()));
     };
@@ -188,7 +199,7 @@ export function App() {
                 <div className="work-body" style={{ gridTemplateColumns: columns }}>
                   {repo && (
                     <div className="list-clip" data-open={!narrow || listOpen} inert={narrow && !listOpen}>
-                      <LeftPane />
+                      {issues ? <IssuesPane /> : <LeftPane />}
                     </div>
                   )}
                   {!editorOnly && <PaneEdge width="leftWidth" label="Resize the list pane" />}

@@ -301,3 +301,33 @@
 .ui-root .selectable {
   user-select: all;
 }
+
+/* Issue labels: their own colour at a lightness fixed per theme, so any colour a repository picks reads. */
+:root {
+  --label-l: 0.82;
+}
+
+:root[data-theme="light"] {
+  --label-l: 0.42;
+}
+
+.ui-root {
+  & .iss-sub {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  & .iss-sub > .ell {
+    flex: 0 1 auto;
+    margin-right: 2px;
+  }
+
+  & .iss-sub > .badge {
+    flex: 0 0 auto;
+    height: var(--lh-sm);
+    padding: 0 4px;
+    font-size: var(--fs-xs);
+  }
+}

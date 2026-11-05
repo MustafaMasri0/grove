@@ -11,6 +11,7 @@ import fileMedia from "@vscode/codicons/src/icons/file-media.svg?raw";
 import folder from "@vscode/codicons/src/icons/folder.svg?raw";
 import gitCommit from "@vscode/codicons/src/icons/git-commit.svg?raw";
 import history from "@vscode/codicons/src/icons/history.svg?raw";
+import issues from "@vscode/codicons/src/icons/issues.svg?raw";
 import home from "@vscode/codicons/src/icons/home.svg?raw";
 import layoutSidebarLeft from "@vscode/codicons/src/icons/layout-sidebar-left.svg?raw";
 import link from "@vscode/codicons/src/icons/link.svg?raw";
@@ -26,6 +27,7 @@ import gear from "@vscode/codicons/src/icons/gear.svg?raw";
 import gitBranch from "@vscode/codicons/src/icons/git-branch.svg?raw";
 import listFlat from "@vscode/codicons/src/icons/list-flat.svg?raw";
 import listTree from "@vscode/codicons/src/icons/list-tree.svg?raw";
+import pass from "@vscode/codicons/src/icons/pass.svg?raw";
 import sync from "@vscode/codicons/src/icons/sync.svg?raw";
 import worktree from "@vscode/codicons/src/icons/worktree.svg?raw";
 
@@ -42,6 +44,7 @@ const icons = {
   "git-commit": gitCommit,
   history,
   home,
+  issues,
   "layout-sidebar-left": layoutSidebarLeft,
   link,
   question,
@@ -56,6 +59,7 @@ const icons = {
   "git-branch": gitBranch,
   "list-flat": listFlat,
   "list-tree": listTree,
+  pass,
   sync,
   worktree,
 };

@@ -34,6 +34,8 @@ pub fn tracker_for(origin: Option<&str>, github: &Arc<github::Client>) -> Result
 pub struct TrackerInfo {
     /// For labels such as "Open on GitHub".
     pub name: &'static str,
+    /// The repository or project the issues belong to, as the tracker names it.
+    pub project: String,
     /// The repository's issues page.
     pub web_url: String,
 }
@@ -166,7 +168,7 @@ mod tests {
     #[test]
     fn github_origins_get_the_github_tracker() {
         let info = pick(Some("git@github.com:example-org/example.git")).unwrap();
-        assert_eq!(info, TrackerInfo { name: "GitHub", web_url: "https://github.com/example-org/example/issues".into() });
+        assert_eq!(info, TrackerInfo { name: "GitHub", project: "example-org/example".into(), web_url: "https://github.com/example-org/example/issues".into() });
     }
 
     #[test]

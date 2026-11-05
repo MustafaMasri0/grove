@@ -131,7 +131,7 @@ function WorktreeList({ icons }: { icons: boolean }) {
   const lastChange = useStore((s) => s.lastChange);
   const actions = useStore((s) => s.actions);
   const cwd = useStore((s) => s.cwd);
-  const atWork = useStore((s) => s.view === "work");
+  const atWork = useStore((s) => s.view === "work" && s.listPane === "worktree");
   const loading = useStore(railLoading);
   const now = useNow(5_000);
   const [menuPath, setMenuPath] = useState<string | null>(null);
@@ -221,6 +221,9 @@ export function Rail() {
   const width = useStore((s) => s.settings.railWidth);
   const narrow = useStore((s) => isNarrow(s.appWidth));
   const atOverview = useStore((s) => s.view === "overview");
+  const atIssues = useStore((s) => s.view === "work" && s.listPane === "issues");
+  const hasRepo = useStore((s) => !!s.repo);
+  const showIssues = useStore((s) => s.showIssues);
   const settingsOpen = useStore((s) => s.settingsOpen);
   const setView = useStore((s) => s.setView);
   const openSettings = useStore((s) => s.openSettings);
@@ -233,6 +236,7 @@ export function Rail() {
       <RailTop icons={icons} />
       <div>
         <Nav icon="home" label="Overview" tip="Overview (Ctrl+Shift+O)" on={atOverview} onClick={() => setView("overview")} />
+        {hasRepo && <Nav icon="issues" label="Issues" tip="Issues (Ctrl+I)" on={atIssues} onClick={showIssues} />}
         {icons && <Nav icon="search" label="Search" tip="Search (Ctrl+K)" onClick={() => setPalette("all")} />}
       </div>
       {noRepo && !icons ? <Empty {...WELCOME} /> : <WorktreeList icons={icons} />}

@@ -12,7 +12,7 @@ const summaries = [summary("agent-01", "src/refund.ts"), summary("agent-02", "sr
 
 describe("paletteItems", () => {
   it("offers the commands and worktrees before anything is typed, and no files", () => {
-    expect(labels(paletteItems("", rows, summaries))).toEqual(["Go to Overview", "Open Settings", "Show keyboard shortcuts", "agent-01", "agent-02"]);
+    expect(labels(paletteItems("", rows, summaries))).toEqual(["Go to Overview", "Go to Issues", "Open Settings", "Show keyboard shortcuts", "agent-01", "agent-02"]);
   });
 
   it("finds a worktree by its branch", () => {

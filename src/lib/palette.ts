@@ -8,10 +8,12 @@ export type PaletteScope = "all" | "files";
 
 export const PALETTE_LIMIT = 40;
 
-export type PaletteCommand = { label: string; icon: "home" | "gear" | "list-flat"; keys?: readonly string[] } & ({ view: "overview" } | { settings: SectionId | null });
+/** `go`: a page of the work view or the overview; `settings`: a section of Settings (null: the first). */
+export type PaletteCommand = { label: string; icon: "home" | "issues" | "gear" | "list-flat"; keys?: readonly string[] } & ({ go: "overview" | "issues" } | { settings: SectionId | null });
 
 const COMMANDS: readonly PaletteCommand[] = [
-  { label: "Go to Overview", icon: "home", keys: ["Ctrl", "Shift", "O"], view: "overview" },
+  { label: "Go to Overview", icon: "home", keys: ["Ctrl", "Shift", "O"], go: "overview" },
+  { label: "Go to Issues", icon: "issues", keys: ["Ctrl", "I"], go: "issues" },
   { label: "Open Settings", icon: "gear", keys: ["Ctrl", ","], settings: null },
   { label: "Show keyboard shortcuts", icon: "list-flat", settings: "shortcuts" },
 ];

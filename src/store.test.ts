@@ -286,3 +286,40 @@ describe("list drawer", () => {
     expect(useStore.getState()).toMatchObject({ view: "overview", repo: null, overview: null });
   });
 });
+
+describe("the issues list pane", () => {
+  beforeEach(() => {
+    useStore.setState({ repo: { id: "r", root: "/r" } as RepoInfo, cwd: "/r", view: "overview", listPane: "worktree", leftTab: "history", settingsOpen: true });
+  });
+
+  it("opens from anywhere, on the work view", () => {
+    useStore.getState().showIssues();
+    expect(useStore.getState()).toMatchObject({ view: "work", listPane: "issues", settingsOpen: false, listOpen: true });
+  });
+
+  it("needs a repository", () => {
+    useStore.setState({ repo: null });
+    useStore.getState().showIssues();
+    expect(useStore.getState().listPane).toBe("worktree");
+  });
+
+  it("gives way to the worktree panes, even the one that was already chosen", async () => {
+    useStore.getState().showIssues();
+    useStore.getState().setLeftTab("changes");
+    expect(useStore.getState().listPane).toBe("worktree");
+
+    useStore.getState().showIssues();
+    await useStore.getState().showCommit("abc1234");
+    expect(useStore.getState()).toMatchObject({ listPane: "worktree", leftTab: "history" });
+
+    useStore.getState().showIssues();
+    useStore.getState().focusSearch();
+    expect(useStore.getState().listPane).toBe("worktree");
+  });
+
+  it("returns to the worktree panes when the shown worktree is picked again", async () => {
+    useStore.getState().showIssues();
+    await useStore.getState().selectWorktree("/r");
+    expect(useStore.getState().listPane).toBe("worktree");
+  });
+});

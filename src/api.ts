@@ -223,6 +223,8 @@ export interface WorktreeChanged {
 export interface TrackerInfo {
   /** For labels such as "Open on GitHub". */
   name: string;
+  /** The repository or project the issues belong to, as the tracker names it. */
+  project: string;
   /** The repository's issues page. */
   webUrl: string;
 }

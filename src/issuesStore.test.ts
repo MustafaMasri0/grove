@@ -8,7 +8,7 @@ vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
   api: {
     saveSettings: vi.fn(async () => {}),
-    issueTracker: vi.fn(async () => ({ name: "GitHub", webUrl: "https://github.com/example-org/example/issues" })),
+    issueTracker: vi.fn(async () => ({ name: "GitHub", project: "example-org/example", webUrl: "https://github.com/example-org/example/issues" })),
     issues: vi.fn(),
     issue: vi.fn(),
   },

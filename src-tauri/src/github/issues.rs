@@ -253,7 +253,7 @@ impl GithubIssues {
 #[async_trait]
 impl IssueTracker for GithubIssues {
     fn info(&self) -> TrackerInfo {
-        TrackerInfo { name: "GitHub", web_url: format!("{}/issues", self.repo.web_url()) }
+        TrackerInfo { name: "GitHub", project: self.repo.full_name(), web_url: format!("{}/issues", self.repo.web_url()) }
     }
 
     async fn list(&self, account: Option<&str>, request: ListRequest) -> Result<ListOutcome, IssueError> {
