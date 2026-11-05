@@ -11,7 +11,6 @@ import {
   type FileList,
   type Overview,
   type RepoInfo,
-  type Source,
   type Status,
   type WorktreeChanged,
   type WorktreeInfo,
@@ -26,27 +25,10 @@ import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readableP
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
-import { fileTab, isAppTab, revisionTab, uncommittedTab } from "./tabs";
+import { fileTab, isAppTab, parkTabs, revisionTab, settingsTab, uncommittedTab, unparkTabs, type ParkedTab, type Tab, type TabDraft } from "./tabs";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
-
-export type TabSpec =
-  | { type: "diff"; path: string; origPath?: string | null; left: Source; right: Source; leftLabel: string; rightLabel: string }
-  | { type: "file"; path: string; source: Source; line?: number }
-  /** An app-level tab (no repository). */
-  | { type: "settingsJson"; path: string };
-
-export interface Tab {
-  id: string;
-  title: string;
-  description: string;
-  preview: boolean;
-  spec: TabSpec;
-  /** Empty for app-level tabs, which stay open across repositories. */
-  repo: string;
-  cwd: string;
-}
 
 /** What fills the window: every worktree side by side, or one worktree's files. */
 export type View = "overview" | "work";
@@ -59,7 +41,7 @@ export interface ViewBranch {
 
 /** What a worktree has open while another one is shown; this session only. */
 export interface WorktreeView {
-  tabs: Tab[];
+  tabs: ParkedTab[];
   activeTab: string | null;
   leftTab: LeftTab;
   viewBranch: ViewBranch | null;
@@ -199,7 +181,7 @@ interface State {
   loadBranchStatus(): Promise<void>;
   runAction(kind: "fetch" | "push" | "publish"): Promise<void>;
   clearActionError(): void;
-  openTab(tab: Omit<Tab, "preview" | "repo" | "cwd">, pin: boolean): void;
+  openTab(tab: TabDraft, pin: boolean): void;
   pinTab(id: string): void;
   closeTab(id: string): void;
   /** Closes several tabs; `keep` becomes active if the active tab is among them. */
@@ -311,18 +293,17 @@ export const useStore = create<State>()((set, get) => {
     return { tabs: kept, activeTab: kept.some((t) => t.id === activeTab) ? activeTab : null };
   };
 
-  /** Parks what the shown worktree has open and shows `path` with what it had open; app tabs stay. */
+  /** Parks what the shown worktree has open and shows `path` with what it had open; other tabs stay where they are. */
   const swapViews = (path: string, dropViewBranch: boolean) => {
     const { cwd, tabs, activeTab, leftTab, viewBranch, parked } = get();
     if (path === cwd) return dropViewBranch ? set({ viewBranch: null }) : undefined;
-    const own = tabs.filter((t) => !isAppTab(t));
-    const appTabs = tabs.filter(isAppTab);
+    const { staying, parked: own } = parkTabs(tabs);
     const { [path]: next = { tabs: [], activeTab: null, leftTab: "changes" as const, viewBranch: null }, ...others } = parked;
-    const keepApp = appTabs.some((t) => t.id === activeTab);
+    const keepActive = staying.some((t) => t.id === activeTab);
     set({
-      parked: cwd ? { ...others, [cwd]: { tabs: own, activeTab: keepApp ? null : activeTab, leftTab, viewBranch } } : others,
-      tabs: [...next.tabs, ...appTabs],
-      activeTab: next.activeTab ?? (keepApp ? activeTab : null),
+      parked: cwd ? { ...others, [cwd]: { tabs: own, activeTab: keepActive ? null : activeTab, leftTab, viewBranch } } : others,
+      tabs: unparkTabs(staying, next.tabs),
+      activeTab: next.activeTab ?? (keepActive ? activeTab : null),
       leftTab: next.leftTab,
       viewBranch: dropViewBranch ? null : next.viewBranch,
     });
@@ -804,13 +785,13 @@ export const useStore = create<State>()((set, get) => {
       const existing = tabs.find((t) => t.id === tab.id);
       if (existing) {
         set({
-          tabs: tabs.map((t) => (t.id === tab.id ? { ...t, spec: tab.spec, preview: t.preview && !pin } : t)),
+          tabs: tabs.map((t) => (t.id === tab.id ? { ...tab, repo: repo.id, cwd, isPreview: t.isPreview && !pin } : t)),
           activeTab: tab.id,
         });
         return;
       }
-      const next: Tab = { ...tab, preview: !pin, repo: repo.id, cwd };
-      const previewIdx = tabs.findIndex((t) => t.preview);
+      const next: Tab = { ...tab, isPreview: !pin, repo: repo.id, cwd };
+      const previewIdx = tabs.findIndex((t) => t.isPreview);
       if (!pin && previewIdx >= 0) {
         const copy = [...tabs];
         copy[previewIdx] = next;
@@ -824,7 +805,7 @@ export const useStore = create<State>()((set, get) => {
     },
 
     pinTab(id) {
-      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, preview: false } : t)) }));
+      set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, isPreview: false } : t)) }));
     },
 
     closeTab(id) {
@@ -890,7 +871,7 @@ export const useStore = create<State>()((set, get) => {
     async openSettingsFile() {
       const { path } = await api.settingsFile();
       const { tabs, activeTab } = get();
-      const tab: Tab = { id: "app:settings.json", title: "settings.json", description: "Read-only", spec: { type: "settingsJson", path }, preview: false, repo: "", cwd: "" };
+      const tab = settingsTab(path);
       const open = tabs.some((t) => t.id === tab.id);
       showWork();
       set({ tabs: open ? tabs.map((t) => (t.id === tab.id ? tab : t)) : tabs.toSpliced(tabs.findIndex((t) => t.id === activeTab) + 1, 0, tab), activeTab: tab.id });

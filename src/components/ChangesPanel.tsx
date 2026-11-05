@@ -71,7 +71,7 @@ export function ChangesPanel() {
 
   const selectedKey = useMemo(() => {
     const tab = useStore.getState().tabs.find((t) => t.id === activeTab);
-    return tab?.spec.type === "diff" ? tab.spec.path : null;
+    return tab?.kind === "diff" ? tab.path : null;
   }, [activeTab]);
 
   const empty =

@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { linkTarget, prepareHtml } from "../lib/htmlPreview";
 import { scriptsAllowed } from "../lib/settings";
-import { useStore, type Tab } from "../store";
-import { fileTab } from "../tabs";
+import { useStore } from "../store";
+import { fileTab, type FileTab } from "../tabs";
 
 const newNonce = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -21,12 +21,11 @@ export const previewForTest = { html: "" };
  * at the file's revision; its links come back to the app (as `preview-link`), which
  * opens them like Markdown links.
  */
-export function HtmlPreview({ text, tab }: { text: string; tab: Tab }) {
+export function HtmlPreview({ text, tab }: { text: string; tab: FileTab }) {
   const openTab = useStore((s) => s.openTab);
   const scripts = useStore((s) => scriptsAllowed(s.settings, tab.repo));
-  const spec = tab.spec.type === "file" ? tab.spec : null;
-  const rev = spec?.source.kind === "rev" ? spec.source.rev : null;
-  const path = spec?.path ?? "";
+  const rev = tab.source.kind === "rev" ? tab.source.rev : null;
+  const path = tab.path;
   const [base, setBase] = useState<string | null>(null);
   const [page, setPage] = useState<{ url: string; nonce: string; scripts: boolean } | null>(null);
 

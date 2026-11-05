@@ -1300,11 +1300,11 @@ try {
   const activeTabName = () => text(".tabs .tab.on .ell");
   const tabCount = () => count(".tabs .tab");
   const openDiff = async (path) => {
-    await ev(`window.__store.getState().openTab({id:${JSON.stringify(`x:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",spec:{type:"diff",path:${JSON.stringify(path)},origPath:null,left:{kind:"rev",rev:"HEAD",path:${JSON.stringify(path)}},right:{kind:"worktree",path:${JSON.stringify(path)}},leftLabel:"HEAD",rightLabel:"Working tree"}},true);1`);
+    await ev(`window.__store.getState().openTab({id:${JSON.stringify(`x:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",kind:"diff",path:${JSON.stringify(path)},origPath:null,left:{kind:"rev",rev:"HEAD",path:${JSON.stringify(path)}},right:{kind:"worktree",path:${JSON.stringify(path)}},leftLabel:"HEAD",rightLabel:"Working tree"},true);1`);
     await sleep(700);
   };
   const openPlain = async (path) => {
-    await ev(`(()=>{const s=window.__store.getState();s.openTab({id:${JSON.stringify(`p:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",spec:{type:"file",path:${JSON.stringify(path)},source:{kind:"worktree",path:${JSON.stringify(path)}}}},true)})();1`);
+    await ev(`(()=>{const s=window.__store.getState();s.openTab({id:${JSON.stringify(`p:${path}`)},title:${JSON.stringify(path.split("/").pop())},description:"",kind:"file",path:${JSON.stringify(path)},source:{kind:"worktree",path:${JSON.stringify(path)}}},true)})();1`);
     await sleep(600);
   };
   const pixels = async (pts) => {
@@ -1579,7 +1579,7 @@ try {
     await click(".tabs .tab.on .btn");
     await sleep(160);
     d.closeButton = (await tabCount()) === 2;
-    await ev(`window.__store.setState({tabs:window.__store.getState().tabs.map(t=>({...t,preview:true}))});1`);
+    await ev(`window.__store.setState({tabs:window.__store.getState().tabs.map(t=>({...t,isPreview:true}))});1`);
     await sleep(80);
     d.italic = (await ev(`getComputedStyle(document.querySelector(".tabs .tab.preview .ell")).fontStyle`)) === "italic";
     await ev(`document.querySelector(".tabs .tab.on").focus();1`);

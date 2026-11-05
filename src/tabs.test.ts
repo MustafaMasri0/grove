@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Tab } from "./store";
-import { commitFileTab, fileTab, revealPathOf, tabsToClose, uncommittedTab } from "./tabs";
+import { commitFileTab, fileTab, parkTabs, revealPathOf, settingsTab, tabsToClose, uncommittedTab, unparkTabs, type Tab, type TabDraft } from "./tabs";
 
 const tabs = ["a", "b", "c", "d"].map((id) => ({ id }));
 
@@ -34,8 +33,8 @@ describe("commitFileTab", () => {
 
   it("diffs the file at the commit against its old name in the parent", () => {
     const t = commitFileTab({ path: "s/b c.txt", origPath: "a.txt", kind: "renamed" }, { sha, parents: [parent] }, parent);
-    expect(t.spec).toEqual({
-      type: "diff",
+    expect(t).toMatchObject({
+      kind: "diff",
       path: "s/b c.txt",
       origPath: "a.txt",
       left: { kind: "rev", rev: parent, path: "a.txt" },
@@ -49,13 +48,13 @@ describe("commitFileTab", () => {
 
   it("labels the left side of a root commit as empty", () => {
     const t = commitFileTab({ path: "a.txt", origPath: null, kind: "added" }, { sha, parents: [] }, "4b825dc642cb6eb9a060e54bf8d69288fbee4904");
-    expect(t.spec).toMatchObject({ left: { kind: "empty" }, leftLabel: "empty", rightLabel: "c3c3c3c" });
+    expect(t).toMatchObject({ left: { kind: "empty" }, leftLabel: "empty", rightLabel: "c3c3c3c" });
   });
 });
 
 describe("revealPathOf", () => {
   const cwd = "/home/user/src/example";
-  const tab = (t: ReturnType<typeof fileTab>, at = cwd): Tab => ({ ...t, preview: false, repo: "/home/user/src/example", cwd: at });
+  const tab = (t: TabDraft, at = cwd): Tab => ({ ...t, isPreview: false, repo: "/home/user/src/example", cwd: at });
 
   it("is the file of a file tab, from the worktree or a revision", () => {
     expect(revealPathOf(tab(fileTab(cwd, "src/a.ts", null)), cwd)).toBe("src/a.ts");
@@ -68,10 +67,35 @@ describe("revealPathOf", () => {
   });
 
   it("is nothing for Settings, for no tab and for a tab of another worktree", () => {
-    const settings: Tab = { id: "app:settings.json", title: "settings.json", description: "", preview: false, repo: "", cwd: "", spec: { type: "settingsJson", path: "settings.json" } };
-    expect(revealPathOf(settings, cwd)).toBeNull();
-    expect(revealPathOf({ ...settings, id: "app:settings.json", spec: { type: "settingsJson", path: "C:\\x\\settings.json" } }, cwd)).toBeNull();
+    expect(revealPathOf(settingsTab("C:\\x\\settings.json"), cwd)).toBeNull();
     expect(revealPathOf(null, cwd)).toBeNull();
     expect(revealPathOf(tab(fileTab(cwd, "a.ts", null), "/home/user/src/example-wt"), cwd)).toBeNull();
+  });
+});
+
+describe("parking a worktree's tabs", () => {
+  const cwd = "/home/user/src/example";
+  const own = (path: string): Tab => ({ ...fileTab(cwd, path, null), isPreview: false, repo: cwd, cwd });
+  const settings = settingsTab("C:\\x\\settings.json");
+  const titles = (tabs: readonly Tab[]) => tabs.map((t) => t.title);
+
+  it("keeps the tabs of other kinds and parks the worktree's own with their places", () => {
+    const { staying, parked } = parkTabs([own("a.ts"), settings, own("b.ts")]);
+    expect(titles(staying)).toEqual(["settings.json"]);
+    expect(parked.map((p) => [p.tab.title, p.index])).toEqual([
+      ["a.ts", 0],
+      ["b.ts", 2],
+    ]);
+  });
+
+  it("puts them back where they were", () => {
+    const row = [own("a.ts"), settings, own("b.ts")];
+    const { staying, parked } = parkTabs(row);
+    expect(titles(unparkTabs(staying, parked))).toEqual(titles(row));
+  });
+
+  it("puts them at the end when the tabs that stayed were closed meanwhile", () => {
+    const { parked } = parkTabs([own("a.ts"), settings, own("b.ts")]);
+    expect(titles(unparkTabs([], parked))).toEqual(["a.ts", "b.ts"]);
   });
 });

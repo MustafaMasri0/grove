@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type Overview, type RepoInfo } from "./api";
-import { actionOf, useStore, type Tab } from "./store";
+import { actionOf, useStore } from "./store";
+import type { TabDraft } from "./tabs";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -84,7 +85,7 @@ describe("the possibleConflicts setting", () => {
 });
 
 const REPO = { id: "r", root: "/r", name: "r", kind: "local" } as RepoInfo;
-const tab = (id: string): Omit<Tab, "preview" | "repo" | "cwd"> => ({ id, title: id, description: "", spec: { type: "file", path: id, source: { kind: "worktree", path: id } } });
+const tab = (id: string): TabDraft => ({ kind: "file", id, title: id, description: "", path: id, source: { kind: "worktree", path: id } });
 const titles = () => useStore.getState().tabs.map((t) => t.title);
 
 describe("worktrees", () => {
@@ -120,6 +121,19 @@ describe("worktrees", () => {
     expect(titles()).toEqual(["settings.json"]);
     await useStore.getState().selectWorktree("/a");
     expect(titles()).toEqual(["one", "settings.json"]);
+  });
+
+  it("put a worktree's tabs back where they were among the tabs that stayed", async () => {
+    await useStore.getState().openSettingsFile();
+    useStore.getState().openTab(tab("one"), true);
+    useStore.getState().activateTab("app:settings.json");
+    useStore.getState().openTab(tab("two"), true);
+    expect(titles()).toEqual(["settings.json", "two", "one"]);
+    await useStore.getState().selectWorktree("/b");
+    expect(titles()).toEqual(["settings.json"]);
+    await useStore.getState().selectWorktree("/a");
+    expect(titles()).toEqual(["settings.json", "two", "one"]);
+    expect(useStore.getState().activeTab).toBe("two");
   });
 
   it("dropping a viewed branch needs no other worktree", async () => {
@@ -232,7 +246,7 @@ describe("what fills the window", () => {
 });
 
 describe("list drawer", () => {
-  const tab = { id: "a", title: "a.ts", description: "", spec: { type: "file" as const, path: "a.ts", source: { kind: "head" } as never } };
+  const tab: TabDraft = { kind: "file", id: "a", title: "a.ts", description: "", path: "a.ts", source: { kind: "worktree", path: "a.ts" } };
 
   beforeEach(() => {
     useStore.setState({ repo: { id: "r" } as RepoInfo, cwd: "/w", tabs: [], activeTab: null, appWidth: 1440, listOpen: true });

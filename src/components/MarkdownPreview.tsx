@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { api, type Source } from "../api";
 import { classifyLink, resolveRepoPath } from "../lib/mdLinks";
 import { languageFor, monaco } from "../monaco";
-import { useStore, type Tab } from "../store";
-import { fileTab } from "../tabs";
+import { useStore } from "../store";
+import { fileTab, type FileTab } from "../tabs";
 import { iconMarkup } from "./Icon";
 
 const slug = (s: string) =>
@@ -36,12 +36,11 @@ function blockImage(img: HTMLImageElement, tip?: string) {
  * Rendered Markdown for a file tab. The HTML is sanitised before it reaches
  * the page; links never navigate the app window.
  */
-export function MarkdownPreview({ text, tab }: { text: string; tab: Tab }) {
+export function MarkdownPreview({ text, tab }: { text: string; tab: FileTab }) {
   const ref = useRef<HTMLDivElement>(null);
   const openTab = useStore((s) => s.openTab);
-  const spec = tab.spec.type === "file" ? tab.spec : null;
-  const rev = spec?.source.kind === "rev" ? spec.source.rev : null;
-  const path = spec?.path ?? "";
+  const rev = tab.source.kind === "rev" ? tab.source.rev : null;
+  const path = tab.path;
 
   const html = useMemo(() => DOMPurify.sanitize(marked.parse(text, { gfm: true, async: false }) as string), [text]);
 
