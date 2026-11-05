@@ -218,6 +218,94 @@ export interface WorktreeChanged {
   paths: string[];
 }
 
+// Issues: the shapes of src-tauri/src/issues.rs, the same for every tracker.
+
+export interface TrackerInfo {
+  /** For labels such as "Open on GitHub". */
+  name: string;
+  /** The repository's issues page. */
+  webUrl: string;
+}
+
+export interface IssueLabel {
+  name: string;
+  /** `#rrggbb`, when the tracker gives one. */
+  color: string | null;
+}
+
+export interface IssuePerson {
+  name: string;
+  avatarUrl: string | null;
+}
+
+export interface IssueSummary {
+  number: number;
+  title: string;
+  state: "open" | "closed";
+  labels: IssueLabel[];
+  author: IssuePerson | null;
+  assignees: IssuePerson[];
+  commentCount: number;
+  /** RFC 3339, UTC. */
+  updatedAt: string;
+}
+
+export interface Issue extends IssueSummary {
+  /** Markdown, untrusted. */
+  body: string;
+  milestone: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  webUrl: string;
+}
+
+export interface IssueComment {
+  author: IssuePerson | null;
+  /** Markdown, untrusted. */
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+  webUrl: string;
+}
+
+export interface IssueDetail {
+  issue: Issue;
+  /** Oldest first. */
+  comments: IssueComment[];
+}
+
+/** By the user (loads the first issues, or checks for changes), the auto-refresh timer, or the next older issues. */
+export type IssueListRequest = "refresh" | "timedCheck" | "loadMore";
+
+export type IssueListOutcome = { kind: "unchanged" } | { kind: "issues"; issues: IssueSummary[]; more: boolean };
+
+/** Why issues cannot be shown; times are unix seconds. */
+export type IssueError =
+  | { kind: "noOrigin" }
+  /** Empty for a local path. */
+  | { kind: "unsupportedHost"; host: string }
+  | { kind: "git"; message: string }
+  /** Maybe the wrong account for a private repository, or none (`signedIn` false). */
+  | { kind: "notFound"; account: string | null; signedIn: boolean }
+  | { kind: "singleSignOn"; url: string | null }
+  | { kind: "issuesDisabled" }
+  | { kind: "unauthorized" }
+  | { kind: "rateLimited"; resetsAt: number }
+  /** A timed check held back: few requests left until `resetsAt`, or (null) no login, which timed checks need. */
+  | { kind: "paused"; resetsAt: number | null }
+  | { kind: "network"; message: string }
+  | { kind: "unexpected"; status: number };
+
+const ISSUE_ERRORS = new Set<IssueError["kind"]>([
+  "noOrigin", "unsupportedHost", "git", "notFound", "singleSignOn", "issuesDisabled", "unauthorized", "rateLimited", "paused", "network", "unexpected",
+]);
+
+/** What an issue command was rejected with: its `IssueError`, or anything else as a network error. */
+export function issueError(e: unknown): IssueError {
+  if (typeof e === "object" && e !== null && ISSUE_ERRORS.has((e as { kind?: unknown }).kind as IssueError["kind"])) return e as IssueError;
+  return { kind: "network", message: errorText(e) };
+}
+
 type At = { repo: string; cwd: string };
 type LeftTabName = "changes" | "history" | "explorer" | "search";
 
@@ -258,6 +346,12 @@ export const api = {
   openTerminal: (repo: string, cwd: string) => invoke<void>("open_terminal", { repo, cwd }),
   /** `owner/repo` when origin is on github.com, else null. */
   githubRepo: (a: At) => invoke<string | null>("github_repo", a),
+  /** Which tracker the repository's issues come from; rejects with an `IssueError`. Sends nothing to it. */
+  issueTracker: (a: At) => invoke<TrackerInfo>("issue_tracker", a),
+  /** The loaded issues, most recently updated first; rejects with an `IssueError`. `account` null: the default login. */
+  issues: (a: At, account: string | null, request: IssueListRequest) => invoke<IssueListOutcome>("issues", { ...a, account, request }),
+  /** One issue with all its comments; rejects with an `IssueError`. */
+  issue: (a: At, account: string | null, number: number) => invoke<IssueDetail>("issue", { ...a, account, number }),
   readImage: (a: At, source: Source) => invoke<string | null>("read_image", { ...a, source }),
   imageSources: (a: At, sources: Source[]) => invoke<ImageSource[]>("image_sources", { ...a, sources }),
   /** The wvfile: URL of the repository root at `rev` (null: the worktree), for HTML previews. */

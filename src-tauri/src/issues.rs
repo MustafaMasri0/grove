@@ -88,6 +88,8 @@ pub struct IssueSummary {
     pub state: IssueState,
     pub labels: Vec<Label>,
     pub author: Option<Person>,
+    /// For the list's assignee filter as much as for the issue view.
+    pub assignees: Vec<Person>,
     pub comment_count: u32,
     /// RFC 3339, UTC.
     pub updated_at: String,
@@ -100,7 +102,6 @@ pub struct Issue {
     pub summary: IssueSummary,
     /// Markdown, untrusted.
     pub body: String,
-    pub assignees: Vec<Person>,
     pub milestone: Option<String>,
     pub created_at: String,
     pub closed_at: Option<String>,

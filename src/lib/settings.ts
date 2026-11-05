@@ -58,6 +58,10 @@ export interface Settings {
   historyPageSize: number;
   /** The Worktrees overview works out which files more than one worktree changes. */
   possibleConflicts: boolean;
+  /** The issues list checks for changes every minute while it is shown and the window has focus. */
+  issuesAutoRefresh: boolean;
+  /** repo id → the tracker login its issues are read with; missing: the default login. */
+  issueAccounts: Record<string, string>;
 }
 
 export const defaultSettings: Settings = {
@@ -95,6 +99,8 @@ export const defaultSettings: Settings = {
   showFolderPath: true,
   historyPageSize: 100,
   possibleConflicts: true,
+  issuesAutoRefresh: true,
+  issueAccounts: {},
 };
 
 type Leaf = string | number | boolean | null;
@@ -130,7 +136,7 @@ export const RANGES: Partial<Record<SettingPath, readonly [number, number, boole
 };
 
 /** Keys whose value is a free-form map of repo id → string. */
-const STRING_MAPS = new Set(["lastWorktree", "base"]);
+const STRING_MAPS = new Set(["lastWorktree", "base", "issueAccounts"]);
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 

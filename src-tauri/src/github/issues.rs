@@ -83,6 +83,7 @@ fn summary(i: &GhIssue) -> IssueSummary {
         state: if i.state == "closed" { IssueState::Closed } else { IssueState::Open },
         labels: i.labels.iter().map(label).collect(),
         author: i.user.as_ref().map(person),
+        assignees: i.assignees.iter().map(person).collect(),
         comment_count: i.comments,
         updated_at: i.updated_at.clone(),
     }
@@ -92,7 +93,6 @@ fn issue(i: &GhIssue) -> Issue {
     Issue {
         summary: summary(i),
         body: i.body.clone().unwrap_or_default(),
-        assignees: i.assignees.iter().map(person).collect(),
         milestone: i.milestone.as_ref().map(|m| m.title.clone()),
         created_at: i.created_at.clone(),
         closed_at: i.closed_at.clone(),
@@ -488,7 +488,7 @@ mod tests {
         assert_eq!(d.issue.summary.number, 12);
         assert_eq!(d.issue.body, "Steps:\n\n1. Open an empty folder\n2. See it crash");
         assert_eq!(d.issue.milestone.as_deref(), Some("1.0"));
-        assert_eq!(d.issue.assignees.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["octo-cat", "example-user"]);
+        assert_eq!(d.issue.summary.assignees.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["octo-cat", "example-user"]);
         assert_eq!(d.issue.web_url, "https://github.com/example-org/example/issues/12");
         assert_eq!(d.issue.closed_at, None);
         assert_eq!(d.comments.iter().map(|c| c.body.as_str()).collect::<Vec<_>>(), ["I see this too.", "", "Fixed on main."]);
