@@ -85,7 +85,7 @@ export function issueProblem(e: IssueError, tracker: TrackerInfo | null, loaded:
     case "issuesDisabled":
       return { title: `Issues are turned off for ${project}`, text: `They are turned off on ${name}, which is common for forks. Grove reads issues from origin.` };
     case "unauthorized":
-      return { title: `${name} didn't accept the login`, text: "Run gh auth login again, then refresh." };
+      return { title: `${name} didn't accept the login`, text: "If GH_TOKEN or GITHUB_TOKEN is set, check it, as it is used first. Otherwise run gh auth login again. Then refresh." };
   }
   if (loaded) return null;
   switch (e.kind) {
@@ -126,7 +126,10 @@ export function issueNotice(list: { error: IssueError | null; loaded: boolean; s
   if (resets !== null) return { tone: "warn", title: `${name} rate limit reached`, text: `${account ? `for ${account}. ` : ""}Resets at ${clock(resets)}. ${kept}` };
   if (e?.kind === "network") return { tone: "error", title: `Couldn't reach ${name}`, text: kept };
   if (e?.kind === "unexpected") return { tone: "error", title: `${name} answered with an error`, text: `Status ${e.status}. ${kept}` };
-  if (list.signedIn === false) return { tone: "neutral", text: "Reading public issues without a login, so auto-refresh is off. Run gh auth login for private repositories and auto-refresh." };
+  if (list.signedIn === false)
+    return account
+      ? { tone: "neutral", text: `No login found for account ${account}, so only public issues are read and auto-refresh is off. Run gh auth login for it, or pick another account in Settings.` }
+      : { tone: "neutral", text: "Reading public issues without a login, so auto-refresh is off. Run gh auth login for private repositories and auto-refresh." };
   return null;
 }
 

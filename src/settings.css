@@ -146,6 +146,14 @@
     flex-wrap: wrap;
   }
 
+  /* A label and its control wrap as one. */
+  & .setting.repo .set-pair {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
   & .setting.repo .setting-d.mono {
     overflow-wrap: anywhere;
   }

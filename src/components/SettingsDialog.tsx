@@ -314,11 +314,13 @@ function RepoRow({ id, n, readLogins }: { id: string; n: number; readLogins: Ret
       extra={info && "error" in info && <span className="setting-d set-err">⚠ {info.error}</span>}
       control={
         <>
-          <label className="muted" htmlFor={selectId}>
-            Base branch
-          </label>
-          <Select id={selectId} label="Base branch" value={saved} placeholder={automatic} searchable free popWidth={240} options={[{ value: "", label: automatic }, ...choices.map((b) => ({ value: b, label: b }))]} onPick={(v) => setRepoBase(id, v || null)} />
-          {saved && <Button kind="link" size="sm" text="Reset to default" tip="Pick the base branch automatically again" onClick={() => setRepoBase(id, null)} />}
+          <span className="set-pair">
+            <label className="muted" htmlFor={selectId}>
+              Base branch
+            </label>
+            <Select id={selectId} label="Base branch" value={saved} placeholder={automatic} searchable free popWidth={240} options={[{ value: "", label: automatic }, ...choices.map((b) => ({ value: b, label: b }))]} onPick={(v) => setRepoBase(id, v || null)} />
+            {saved && <Button kind="link" size="sm" text="Reset to default" tip="Pick the base branch automatically again" onClick={() => setRepoBase(id, null)} />}
+          </span>
           {info && "root" in info && <IssueAccount id={id} n={n} at={{ repo: id, cwd: info.root }} readLogins={readLogins} />}
         </>
       }
@@ -347,7 +349,7 @@ function IssueAccount({ id, n, at, readLogins }: { id: string; n: number; at: { 
   const names = [...new Set([...logins.accounts, ...(saved ? [saved] : [])])];
   const fixed = logins.fixedBy ? `${logins.fixedBy} is set, so Grove uses that token for every repository.` : undefined;
   return (
-    <>
+    <span className="set-pair">
       <label className="muted" htmlFor={selectId}>
         {label}
       </label>
@@ -363,6 +365,6 @@ function IssueAccount({ id, n, at, readLogins }: { id: string; n: number; at: { 
         options={[{ value: "", label: fallback }, ...names.map((a) => ({ value: a, label: a }))]}
         onPick={(v) => setIssueAccount(id, v || null)}
       />
-    </>
+    </span>
   );
 }

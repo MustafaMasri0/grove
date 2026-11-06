@@ -123,6 +123,8 @@ describe("issueNotice", () => {
 
   it("says when public issues are read without a login", () => {
     expect(issueNotice(list({ signedIn: false }), null, 0)).toMatchObject({ tone: "neutral", text: expect.stringContaining("gh auth login") });
+    // An account the GitHub CLI has no login for: the setting is what to fix.
+    expect(issueNotice(list({ signedIn: false }), "work-login", 0)?.text).toMatch(/^No login found for account work-login, .*pick another account in Settings\.$/);
     // An error says more than the missing login.
     expect(issueNotice(list({ signedIn: false, error: { kind: "network", message: "x" } }), null, 0)?.tone).toBe("error");
   });
