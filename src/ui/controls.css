@@ -279,10 +279,16 @@
 
   & .st-tag {
     display: inline-flex;
-    align-items: center;
+    /* On the text's baseline, so a row that lines up baselines (a crumb) lines up with the label, not the icon's edge. */
+    align-items: baseline;
     gap: 6px;
     max-width: 100%;
     color: var(--ink);
+  }
+
+  /* The lead mark or icon stays centred on the line. */
+  & .st-tag > :first-child {
+    align-self: center;
   }
 
   & .st-tag.idle {

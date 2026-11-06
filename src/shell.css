@@ -486,6 +486,8 @@
 
   & .cap {
     max-width: 300px;
+    /* Plain text needs more room before a button than buttons need between them. */
+    margin-right: 6px;
     font-size: var(--fs-sm);
   }
 }
