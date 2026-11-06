@@ -97,8 +97,8 @@ function target(): Target | null {
 }
 
 let timer: number | undefined;
-/** List key → its request running. */
-const running = new Map<string, Promise<void>>();
+/** List key → its request running, and which kind it is. */
+const running = new Map<string, { kind: IssueListRequest; done: Promise<void> }>();
 /** List key → the refresh waiting for it. */
 const queued = new Map<string, Promise<void>>();
 
@@ -156,11 +156,12 @@ export const useIssues = create<IssuesState>()((set, get) => {
     if (!t) return Promise.resolve();
     const busy = running.get(t.key);
     if (busy) {
-      if (kind !== "refresh" || listOf(t.key).loading === "refresh") return busy;
+      // Judged by the request itself, not the list's loading, which clears a moment before it ends.
+      if (kind !== "refresh" || busy.kind === "refresh") return busy.done;
       let next = queued.get(t.key);
       if (!next) {
         patchList(t.key, { refreshQueued: true });
-        next = busy.then(() => {
+        next = busy.done.then(() => {
           queued.delete(t.key);
           patchList(t.key, { refreshQueued: false });
           return request("refresh", t);
@@ -171,9 +172,9 @@ export const useIssues = create<IssuesState>()((set, get) => {
     }
     const list = listOf(t.key);
     if (kind === "loadMore" && !(list.loaded && list.more)) return Promise.resolve();
-    const run = send(kind, t).finally(() => running.delete(t.key));
-    running.set(t.key, run);
-    return run;
+    const done = send(kind, t).finally(() => running.delete(t.key));
+    running.set(t.key, { kind, done });
+    return done;
   };
 
   /** Runs only while the list is on screen, the window has focus and the setting is on. */

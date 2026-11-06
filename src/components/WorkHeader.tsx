@@ -4,7 +4,7 @@ import { branchAction } from "../lib/branchAction";
 import { changeCountTitle } from "../lib/changes";
 import { branchItems } from "../lib/contextMenus";
 import { relativeTime } from "../lib/format";
-import { issueNotice, limitResetsAt } from "../lib/issues";
+import { clock, issueNotice, limitResetsAt } from "../lib/issues";
 import { branchLabel } from "../lib/rail";
 import { isNarrow } from "../lib/shell";
 import { useNow } from "../lib/useNow";
@@ -147,7 +147,7 @@ function IssuesHeader() {
   const busy = list.loading === "refresh" || list.loading === "timedCheck" || list.refreshQueued;
   // Held back only until the reset: the error stays until the next answer, the limit does not.
   const resetsAt = limitResetsAt(error, now);
-  const limitTip = resetsAt !== null ? `Rate limit reached. Resets at ${new Date(resetsAt * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.` : undefined;
+  const limitTip = resetsAt !== null ? `Rate limit reached. Resets at ${clock(resetsAt)}.` : undefined;
   const paused = error?.kind === "paused" && error.resetsAt !== null ? " · checks paused" : "";
   const updated = !list.loaded && busy ? "Loading…" : checkedAt !== null ? `Updated ${relativeTime(checkedAt / 1000, now)}${paused}` : "";
   const notice = issueNotice(list, account, now);

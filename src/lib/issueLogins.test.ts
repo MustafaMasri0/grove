@@ -24,4 +24,12 @@ describe("loginReader", () => {
     expect(none).toBeNull();
     expect(api.issueLogins).toHaveBeenCalledTimes(1);
   });
+
+  it("reads again after a failed read", async () => {
+    vi.mocked(api.issueTracker).mockResolvedValue(github);
+    vi.mocked(api.issueLogins).mockReset().mockRejectedValueOnce({ kind: "network", message: "offline" }).mockResolvedValue(logins);
+    const read = loginReader();
+    expect(await read({ repo: "a", cwd: "/a" })).toBeNull();
+    expect(await read({ repo: "b", cwd: "/b" })).toEqual({ tracker: github, logins });
+  });
 });

@@ -206,8 +206,8 @@ interface State {
   focusSearch(): void;
   setSystemDark(dark: boolean): void;
   setView(view: View): void;
-  /** With a section, shows that section, unfiltered. */
-  openSettings(section?: SectionId): void;
+  /** With a section, shows that section, filtered by `query` (default: unfiltered). */
+  openSettings(section?: SectionId, query?: string): void;
   closeSettings(): void;
   openSettingsFile(): Promise<void>;
   setSettingsQuery(q: string): void;
@@ -906,8 +906,8 @@ export const useStore = create<State>()((set, get) => {
       set({ view, settingsOpen: false });
     },
 
-    openSettings(section) {
-      set({ settingsOpen: true, settingsSection: section ?? "appearance", ...(section ? { settingsQuery: "" } : {}) });
+    openSettings(section, query = "") {
+      set({ settingsOpen: true, settingsSection: section ?? "appearance", ...(section ? { settingsQuery: query } : {}) });
     },
 
     closeSettings() {

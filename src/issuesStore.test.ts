@@ -303,8 +303,7 @@ describe("single issues", () => {
     let finish = (_: IssueDetail) => {};
     issue.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)) as never);
     const retry = useIssues.getState().loadIssue(8, true);
-    expect(useIssues.getState().views[`${issueListKey("r", null)}
-8`]).toMatchObject({ loading: true, error: null });
+    expect(useIssues.getState().views[`${issueListKey("r", null)}\n8`]).toMatchObject({ loading: true, error: null });
     finish(detail(8));
     await retry;
   });

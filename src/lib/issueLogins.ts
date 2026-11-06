@@ -19,7 +19,11 @@ export function loginReader(): (at: { repo: string; cwd: string }) => Promise<Re
     try {
       const tracker = await api.issueTracker(at);
       let logins = byTracker.get(tracker.name);
-      if (!logins) byTracker.set(tracker.name, (logins = api.issueLogins(at)));
+      if (!logins) {
+        byTracker.set(tracker.name, (logins = api.issueLogins(at)));
+        // A failed read is tried again by the next repository, not kept for all of them.
+        logins.catch(() => byTracker.delete(tracker.name));
+      }
       return { tracker, logins: await logins };
     } catch {
       return null;

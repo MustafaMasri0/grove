@@ -46,7 +46,9 @@ export function IssuesPane() {
 
 function ProblemAction({ action }: { action: IssueAction }) {
   const openSettings = useStore((s) => s.openSettings);
-  const run = () => (action.kind === "open" ? void openUrl(action.url) : openSettings("repositories"));
+  const repo = useStore((s) => s.repo?.id ?? "");
+  // Filtered to this repository, so its account setting is the one in view.
+  const run = () => (action.kind === "open" ? void openUrl(action.url) : openSettings("repositories", repo));
   return <Button text={action.label} onClick={run} />;
 }
 

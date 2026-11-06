@@ -136,6 +136,8 @@ struct Loaded {
     etag: Option<String>,
     pages: u32,
     more: bool,
+    /// The last request was sent with a login.
+    signed_in: bool,
 }
 
 impl Loaded {
@@ -205,6 +207,7 @@ impl GithubIssues {
             if n == 1 {
                 fresh.etag = reply.header("etag").map(str::to_string);
             }
+            fresh.signed_in = reply.signed_in;
             fresh.merge(page.issues);
             fresh.pages = n;
             fresh.more = page.more;
@@ -220,6 +223,7 @@ impl GithubIssues {
     /// already known as it is (everything after it is older), within what was loaded.
     async fn refresh(&self, l: &mut Loaded, account: Option<&str>, purpose: Purpose) -> Result<ListOutcome, ApiError> {
         let (reply, page) = self.fetch_page(account, purpose, 1, l.etag.as_deref()).await?;
+        l.signed_in = reply.signed_in;
         let Some(mut page) = page else { return Ok(ListOutcome::Unchanged) };
         l.etag = reply.header("etag").map(str::to_string);
         let mut n = 1;
@@ -241,7 +245,9 @@ impl GithubIssues {
     async fn load_more(&self, l: &mut Loaded, account: Option<&str>) -> Result<ListOutcome, ApiError> {
         if l.more {
             let n = l.pages + 1;
-            let page = self.fetch_page(account, Purpose::User, n, None).await?.1.ok_or(ApiError::Status(304))?;
+            let (reply, page) = self.fetch_page(account, Purpose::User, n, None).await?;
+            let page = page.ok_or(ApiError::Status(304))?;
+            l.signed_in = reply.signed_in;
             l.merge(page.issues);
             l.pages = n;
             l.more = page.more;
@@ -267,7 +273,7 @@ impl IssueTracker for GithubIssues {
             ListRequest::Refresh | ListRequest::TimedCheck => self.refresh(&mut l, account, purpose).await,
         };
         let outcome = result.map_err(|e| self.error(e, account))?;
-        Ok(ListAnswer { outcome, signed_in: self.client.signed_in(account).await })
+        Ok(ListAnswer { outcome, signed_in: l.signed_in })
     }
 
     async fn issue(&self, account: Option<&str>, number: u64) -> Result<IssueDetail, IssueError> {

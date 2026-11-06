@@ -55,7 +55,8 @@ export type IssueAction = { kind: "chooseAccount"; label: string } | { kind: "op
 
 const chooseAccount: IssueAction = { kind: "chooseAccount", label: "Choose account" };
 
-const clock = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** A unix time as the hour and minute. */
+export const clock = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 /**
  * Why there is no list to show: always for the errors that leave nothing to read, and for

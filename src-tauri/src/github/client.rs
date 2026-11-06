@@ -56,6 +56,8 @@ pub struct Reply {
     /// Names in lower case.
     pub headers: Vec<(String, String)>,
     pub body: Vec<u8>,
+    /// Whether it was sent with a login; set by `Client::get`.
+    pub signed_in: bool,
 }
 
 impl Reply {
@@ -126,7 +128,7 @@ impl Transport for Https {
             }
             body.extend_from_slice(&chunk);
         }
-        Ok(Reply { status, headers, body })
+        Ok(Reply { status, headers, body, signed_in: false })
     }
 }
 
@@ -160,8 +162,13 @@ impl TokenSource for DesktopTokens {
 
     fn accounts(&self) -> Accounts {
         let env = TOKEN_VARS.into_iter().find(|var| std::env::var(var).is_ok_and(|t| !t.trim().is_empty()));
-        // Without --json (older CLIs) the list stays empty; a login can still be typed.
-        let (logins, active) = gh(&["auth", "status", "--hostname", "github.com", "--json", "hosts"]).map(|out| parse_accounts(&out)).unwrap_or_default();
+        // The environment token is used for every account, so the CLI's are not asked for.
+        if env.is_some() {
+            return Accounts { env, ..Accounts::default() };
+        }
+        // It exits 1 when any account has a problem, and still lists them all. Without
+        // --json (older CLIs) the list stays empty; a login can still be typed.
+        let (logins, active) = gh(&["auth", "status", "--hostname", "github.com", "--json", "hosts"]).map(|out| parse_accounts(&stdout(&out))).unwrap_or_default();
         Accounts { logins, active, env }
     }
 }
@@ -204,11 +211,15 @@ fn run_gh(account: Option<&str>) -> Option<String> {
         }
         args.extend(["--user", login]);
     }
-    gh(&args)
+    gh(&args).filter(|out| out.status.success()).map(|out| stdout(&out))
 }
 
-/// Runs the GitHub CLI without a window; its output when it succeeds.
-fn gh(args: &[&str]) -> Option<String> {
+fn stdout(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// Runs the GitHub CLI without a window; None when it could not be started.
+fn gh(args: &[&str]) -> Option<std::process::Output> {
     for gh in ["gh", r"C:\Program Files\GitHub CLI\gh.exe"] {
         let mut cmd = std::process::Command::new(gh);
         cmd.args(args).stdin(std::process::Stdio::null());
@@ -218,7 +229,7 @@ fn gh(args: &[&str]) -> Option<String> {
             cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
         if let Ok(out) = cmd.output() {
-            return out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned());
+            return Some(out);
         }
     }
     None
@@ -342,11 +353,6 @@ impl Client {
         token
     }
 
-    /// Whether `account` has a login, as last read; reads it only if it never was.
-    pub async fn signed_in(&self, account: Option<&str>) -> bool {
-        self.token(account, false).await.is_some()
-    }
-
     /// The GitHub logins on this computer, read fresh.
     pub async fn accounts(&self) -> Accounts {
         let tokens = self.tokens.clone();
@@ -376,7 +382,8 @@ impl Client {
             if let Some(e) = etag {
                 headers.push(("if-none-match", e.to_string()));
             }
-            let reply = self.transport.get(url, headers).await.map_err(ApiError::Network)?;
+            let mut reply = self.transport.get(url, headers).await.map_err(ApiError::Network)?;
+            reply.signed_in = token.is_some();
             let now = (self.clock)();
             self.budgets.lock().unwrap().entry(key).or_default().record(&reply, now);
             match classify(&reply, token.is_some(), now) {
@@ -430,6 +437,7 @@ pub mod testing {
             status,
             headers: headers.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
             body: body.as_bytes().to_vec(),
+            signed_in: false,
         }
     }
 
