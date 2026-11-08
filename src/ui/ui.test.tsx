@@ -5,6 +5,7 @@ import { STATUS_LETTER, STATUS_TITLE, cx, splitDisplayPath, thumbInsets } from "
 import { Banner, HelpTip } from "./Feedback";
 import { Checkbox, Field } from "./Field";
 import { Badge, Chip, Mark, StateTag } from "./Status";
+import { isKeyboardEcho } from "./Menu";
 import { Row } from "./Structure";
 import { SortHeader, TableRow } from "./Table";
 import { Tray } from "./Tray";
@@ -171,5 +172,13 @@ describe("HelpTip", () => {
     expect(out).toContain('data-tip="Why"');
     expect(out).toContain('tabindex="0"');
     expect(out).toContain('aria-label="Why"');
+  });
+});
+
+describe("isKeyboardEcho", () => {
+  test("a right-click before any menu key is no echo, however young the page", () => {
+    vi.spyOn(performance, "now").mockReturnValue(100);
+    expect(isKeyboardEcho()).toBe(false);
+    vi.restoreAllMocks();
   });
 });

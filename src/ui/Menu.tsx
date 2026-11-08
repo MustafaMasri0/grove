@@ -66,7 +66,7 @@ interface OpenMenu {
 const useMenu = create<{ menu: OpenMenu | null }>(() => ({ menu: null }));
 let lastId = 0;
 /** When a menu was last opened from the keyboard; the browser may follow the key with a contextmenu event. */
-let keyboardOpenedAt = 0;
+let keyboardOpenedAt = Number.NEGATIVE_INFINITY; // Not 0: a page younger than the echo window has opened nothing yet.
 
 /** True for a contextmenu event that only echoes a key that already opened a menu. */
 export function isKeyboardEcho(): boolean {
