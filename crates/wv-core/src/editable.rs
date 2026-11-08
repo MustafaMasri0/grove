@@ -19,12 +19,21 @@ pub fn default_patterns() -> Vec<String> {
 /// Why `path` (relative to a worktree, or absolute) is never editable, if it is not.
 /// The hosts check this again before writing, whatever the caller decided.
 pub fn protected(path: &str) -> Option<String> {
-    let parts: Vec<&str> = path.split(['/', '\\']).filter(|p| !p.is_empty()).collect();
+    // As the file system resolves names: Windows and macOS ignore case, and Windows drops trailing dots and spaces.
+    let parts: Vec<String> = path.split(['/', '\\']).map(|p| p.trim_end_matches(['.', ' ']).to_ascii_lowercase()).filter(|p| !p.is_empty()).collect();
     let (name, dirs) = parts.split_last()?;
-    if let Some(dir) = dirs.iter().find(|d| PROTECTED_DIRS.contains(d)) {
+    if let Some(dir) = dirs.iter().find(|d| PROTECTED_DIRS.contains(&d.as_str())) {
         return Some(format!("files inside {dir} are never edited"));
     }
     PROTECTED_FILES.iter().any(|p| glob(p, name)).then(|| format!("{name} is written by a tool and is never edited by hand"))
+}
+
+/// Ok when `rel` is a `/`-separated path that stays inside the worktree.
+pub fn inside_worktree(rel: &str) -> Result<(), String> {
+    if rel.is_empty() || rel.starts_with(['/', '\\']) || rel.contains('\\') || rel.contains(':') || rel.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
+        return Err(format!("{rel} is not a path inside the worktree"));
+    }
+    Ok(())
 }
 
 /// The user's list of editable files: gitignore-style patterns.
@@ -43,20 +52,19 @@ impl Rules {
         Self(patterns)
     }
 
-    /// The rules in a saved settings.json (`editableFiles`); the defaults when it has none.
+    /// The rules in a saved settings.json (`editableFiles`), read as the UI's `normalizeSettings` reads
+    /// them: entries that are not strings are dropped, and the defaults apply only when it holds no list.
     pub fn from_settings(settings: &serde_json::Value) -> Self {
         settings
             .get("editableFiles")
-            .and_then(|v| serde_json::from_value::<Vec<String>>(v.clone()).ok())
-            .map(Self)
+            .and_then(|v| v.as_array())
+            .map(|list| Self(list.iter().filter_map(|p| p.as_str().map(str::to_string)).collect()))
             .unwrap_or_default()
     }
 
     /// Ok when `rel`, a path relative to the worktree with `/`, may be edited.
     pub fn check(&self, rel: &str) -> Result<(), String> {
-        if rel.is_empty() || rel.starts_with(['/', '\\']) || rel.contains('\\') || rel.contains(':') || rel.split('/').any(|p| p.is_empty() || p == "." || p == "..") {
-            return Err(format!("{rel} is not a path inside the worktree"));
-        }
+        inside_worktree(rel)?;
         if let Some(why) = protected(rel) {
             return Err(why);
         }
@@ -177,5 +185,15 @@ mod tests {
         assert_eq!(Rules::from_settings(&serde_json::json!({ "editableFiles": 3 })), Rules::default());
         assert_eq!(Rules::from_settings(&serde_json::json!({ "editableFiles": [] })), rules(&[]));
         assert_eq!(Rules::from_settings(&serde_json::json!({ "editableFiles": ["a"] })), rules(&["a"]));
+        // Like the UI: a bad entry is dropped, it does not bring back the defaults.
+        assert_eq!(Rules::from_settings(&serde_json::json!({ "editableFiles": ["a", 1, null] })), rules(&["a"]));
+    }
+
+    #[test]
+    fn protected_names_ignore_case_and_trailing_dots_and_spaces() {
+        let r = rules(&["*", "**"]);
+        for no in [".GIT/config", ".git./config", ".Git /HEAD", ".TERRAFORM/x.json", "PROD.TFSTATE", "prod.tfstate.", "sub/.GIT"] {
+            assert!(r.check(no).is_err(), "{no}");
+        }
     }
 }

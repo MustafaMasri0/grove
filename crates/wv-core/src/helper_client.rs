@@ -308,8 +308,12 @@ impl GitHost for HelperClient {
         self.call(Op::ReadFile { path: path.into(), max }, None)
     }
 
-    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
-        self.call(Op::WriteFile { path: path.into(), data: FileBytes(data.to_vec()), expected: FileBytes(expected.to_vec()) }, None)
+    fn check_writable(&self, root: &str, rel: &str) -> Result<(), String> {
+        self.call(Op::CheckWritable { root: root.into(), rel: rel.into() }, None)
+    }
+
+    fn write_file(&self, root: &str, rel: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
+        self.call(Op::WriteFile { root: root.into(), rel: rel.into(), data: FileBytes(data.to_vec()), expected: FileBytes(expected.to_vec()) }, None)
     }
 
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String> {

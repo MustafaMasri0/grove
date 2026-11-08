@@ -33,7 +33,8 @@ pub struct Request {
 pub enum Op {
     Git { cwd: String, args: Vec<String>, progress: bool },
     ReadFile { path: String, max: u64 },
-    WriteFile { path: String, data: FileBytes, expected: FileBytes },
+    CheckWritable { root: String, rel: String },
+    WriteFile { root: String, rel: String, data: FileBytes, expected: FileBytes },
     ListDir { path: String },
     Mtime { path: String },
     Watch { spec: WatchSpec },
@@ -74,7 +75,7 @@ mod tests {
 
     #[test]
     fn written_contents_never_reach_the_trace() {
-        let op = Op::WriteFile { path: "/x/.env".into(), data: FileBytes(b"TOKEN=secret".to_vec()), expected: FileBytes(b"TOKEN=old".to_vec()) };
+        let op = Op::WriteFile { root: "/x".into(), rel: ".env".into(), data: FileBytes(b"TOKEN=secret".to_vec()), expected: FileBytes(b"TOKEN=old".to_vec()) };
         let traced = format!("{op:?}");
         assert!(!traced.contains("secret") && !traced.contains("old") && !traced.contains("84"), "{traced}");
         assert!(traced.contains("<12 bytes>"), "{traced}");

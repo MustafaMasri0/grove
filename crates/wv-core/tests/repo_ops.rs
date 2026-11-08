@@ -56,8 +56,11 @@ impl GitHost for RecordingHost {
     fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String> {
         self.inner.read_file(path, max)
     }
-    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
-        self.inner.write_file(path, data, expected)
+    fn check_writable(&self, root: &str, rel: &str) -> Result<(), String> {
+        self.inner.check_writable(root, rel)
+    }
+    fn write_file(&self, root: &str, rel: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
+        self.inner.write_file(root, rel, data, expected)
     }
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String> {
         self.inner.list_dir(path)
@@ -612,9 +615,21 @@ fn file_access_follows_the_patterns_and_reports_tracking() {
     let access = |p: &str| ops::file_access(&h(), r.path_str(), p, &rules).unwrap();
     assert_eq!(access(".env"), ops::FileAccess { editable: true, reason: None, tracked: false });
     assert_eq!(access(".env.example"), ops::FileAccess { editable: true, reason: None, tracked: true });
-    assert_eq!(access("a.txt"), ops::FileAccess { editable: false, reason: None, tracked: true });
+    // Tracking is only asked for files that can be edited: a.txt is tracked, but read-only.
+    assert_eq!(access("a.txt"), ops::FileAccess { editable: false, reason: None, tracked: false });
     let binary = access("bin.env");
     assert!(!binary.editable && binary.reason.as_deref().is_some_and(|r| r.contains("UTF-8")), "{binary:?}");
+    // Saving would rewrite every line ending of a file that mixes them.
+    std::fs::write(r.path.join("mixed.env"), "A=1\r\nB=2\n").unwrap();
+    let mixed = access("mixed.env");
+    assert!(!mixed.editable && mixed.reason.as_deref().is_some_and(|r| r.contains("line endings")), "{mixed:?}");
+    // `[d].env` is a name, not a pattern matching the tracked `d.env`.
+    std::fs::write(r.path.join("d.env"), "A=1\n").unwrap();
+    std::fs::write(r.path.join("[d].env"), "A=1\n").unwrap();
+    git(&r.path, &["add", "d.env"]);
+    git(&r.path, &["commit", "-q", "-m", "d"]);
+    assert_eq!(access("[d].env"), ops::FileAccess { editable: true, reason: None, tracked: false });
+    assert!(access("d.env").tracked);
 }
 
 #[test]

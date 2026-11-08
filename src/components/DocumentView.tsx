@@ -44,6 +44,8 @@ interface Doc {
   dirty?: boolean;
   /** Set while the view itself replaces the model's text, so that is not taken for an edit. */
   applying?: boolean;
+  /** Set while Reload loads the file to replace unsaved edits with it. */
+  discarding?: boolean;
   /** The file changed on disk under unsaved edits, seen by a reload or refused by a save. */
   conflict?: boolean;
   saving?: boolean;
@@ -319,14 +321,18 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
       const contents = await api.readSources(at, sources);
       if (!docs.current.has(key)) return;
       doc.loadedTick = useStore.getState().tick;
-      if (worktreeFile) doc.access = await access;
+      // A failed check keeps what was known: a passing error must not lock unsaved edits read-only.
+      if (worktreeFile) doc.access = (await access) ?? doc.access;
       if (!docs.current.has(key)) return;
       const message = contents.map(describe).find(Boolean);
-      if (worktreeFile && hasEdits(doc)) {
+      // Reload replaces the edits only with text it could read; otherwise they stay, flagged.
+      const replacing = !!doc.discarding && !message && contents[0].kind === "text";
+      if (worktreeFile && hasEdits(doc) && !replacing) {
         // Unsaved edits are never replaced: a file that no longer holds what they started from is only flagged.
         // During a save the file holds the new text before the answer arrives; the save itself tells.
         const c = contents[0];
         if (!doc.saving && (c.kind !== "text" || c.text !== doc.base)) doc.conflict = true;
+        doc.state = "ready";
       } else if (tab.kind === "file" && contents[0].kind === "missing") {
         doc.state = "message";
         doc.message = "This file does not exist.";
@@ -351,8 +357,11 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
         doc.state = "ready";
       }
     } catch (e) {
-      doc.state = "message";
-      doc.message = errorText(e);
+      // Unsaved edits stay on screen; the next load tries again.
+      if (!(worktreeFile && hasEdits(doc))) {
+        doc.state = "message";
+        doc.message = errorText(e);
+      }
     }
     rerender((n) => n + 1);
   };
@@ -389,14 +398,17 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
     rerender((n) => n + 1);
   };
 
-  /** Throws the edits away and shows the file as it is on disk. */
-  const reload = (tab: FileTab, doc: Doc) => {
+  /** Throws the edits away and shows the file as it is on disk; if it cannot be read, the edits stay unsaved. */
+  const reload = async (tab: FileTab, doc: Doc) => {
     if (!doc.modified) return;
-    doc.savedVersion = doc.modified.getAlternativeVersionId();
-    doc.conflict = false;
     doc.saveError = undefined;
+    doc.discarding = true;
+    try {
+      await load(tab, doc);
+    } finally {
+      doc.discarding = false;
+    }
     noteEdits(tab, doc);
-    void load(tab, doc);
   };
 
   // Load the active tab, and reload it when the worktree changed and it shows files from disk
@@ -560,7 +572,7 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
                     <span className="err-text ell" role="status" title="The file changed on disk after you started editing it.">
                       Changed on disk
                     </span>
-                    <Button size="sm" text="Reload" tip="Discard your edits and show the file as it is on disk" onClick={() => reload(active, activeDoc)} />
+                    <Button size="sm" text="Reload" tip="Discard your edits and show the file as it is on disk" onClick={() => void reload(active, activeDoc)} />
                     <Button size="sm" text="Overwrite" tip="Save your version over the one on disk" loading={activeDoc.saving} onClick={() => void save(active, activeDoc, true)} />
                   </>
                 )}

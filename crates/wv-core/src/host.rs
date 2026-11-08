@@ -81,11 +81,14 @@ pub trait GitHost: Send + Sync {
     /// `Err` means git could not be run at all (or the command was refused).
     fn git(&self, cwd: &str, args: &[String], progress: Option<Progress>) -> Result<GitOutput, String>;
     fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String>;
-    /// Replaces an existing regular file's contents with `data`, if it still holds `expected`.
+    /// Ok when `rel`, a `/`-separated path inside the worktree `root`, is a regular file Grove may
+    /// write: no name `editable::protected` refuses, and no link on the way to it or as it.
+    fn check_writable(&self, root: &str, rel: &str) -> Result<(), String>;
+    /// Replaces the contents of worktree file `rel` with `data`, if it still holds `expected`.
     /// The only write Grove makes to a worktree: the caller checks the user's editable files
-    /// first, and every host refuses the files `editable::protected` names on its own.
+    /// first, and every host applies [`GitHost::check_writable`] on its own.
     /// Errors name the file, never its contents.
-    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String>;
+    fn write_file(&self, root: &str, rel: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String>;
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String>;
     /// Modification time in unix seconds, None if the path does not exist.
     fn mtime(&self, path: &str) -> Result<Option<i64>, String>;

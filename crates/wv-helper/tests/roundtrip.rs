@@ -260,11 +260,13 @@ fn files_are_saved_inside_the_helper_which_refuses_protected_ones() {
     let h = helper();
     let env = format!("{repo}/.env");
     std::fs::write(&env, "A=1\n").unwrap();
-    assert_eq!(h.write_file(&env, b"A=2\n", b"A=1\n").unwrap(), WriteOutcome::Written);
+    assert!(h.check_writable(&repo, ".env").is_ok());
+    assert_eq!(h.write_file(&repo, ".env", b"A=2\n", b"A=1\n").unwrap(), WriteOutcome::Written);
     assert_eq!(std::fs::read_to_string(&env).unwrap(), "A=2\n");
-    assert_eq!(h.write_file(&env, b"A=3\n", b"A=1\n").unwrap(), WriteOutcome::ChangedOnDisk);
+    assert_eq!(h.write_file(&repo, ".env", b"A=3\n", b"A=1\n").unwrap(), WriteOutcome::ChangedOnDisk);
     let config = format!("{repo}/.git/config");
     let before = std::fs::read(&config).unwrap();
-    assert!(h.write_file(&config, b"x", &before).is_err());
+    assert!(h.check_writable(&repo, ".git/config").is_err());
+    assert!(h.write_file(&repo, ".git/config", b"x", &before).is_err());
     assert_eq!(std::fs::read(&config).unwrap(), before);
 }

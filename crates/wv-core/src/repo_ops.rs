@@ -317,9 +317,32 @@ pub struct FileAccess {
 }
 
 pub fn file_access(h: &dyn GitHost, cwd: &str, rel: &str, rules: &Rules) -> Result<FileAccess, String> {
-    let tracked = !run(h, cwd, &["ls-files", "-z", "--", rel])?.is_empty();
-    let editable = rules.check(rel).and_then(|()| editable_text(h, &join(cwd, rel)).map(|_| ()));
+    let editable = rules
+        .check(rel)
+        .and_then(|()| h.check_writable(cwd, rel))
+        .and_then(|()| editable_text(h, &join(cwd, rel)).map(|_| ()));
+    // Only an editable file shows whether git tracks it; the literal pathspec keeps `[`, `*` and `?` in names as they are.
+    let tracked = editable.is_ok() && !run(h, cwd, &["ls-files", "-z", "--", &format!(":(literal){rel}")])?.is_empty();
     Ok(FileAccess { editable: editable.is_ok(), reason: editable.err().filter(|_| rules.allows(rel)), tracked })
+}
+
+/// Whether `text` ends its lines in more than one way (CRLF, LF, CR). The editor keeps one, so a save would change them all.
+fn mixed_line_endings(text: &[u8]) -> bool {
+    let (mut crlf, mut lf, mut cr) = (false, false, false);
+    let mut i = 0;
+    while i < text.len() {
+        match text[i] {
+            b'\r' if text.get(i + 1) == Some(&b'\n') => {
+                crlf = true;
+                i += 1;
+            }
+            b'\r' => cr = true,
+            b'\n' => lf = true,
+            _ => {}
+        }
+        i += 1;
+    }
+    [crlf, lf, cr].iter().filter(|&&k| k).count() > 1
 }
 
 /// The file's bytes, and where its text starts (after a BOM), when Grove can edit it as text.
@@ -330,6 +353,9 @@ fn editable_text(h: &dyn GitHost, full: &str) -> Result<(Vec<u8>, usize), String
     // Text Grove would show with replacement characters would be saved with them.
     if data[..data.len().min(BINARY_SNIFF)].contains(&0) || std::str::from_utf8(&data[start..]).is_err() {
         return Err("only UTF-8 text files can be edited".into());
+    }
+    if mixed_line_endings(&data[start..]) {
+        return Err("the file mixes line endings (CRLF and LF), and saving it would change every line".into());
     }
     Ok((data, start))
 }
@@ -346,7 +372,7 @@ pub fn save_file(h: &dyn GitHost, cwd: &str, rel: &str, base: Option<&str>, text
     }
     let mut data = current[..start].to_vec();
     data.extend_from_slice(text.as_bytes());
-    h.write_file(&full, &data, &current)
+    h.write_file(cwd, rel, &data, &current)
 }
 
 /// Raw bytes (images in Markdown previews); None when missing, empty or over [`MAX_FILE_BYTES`].

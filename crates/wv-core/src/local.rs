@@ -8,7 +8,7 @@ use crate::overview::{self, Overview};
 use crate::watch::WorktreeWatcher;
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
@@ -41,20 +41,16 @@ impl GitHost for LocalHost {
         Ok(FileRead { size, data: Some(data) })
     }
 
-    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
-        if let Some(why) = editable::protected(path) {
-            return Err(why);
-        }
-        let file = Path::new(path);
-        let meta = std::fs::symlink_metadata(file).map_err(|e| format!("{path}: {e}"))?;
-        if !meta.file_type().is_file() {
-            // A link could point anywhere, and replacing it would turn it into a file.
-            return Err(format!("{path} is not a regular file; links and folders are never edited"));
-        }
-        if std::fs::read(file).map_err(|e| format!("{path}: {e}"))? != expected {
+    fn check_writable(&self, root: &str, rel: &str) -> Result<(), String> {
+        writable_path(root, rel).map(|_| ())
+    }
+
+    fn write_file(&self, root: &str, rel: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
+        let file = writable_path(root, rel)?;
+        if std::fs::read(&file).map_err(|e| format!("{rel}: {e}"))? != expected {
             return Ok(WriteOutcome::ChangedOnDisk);
         }
-        replace_file(file, data, meta.permissions()).map_err(|e| format!("could not save {path}: {e}"))?;
+        overwrite(&file, data).map_err(|e| format!("could not save {rel}: {e}"))?;
         Ok(WriteOutcome::Written)
     }
 
@@ -97,26 +93,34 @@ impl GitHost for LocalHost {
     }
 }
 
-/// Writes a new copy next to `file` and moves it over the original, so a crash or a full
-/// disk leaves the old file whole. The copy is private until it has the original's permissions.
-fn replace_file(file: &Path, data: &[u8], permissions: std::fs::Permissions) -> std::io::Result<()> {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let name = file.file_name().ok_or(std::io::ErrorKind::InvalidInput)?.to_string_lossy();
-    let tmp = file.with_file_name(format!(".{name}.grove-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
-    let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let written = (|| {
-        let mut f = options.open(&tmp)?;
-        f.write_all(data)?;
-        f.sync_all()?;
-        drop(f);
-        std::fs::set_permissions(&tmp, permissions)?;
-        std::fs::rename(&tmp, file)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&tmp);
+/// The worktree file `rel` under `root`, when Grove may write it: a regular file no protected name
+/// covers, reached without passing through a link (a linked folder or file could lead anywhere, and
+/// writing through it would change a file outside the worktree).
+fn writable_path(root: &str, rel: &str) -> Result<PathBuf, String> {
+    editable::inside_worktree(rel)?;
+    if let Some(why) = editable::protected(rel).or_else(|| editable::protected(root)) {
+        return Err(why);
     }
-    written
+    let mut path = PathBuf::from(root);
+    let parts: Vec<&str> = rel.split('/').collect();
+    for (i, part) in parts.iter().enumerate() {
+        path.push(part);
+        let kind = std::fs::symlink_metadata(&path).map_err(|e| format!("{rel}: {e}"))?.file_type();
+        if kind.is_symlink() {
+            return Err(format!("{rel} is reached through a link, and links are never edited"));
+        }
+        if i + 1 == parts.len() && !kind.is_file() {
+            return Err(format!("{rel} is not a regular file; folders are never edited"));
+        }
+    }
+    Ok(path)
+}
+
+/// Writes `data` into the file itself rather than a replacement copy, so it keeps its owner, group,
+/// ACLs and hard links: a new file would take the folder's defaults, which can widen who reads a secret.
+fn overwrite(file: &Path, data: &[u8]) -> std::io::Result<()> {
+    let mut f = std::fs::OpenOptions::new().write(true).open(file)?;
+    f.write_all(data)?;
+    f.set_len(data.len() as u64)?;
+    f.sync_all()
 }
