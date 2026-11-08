@@ -1,0 +1,73 @@
+# Builds the Windows installer and attaches it to a draft GitHub release.
+# Push a tag such as v0.2.0 (after setting that version, see CONTRIBUTING.md),
+# then review the draft on the Releases page and publish it.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Check the version matches the tag
+        run: node scripts/check-version.mjs "$env:TAG"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the helpers
+        shell: bash
+        run: bash scripts/build-helpers.sh
+
+      - name: Test
+        run: |
+          cargo test --workspace
+          pnpm test
+
+      - name: Build the installer and draft the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          tagName: ${{ env.TAG }}
+          releaseName: Grove ${{ env.TAG }}
+          releaseBody: |
+            Download `Grove_<version>_x64-setup.exe` below and run it. It installs for the current user and needs no admin rights.
+
+            The installer is not code-signed yet, so SmartScreen may show "Windows protected your PC": click **More info**, then **Run anyway**.
+          releaseDraft: true
+          prerelease: false

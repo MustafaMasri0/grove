@@ -78,6 +78,25 @@ Environment variables let a second instance be driven without touching your own 
 | `WV_LIST_KEYS=ArrowDown,ArrowLeft,…` | Keys pressed in the left pane's list |
 | `WV_WORKTREES=1\|chip:<n>\|feed:<n>` | Opens the overview, then clicks the n-th worktree of a shared file or the n-th Activity link |
 
+## Releasing
+
+Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) on a Windows runner: it builds the helpers, runs the tests, builds the installer and attaches it to a **draft** release.
+
+1. Set the new version in `src-tauri/tauri.conf.json`, `package.json` and `[workspace.package]` in `Cargo.toml`, then run `cargo check` so `Cargo.lock` follows. `node scripts/check-version.mjs` confirms the three agree.
+2. Commit, then tag and push:
+
+   ```sh
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+3. When the workflow finishes, open the draft on the Releases page, write the notes, and publish it.
+
+The workflow stops before building if the tag does not match the version in those files. To rebuild an existing tag, run it from the Actions tab with that tag.
+
+> [!NOTE]
+> Release builds embed the Linux helpers (x86-64 and Arm64) and the Windows one. macOS helpers need a Mac runner and are not built yet, so SSH hosts running macOS can't be opened from a release build.
+
 ## How it works
 
 ```mermaid
