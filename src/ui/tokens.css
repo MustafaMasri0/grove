@@ -87,9 +87,10 @@
   --press: rgba(0, 0, 0, 0.09);
   --solid: rgba(0, 0, 0, 0.88);
   --on-solid: #fcfcfc;
-  --accent: rgba(0, 0, 0, 0.88);
-  --accent-hover: rgba(0, 0, 0, 0.8);
-  --on-accent: #fcfcfc;
+  /* The same blue as the dark theme; hover darkens instead of lightening, against a light page. */
+  --accent: #1f5fd0;
+  --accent-hover: #1a51b4;
+  --on-accent: #fff;
   --focus: #0a5fdc;
   --focus-soft: rgba(10, 95, 220, 0.2);
   --link: #0a55c8;
