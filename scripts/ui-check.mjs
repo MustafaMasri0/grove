@@ -773,7 +773,7 @@ try {
     await sleep(280);
     d.ghostGone = (await count("#rail-fold > *")) === 0 && !(await has("#main[data-fold]")) && !(await has(".rail[data-fold]"));
     d.topOnlyRepo = (await count(".rail-top .btn")) === 1;
-    d.navSearch = (await count(".rail .rail-nav")) === 4;
+    d.navSearch = (await count(".rail .rail-nav")) === 5; // Overview, Issues, Search, Settings, Expand.
     d.noFilter = !(await has(".rail-filter"));
     d.badge = await ev(`(()=>{const c=document.querySelector(".rail-list .wt:nth-child(1) .count").getBoundingClientRect(),m=document.querySelector(".rail-list .wt:nth-child(1) .mark").getBoundingClientRect();return c.left>=m.left&&c.left<m.right+6&&c.bottom>m.top})()`);
     d.noBadgeAtZero = !(await has(".rail-list .wt:nth-child(2) .count"));
@@ -2068,13 +2068,13 @@ try {
     const d = { opens: await has("#overlays .dlg.pal[aria-modal=true]"), inert: await has(".app[inert]"), focused: await focusIs(".pal input") };
     d.placeholder = (await ev(`document.querySelector(".pal input").placeholder`)) === "Search files, worktrees…";
     d.sections = (await ev(`[...document.querySelectorAll(".pal .sec-l")].map(e=>e.textContent).join()`)) === "Commands,Worktrees";
-    d.rows = (await count(".pal .mi")) === 6;
+    d.rows = (await count(".pal .mi")) === 7; // Four commands and the three worktrees.
     d.keys = (await text(".pal .mi:nth-of-type(1) .keys, .pal .mi .keys")) === "CtrlShiftO";
     d.state = await has(".pal .mi .st-tag");
     d.foot = (await ev(`document.querySelector(".pal-foot").textContent`)) === "↑↓ to navigate↵ to select";
     await shot("surface-palette");
     await key("ArrowDown", 40);
-    d.arrows = (await text(".pal .mi.on .mi-l")) === "Open Settings";
+    d.arrows = (await text(".pal .mi.on .mi-l")) === "Go to Issues";
     await key("ArrowUp", 40);
     await key("Tab", 9);
     d.tabStays = await focusIs(".pal input");
