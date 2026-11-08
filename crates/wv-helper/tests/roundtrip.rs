@@ -187,8 +187,9 @@ fn a_large_reply_that_cannot_be_read_ends_the_connection_instead_of_blocking_req
 
 #[test]
 fn a_large_reply_that_stalls_ends_the_connection() {
-    // Blocks in the shell itself: a `sleep` child would keep stdout open after the kill, as ssh has none.
-    let h = large_reply_helper("read stall", Duration::from_millis(300));
+    // The `sleep` child keeps stdout open after the shell is killed, as a process behind a
+    // launcher or a proxy would: the client must end the connection without waiting for it.
+    let h = large_reply_helper("sleep 30", Duration::from_millis(300));
     let start = Instant::now();
     assert!(h.list_dir("/").is_err());
     assert!(start.elapsed() < Duration::from_secs(10), "{:?}", start.elapsed());

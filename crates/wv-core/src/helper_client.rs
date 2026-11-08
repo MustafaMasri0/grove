@@ -14,7 +14,6 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-type Pending = Arc<Mutex<HashMap<u64, Sender<Message>>>>;
 type Watches = Arc<Mutex<HashMap<u64, OnChange>>>;
 
 const LOST: &str = "the connection to the helper was lost";
@@ -39,13 +38,41 @@ fn trace(text: impl FnOnce() -> String) {
 }
 
 pub struct HelperClient {
-    sender: Arc<ReplyGate>,
+    conn: Arc<Connection>,
     child: Arc<Mutex<Child>>,
     next_id: AtomicU64,
-    pending: Pending,
     watches: Watches,
-    alive: Arc<AtomicBool>,
     version: String,
+}
+
+/// What the client, the thread reading replies and the stall watchdog share about one connection.
+struct Connection {
+    gate: ReplyGate,
+    /// The callers waiting for a reply, by request id.
+    pending: Mutex<HashMap<u64, Sender<Message>>>,
+    alive: AtomicBool,
+    /// Told when a connection that said hello ends. Set once the hello arrives.
+    on_lost: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+}
+
+impl Connection {
+    /// Ends the connection, once, whoever notices first: the reader at the end of the
+    /// helper's stdout, or the watchdog after killing a stalled helper. The watchdog cannot
+    /// wait for the reader, since a process it did not start (Git for Windows' `sh`
+    /// launcher, a proxy behind `ssh`) can keep stdout open after the kill.
+    fn end(&self) {
+        if !self.alive.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        self.gate.connection_ended();
+        // Dropping the senders wakes every waiting caller with an error.
+        self.pending.lock().unwrap().clear();
+        trace(|| "connection ended".into());
+        let on_lost = self.on_lost.lock().unwrap().take();
+        if let Some(on_lost) = on_lost {
+            on_lost();
+        }
+    }
 }
 
 /// The helper's stdin. Requests wait while a large reply travels: see `protocol::LARGE_REPLY`.
@@ -147,15 +174,19 @@ impl HelperClient {
             });
         }
 
-        let sender = Arc::new(ReplyGate { state: Mutex::new(SendState { stdin: Some(stdin), large: None, queued: VecDeque::new() }), quiet_over: Condvar::new() });
-        let pending: Pending = Default::default();
+        let conn = Arc::new(Connection {
+            gate: ReplyGate { state: Mutex::new(SendState { stdin: Some(stdin), large: None, queued: VecDeque::new() }), quiet_over: Condvar::new() },
+            pending: Default::default(),
+            alive: AtomicBool::new(true),
+            on_lost: Mutex::new(None),
+        });
         let watches: Watches = Default::default();
-        let alive = Arc::new(AtomicBool::new(true));
         let (hello_tx, hello_rx) = channel();
         {
-            let (pending, watches, alive, sender) = (pending.clone(), watches.clone(), alive.clone(), sender.clone());
+            let (conn, watches) = (conn.clone(), watches.clone());
+            let mut on_lost = Some(on_lost);
             std::thread::spawn(move || {
-                let mut said_hello = false;
+                let sender = &conn.gate;
                 let mut parts = String::new();
                 for line in BufReader::new(stdout).lines() {
                     let Ok(line) = line else { break };
@@ -174,7 +205,7 @@ impl HelperClient {
                     }
                     match &msg {
                         Message::Hello { version } => {
-                            said_hello = true;
+                            *conn.on_lost.lock().unwrap() = on_lost.take();
                             let _ = hello_tx.send(version.clone());
                         }
                         Message::Changed { watch_id, change } => {
@@ -187,26 +218,19 @@ impl HelperClient {
                         Message::Large { id } => sender.large_reply_ready(*id),
                         Message::Done { id, .. } | Message::Failed { id, .. } => {
                             sender.reply_arrived(*id);
-                            if let Some(tx) = pending.lock().unwrap().remove(id) {
+                            if let Some(tx) = conn.pending.lock().unwrap().remove(id) {
                                 let _ = tx.send(msg);
                             }
                         }
                         Message::Progress { id, .. } => {
-                            if let Some(tx) = pending.lock().unwrap().get(id) {
+                            if let Some(tx) = conn.pending.lock().unwrap().get(id) {
                                 let _ = tx.send(msg);
                             }
                         }
                         Message::Part { .. } => {}
                     }
                 }
-                alive.store(false, Ordering::SeqCst);
-                sender.connection_ended();
-                // Dropping the senders wakes every waiting caller with an error.
-                pending.lock().unwrap().clear();
-                trace(|| "connection ended".into());
-                if said_hello {
-                    on_lost();
-                }
+                conn.end();
             });
         }
 
@@ -221,27 +245,20 @@ impl HelperClient {
         };
         let child = Arc::new(Mutex::new(child));
         {
-            let (sender, child, alive) = (sender.clone(), child.clone(), alive.clone());
+            let (conn, child) = (conn.clone(), child.clone());
             std::thread::spawn(move || {
-                while alive.load(Ordering::SeqCst) {
-                    if sender.stalled(part_timeout) {
+                while conn.alive.load(Ordering::SeqCst) {
+                    if conn.gate.stalled(part_timeout) {
                         trace(|| "large reply stalled: ending the connection".into());
                         let _ = child.lock().unwrap().kill();
+                        conn.end();
                         return;
                     }
                     std::thread::sleep((part_timeout / 4).min(Duration::from_secs(5)));
                 }
             });
         }
-        Ok(Self {
-            sender,
-            child,
-            next_id: AtomicU64::new(1),
-            pending,
-            watches,
-            alive,
-            version,
-        })
+        Ok(Self { conn, child, next_id: AtomicU64::new(1), watches, version })
     }
 
     pub fn version(&self) -> &str {
@@ -249,7 +266,7 @@ impl HelperClient {
     }
 
     pub fn is_alive(&self) -> bool {
-        self.alive.load(Ordering::SeqCst)
+        self.conn.alive.load(Ordering::SeqCst)
     }
 
     fn call<T: DeserializeOwned>(&self, op: Op, progress: Option<Progress>) -> Result<T, String> {
@@ -259,11 +276,11 @@ impl HelperClient {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let (started, what) = (Instant::now(), format!("{op:?}"));
         let (tx, rx) = channel();
-        self.pending.lock().unwrap().insert(id, tx);
+        self.conn.pending.lock().unwrap().insert(id, tx);
         let line = serde_json::to_string(&Request { id, op }).map_err(|e| e.to_string())?;
         let done = |outcome: &str| trace(|| format!("{:7}ms {outcome} {}", started.elapsed().as_millis(), what.chars().take(140).collect::<String>()));
-        if let Err(e) = self.sender.send(&line) {
-            self.pending.lock().unwrap().remove(&id);
+        if let Err(e) = self.conn.gate.send(&line) {
+            self.conn.pending.lock().unwrap().remove(&id);
             return Err(format!("{LOST} ({e})"));
         }
         loop {
@@ -342,7 +359,7 @@ impl GitHost for HelperClient {
 
 impl Drop for HelperClient {
     fn drop(&mut self) {
-        self.sender.state.lock().unwrap().stdin = None;
+        self.conn.gate.state.lock().unwrap().stdin = None;
         let _ = self.child.lock().unwrap().kill();
     }
 }

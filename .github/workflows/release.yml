@@ -22,6 +22,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 60
     env:
       TAG: ${{ inputs.tag || github.ref_name }}
     steps:
@@ -53,6 +54,7 @@ jobs:
         run: bash scripts/build-helpers.sh
 
       - name: Test
+        timeout-minutes: 20
         run: |
           cargo test --workspace
           pnpm test
