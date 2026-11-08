@@ -1,5 +1,6 @@
 // Monaco, bundled locally. Only the editor core, the diff editor and the
-// features a read-only viewer needs are imported, plus the lightweight
+// features a viewer needs are imported (with line comments and line moves for
+// the few files that can be edited), plus the lightweight
 // tokenizers for every language, which lib/grammars.ts replaces for the common
 // ones. The TypeScript/JSON/CSS/HTML language services (and their large
 // workers) are left out on purpose: they add IntelliSense, not highlighting,
@@ -10,6 +11,7 @@ import "monaco-esm/editor/browser/widget/codeEditor/codeEditorWidget.js";
 import "monaco-esm/editor/browser/widget/diffEditor/diffEditor.contribution.js";
 import "monaco-esm/editor/contrib/bracketMatching/browser/bracketMatching.js";
 import "monaco-esm/editor/contrib/clipboard/browser/clipboard.js";
+import "monaco-esm/editor/contrib/comment/browser/comment.js";
 import "monaco-esm/editor/contrib/contextmenu/browser/contextmenu.js";
 import "monaco-esm/editor/contrib/cursorUndo/browser/cursorUndo.js";
 import "monaco-esm/features/find/register.js";
@@ -17,6 +19,7 @@ import "monaco-esm/editor/contrib/find/browser/findController.js";
 import "monaco-esm/editor/contrib/folding/browser/folding.js";
 import "monaco-esm/editor/standalone/browser/quickAccess/standaloneGotoLineQuickAccess.js";
 import "monaco-esm/editor/contrib/lineSelection/browser/lineSelection.js";
+import "monaco-esm/editor/contrib/linesOperations/browser/linesOperations.js";
 import "monaco-esm/editor/contrib/multicursor/browser/multicursor.js";
 import "monaco-esm/editor/contrib/readOnlyMessage/browser/contribution.js";
 import "monaco-esm/editor/contrib/smartSelect/browser/smartSelect.js";

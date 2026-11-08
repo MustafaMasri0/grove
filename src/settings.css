@@ -130,6 +130,11 @@
     width: 200px;
   }
 
+  & .set-list {
+    flex: none;
+    width: 240px;
+  }
+
   & .set-rst {
     margin-top: 2px;
     align-self: flex-start;

@@ -10,7 +10,7 @@ interface TabBase {
   isPreview: boolean;
 }
 
-/** A read-only file, from a worktree or from a revision. */
+/** A file, from a worktree or from a revision; read-only unless it is a worktree file the editable patterns name. */
 export interface FileTab extends TabBase {
   kind: "file";
   repo: string;
@@ -72,6 +72,14 @@ export function isWorktreeTab(t: Tab): t is WorktreeTab {
 
 export function isDocumentTab(t: Tab): t is DocumentTab {
   return t.kind !== "issue";
+}
+
+/** What identifies a tab's document: tabs of different worktrees may share an id, and `HEAD` differs between them. */
+export const docKey = (t: Tab) => `${isWorktreeTab(t) ? t.cwd : ""}\n${t.id}`;
+
+/** A file tab showing the worktree's own copy: the only kind Grove may let you edit. */
+export function isWorktreeFile(t: Tab): t is FileTab {
+  return t.kind === "file" && t.source.kind === "worktree";
 }
 
 /** "#12 Crash on start"; just the number until the title is known. */

@@ -27,6 +27,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { keys: "Middle click", action: "Close a tab", where: "Tabs" },
   { keys: "Ctrl+F", action: "Find in the file", where: "Editor" },
   { keys: "Ctrl+G", action: "Go to line", where: "Editor" },
+  { keys: "Ctrl+S", action: "Save a file named in Editable files", where: "Editor" },
   { keys: "F7 / Shift+F7", action: "Next / previous change in a diff", where: "Editor" },
   { keys: "Ctrl+C", action: "Copy the selection", where: "Editor" },
   { keys: "Up / Down", action: "Move and preview", where: "Lists" },

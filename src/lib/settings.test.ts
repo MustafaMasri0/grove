@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSettings, getSetting, isDefault, normalizeSettings, resetAll, scriptsAllowed, withRunScripts, withSetting, type SettingPath } from "./settings";
+import { defaultSettings, getSetting, isDefault, listLines, normalizeSettings, resetAll, sameValue, scriptsAllowed, withRunScripts, withSetting, type SettingPath } from "./settings";
 
 // What settings.json looked like before the Settings page existed.
 const v1 = {
@@ -186,5 +186,45 @@ describe("the rail", () => {
     expect(normalizeSettings({ railWidth: 100 }).railWidth).toBe(220);
     expect(normalizeSettings({ railWidth: 900 }).railWidth).toBe(420);
     expect(normalizeSettings({ railWidth: 300, railCollapsed: true })).toMatchObject({ railWidth: 300, railCollapsed: true });
+  });
+});
+
+describe("editable files", () => {
+  it("start from the defaults the backend uses, from the same file", async () => {
+    const shared = (await import("../../crates/wv-core/src/editable_defaults.json")).default;
+    expect(defaultSettings.editableFiles).toEqual(shared);
+    expect(normalizeSettings({}).editableFiles).toEqual(shared);
+    expect(normalizeSettings({}).editableFiles).not.toBe(defaultSettings.editableFiles);
+  });
+
+  it("keep a saved list, even an empty one, and drop what is not a pattern", () => {
+    expect(normalizeSettings({ editableFiles: [".env", 3, "*.local.*"] }).editableFiles).toEqual([".env", "*.local.*"]);
+    expect(normalizeSettings({ editableFiles: [] }).editableFiles).toEqual([]);
+    expect(normalizeSettings({ editableFiles: ".env" }).editableFiles).toEqual(defaultSettings.editableFiles);
+  });
+
+  it("are a setting of their own, compared by content", () => {
+    expect(isDefault(normalizeSettings({}), "editableFiles")).toBe(true);
+    const s = normalizeSettings({ editableFiles: [".env"] });
+    expect(isDefault(s, "editableFiles")).toBe(false);
+    expect(withSetting(s, "editableFiles", [".env", "*.tfvars"])).toEqual({ editableFiles: [".env", "*.tfvars"] });
+    expect(resetAll(s, ["editableFiles"]).editableFiles).toEqual(defaultSettings.editableFiles);
+  });
+});
+
+describe("listLines", () => {
+  it("takes one entry per line, without blank lines or surrounding spaces", () => {
+    expect(listLines(" .env \n\n*.local.*\r\n  \n")).toEqual([".env", "*.local.*"]);
+    expect(listLines("")).toEqual([]);
+  });
+});
+
+describe("sameValue", () => {
+  it("compares lists by their entries and order, and anything else as it is", () => {
+    expect(sameValue(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameValue(["a", "b"], ["b", "a"])).toBe(false);
+    expect(sameValue(["a"], ["a", "b"])).toBe(false);
+    expect(sameValue(1, 1)).toBe(true);
+    expect(sameValue("1", 1)).toBe(false);
   });
 });

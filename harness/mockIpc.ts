@@ -13,6 +13,8 @@ export function respond(command: string): unknown {
       return null; // No picture: the author's initials show.
     case "load_settings":
       return {};
+    case "file_access":
+      return { editable: false, reason: null, tracked: true }; // Read-only, as most files are.
     default:
       throw new Error(`The harness has no answer for ${command}`);
   }

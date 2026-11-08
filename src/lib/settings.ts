@@ -1,5 +1,7 @@
 // The settings shape, its defaults, and how a saved settings.json is read back.
-// The backend stores the JSON as given; everything about its meaning lives here.
+// The backend stores the JSON as given; everything about its meaning lives here,
+// except the editable-file patterns, which the backend reads too (and shares their defaults).
+import editableDefaults from "../../crates/wv-core/src/editable_defaults.json";
 
 export type Theme = "system" | "dark" | "light";
 export type ChangesMode = "uncommitted" | "base";
@@ -62,6 +64,8 @@ export interface Settings {
   issuesAutoRefresh: boolean;
   /** repo id → the tracker login its issues are read with; missing: the default login. */
   issueAccounts: Record<string, string>;
+  /** Gitignore-style patterns of the worktree files Grove may edit; the backend checks them again on every save. */
+  editableFiles: string[];
 }
 
 export const defaultSettings: Settings = {
@@ -101,14 +105,17 @@ export const defaultSettings: Settings = {
   possibleConflicts: true,
   issuesAutoRefresh: true,
   issueAccounts: {},
+  editableFiles: [...editableDefaults],
 };
 
 type Leaf = string | number | boolean | null;
+/** What one setting holds: a single value, or a list of strings. */
+export type SettingValue = Leaf | readonly string[];
 type Paths<T, P extends string = ""> = {
-  [K in keyof T & string]: T[K] extends Leaf ? `${P}${K}` : T[K] extends unknown[] | Record<string, string> ? never : Paths<T[K], `${P}${K}.`>;
+  [K in keyof T & string]: T[K] extends Leaf | string[] ? `${P}${K}` : T[K] extends Record<string, string> ? never : Paths<T[K], `${P}${K}.`>;
 }[keyof T & string];
 
-/** A single preference, as "theme" or "editor.fontSize". */
+/** A single preference, as "theme", "editor.fontSize" or "editableFiles". */
 export type SettingPath = Paths<Settings>;
 
 /** Allowed choices for the settings that are one of a few strings. */
@@ -178,14 +185,14 @@ export function normalizeSettings(raw: unknown): Settings {
   return merge(defaultSettings as unknown as Record<string, unknown>, isObject(raw) ? raw : {}, "") as unknown as Settings;
 }
 
-export function getSetting(s: Settings, path: SettingPath): Leaf {
+export function getSetting(s: Settings, path: SettingPath): SettingValue {
   const [a, b] = path.split(".");
   const top = (s as unknown as Record<string, unknown>)[a];
-  return (b === undefined ? top : (top as Record<string, unknown>)[b]) as Leaf;
+  return (b === undefined ? top : (top as Record<string, unknown>)[b]) as SettingValue;
 }
 
 /** The `updateSettings` patch that sets one setting. */
-export function withSetting(s: Settings, path: SettingPath, value: Leaf): Partial<Settings> {
+export function withSetting(s: Settings, path: SettingPath, value: SettingValue): Partial<Settings> {
   const [a, b] = path.split(".");
   if (b === undefined) return { [a]: value } as Partial<Settings>;
   const group = (s as unknown as Record<string, Record<string, unknown>>)[a];
@@ -193,7 +200,21 @@ export function withSetting(s: Settings, path: SettingPath, value: Leaf): Partia
 }
 
 export function isDefault(s: Settings, path: SettingPath): boolean {
-  return getSetting(s, path) === getSetting(defaultSettings, path);
+  return sameValue(getSetting(s, path), getSetting(defaultSettings, path));
+}
+
+/** A list setting as typed one entry per line: blank lines and the spaces around entries are dropped. */
+export function listLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+}
+
+/** Lists are the same when they hold the same strings in the same order. */
+export function sameValue(a: SettingValue, b: SettingValue): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((x, i) => x === b[i]);
+  return a === b;
 }
 
 /** One patch that puts all the given settings back to their defaults. */

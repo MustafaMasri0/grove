@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 import { tabItems } from "../lib/contextMenus";
 import { isMenuKey, type MenuItem } from "../lib/menu";
 import { useStore } from "../store";
-import { isDocumentTab, revealPathOf, tabsToClose, type CloseWhich, type Tab } from "../tabs";
+import { docKey, isDocumentTab, revealPathOf, tabsToClose, type CloseWhich, type Tab } from "../tabs";
 import { menuEnv } from "../menuEnv";
 import { EditorTab, menuAtElement, menuAtPointer } from "../ui";
 import { DocumentView, Message } from "./DocumentView";
@@ -42,6 +42,7 @@ export function EditorArea() {
   const strip = useRef<HTMLDivElement>(null);
   const active = tabs.find((t) => t.id === activeId) ?? null;
   const issues = useStore((s) => s.listPane === "issues");
+  const unsaved = useStore((s) => s.unsaved);
 
   // The strip has no scrollbar, so the active tab brings itself into view.
   useEffect(() => {
@@ -55,6 +56,7 @@ export function EditorArea() {
           <div className="tabs-in" role="tablist">
             {tabs.map((t) => {
               const kind = kindOf(t);
+              const dirty = docKey(t) in unsaved;
               return (
                 <EditorTab
                   key={t.id}
@@ -63,7 +65,8 @@ export function EditorArea() {
                   preview={t.isPreview}
                   lead={kind.lead(t)}
                   mark={kind.mark}
-                  title={kind.tip(t)}
+                  dirty={dirty}
+                  title={dirty ? `${kind.tip(t)}\nUnsaved changes` : kind.tip(t)}
                   closeTip="Close (Ctrl+W)"
                   onClose={() => closeTab(t.id)}
                   onContextMenu={(e) => menuAtPointer(e, tabMenu(t))}

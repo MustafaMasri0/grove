@@ -8,6 +8,7 @@ const WT = [
 const HEAD = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";
 const query = new URLSearchParams(location.search);
 // ?states=1 adds a worktree that is gone and the bare repository, ?none=1 opens no repository, ?settings=<JSON> adds saved settings, ?reject=1 refuses pushes.
+// ?editable=1 lists .env (editable, not in git) and .env.example (editable, in git); ?conflict=1 makes their saves find them changed on disk.
 // ?many=1 gives agent-01 a long list of changes and the repository a long history, for the lists' keyboard use.
 // ?ov=loading|fail|nobase|errors|many|one|odd picks what the Worktrees overview gets.
 const OV = query.get("ov");
@@ -26,7 +27,7 @@ const CHANGED = [
 const MANY = query.has("many");
 const EXTRA = Array.from({ length: 80 }, (_, i) => ({ path: `src/generated/part-${String(i + 1).padStart(2, "0")}.ts`, origPath: null, kind: "modified", staged: ".", unstaged: "M" }));
 const CHANGES = MANY ? [...CHANGED, ...EXTRA] : CHANGED;
-const FILES = ["README.md", "package.json", "src/client/cart/total.ts", "src/server/orders/create.ts", "src/server/orders/refund.ts", "assets/app.bin", "data/dump.json", "docs/preview.html", "docs/assets/logo.png", "docs/assets/order-flow.svg"];
+const FILES = ["README.md", "package.json", "src/client/cart/total.ts", "src/server/orders/create.ts", "src/server/orders/refund.ts", "assets/app.bin", "data/dump.json", "docs/preview.html", "docs/assets/logo.png", "docs/assets/order-flow.svg", ...(query.has("editable") ? [".env", ".env.example"] : [])];
 
 // What the files hold. Long enough that sticky scroll, the minimap and the overview ruler have something to show.
 const CODE = (extra: boolean) => [
@@ -45,9 +46,17 @@ const HTML_PAGE = '<!doctype html><html><head><title>Order status</title></head>
 const svg = (fill: string, w: number, h: number) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${fill}"/></svg>`)}`;
 const text = (t: string) => ({ kind: "text", text: t });
 type Src = { kind: string; path?: string };
+// Editable files: what the harness saved.
+const saved = new Map<string, string>();
+const ENV = ["# Local settings", "DATABASE_URL=postgres://localhost/shop", "API_KEY=example-key", ""].join("\n");
+const isEditable = (path: string) => /(^|\/)\.env(\.[^/]*)?$/.test(path);
 const contentOf = (s: Src, right: boolean) => {
   if (s.kind === "empty") return text("");
+  if (s.kind === "worktree" && s.path && saved.has(s.path)) return text(saved.get(s.path)!);
   switch (s.path) {
+    case ".env":
+    case ".env.example":
+      return text(ENV);
     case "assets/app.bin":
       return { kind: "binary", size: 12698 };
     case "data/dump.json":
@@ -214,6 +223,12 @@ export function respondApp(cmd: string, args?: unknown): unknown {
       const sources = a.sources as unknown as Src[];
       return sources.map((s, i) => contentOf(s, i === sources.length - 1 && sources.length > 1));
     }
+    case "file_access":
+      return { editable: isEditable(a.path), reason: null, tracked: a.path === ".env.example" };
+    case "save_file":
+      if (query.has("conflict") && a.base !== null) return "changedOnDisk";
+      saved.set(a.path, a.text);
+      return "written";
     case "image_sources":
       return (a.sources as unknown as Src[]).map(imageOf);
     case "read_image":
@@ -249,6 +264,8 @@ export function respondApp(cmd: string, args?: unknown): unknown {
     case "run_action":
       return query.has("reject") ? { ok: false, rejected: true, text: "! [rejected] agent/orders-refund -> agent/orders-refund (fetch first)" } : { ok: true, rejected: false, text: "" };
     default:
+      // Every question a dialog asks is answered yes.
+      if (cmd === "plugin:dialog|ask") return true;
       if (cmd.startsWith("plugin:")) return null;
       throw new Error(`The harness has no answer for ${cmd}`);
   }

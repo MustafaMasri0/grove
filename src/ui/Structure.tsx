@@ -96,13 +96,15 @@ export interface EditorTabProps extends Omit<HTMLAttributes<HTMLDivElement>, "ro
   lead?: ReactNode;
   /** The tab's kind, such as ± for a diff. */
   mark?: string;
+  /** Has unsaved edits: a dot takes the close button's place until the tab is hovered or focused. */
+  dirty?: boolean;
   closeTip?: string;
   onClose?: () => void;
 }
 
-export function EditorTab({ text, on, preview, icon, lead, mark, className, closeTip, onClose, ...rest }: EditorTabProps) {
+export function EditorTab({ text, on, preview, icon, lead, mark, dirty, className, closeTip, onClose, ...rest }: EditorTabProps) {
   return (
-    <div {...rest} className={cx("tab", on && "on", preview && "preview", className)} role="tab" aria-selected={!!on} tabIndex={0}>
+    <div {...rest} className={cx("tab", on && "on", preview && "preview", dirty && "dirty", className)} role="tab" aria-selected={!!on} tabIndex={0}>
       {lead ?? (icon && <Icon name={icon} size={13} />)}
       {mark && (
         <span className="tab-kind" aria-hidden="true">
@@ -110,6 +112,7 @@ export function EditorTab({ text, on, preview, icon, lead, mark, className, clos
         </span>
       )}
       <span className="ell">{text}</span>
+      {dirty && <span className="tab-dot" role="img" aria-label="Unsaved changes" />}
       <Button
         kind="ghost"
         size="sm"

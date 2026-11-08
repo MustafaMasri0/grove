@@ -66,6 +66,8 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && !e.shiftKey && key === "f" && !inEditor) editorCommands.run("actions.find");
   else if (ctrl && !e.shiftKey && key === "g" && !inEditor) editorCommands.run("editor.action.gotoLine");
   else if (key === "F7" && !e.ctrlKey && !e.altKey && !inEditor) editorCommands.goToDiff(e.shiftKey ? "previous" : "next");
+  // Saves an editable file, wherever the focus is; otherwise it only keeps the browser's Save page away.
+  else if (ctrl && !e.shiftKey && key === "s") editorCommands.save();
   else if (ctrl && !e.shiftKey && key === "w") {
     if (atWork && s.activeTab) s.closeTab(s.activeTab);
   } else if (ctrl && key === "Tab") {
@@ -84,7 +86,7 @@ function onKeyDown(e: KeyboardEvent) {
   else if (ctrl && (key === "=" || key === "+")) imageCommands.active ? imageCommands.zoom(1) : stepZoom(1);
   else if (ctrl && key === "-") imageCommands.active ? imageCommands.zoom(-1) : stepZoom(-1);
   else if (ctrl && key === "0") imageCommands.active ? imageCommands.zoom(0) : setZoom(1);
-  // Browser shortcuts that make no sense here (print, reload, save page, find bar).
+  // Browser shortcuts that make no sense here (print, reload, save page as, find bar).
   else if (key === "F3" || (ctrl && (key === "s" || key === "u"))) {
     /* swallow */
   } else return;
@@ -158,6 +160,11 @@ export function App() {
       listen<WorktreeChanged>("worktree-changed", (e) => useStore.getState().noteChange(e.payload)),
       listen<{ cwd: string; line: string }>("action-progress", (e) => setActionProgress(e.payload.cwd, e.payload.line)),
       listen<string>("connection-lost", (e) => void useStore.getState().reconnect(e.payload)),
+      // Closing the window throws away unsaved edits: ask first. Tauri waits for the answer before closing.
+      getCurrentWebviewWindow().onCloseRequested(async (e) => {
+        const names = Object.values(useStore.getState().unsaved);
+        if (names.length > 0 && !(await api.confirmDiscard(names))) e.preventDefault();
+      }),
     ];
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);

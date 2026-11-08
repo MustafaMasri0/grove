@@ -1,6 +1,6 @@
 // The view for file, diff and settings tabs: Monaco's two editors, the rendered previews, and their toolbar.
 import { useEffect, useRef, useState } from "react";
-import { api, errorText, type Blame, type Content, type ImageSource } from "../api";
+import { api, errorText, type Blame, type Content, type FileAccess, type ImageSource } from "../api";
 import { blameMargin, commitAtLine } from "../lib/blame";
 import { editorOptions } from "../lib/editorOptions";
 import { viewKind } from "../lib/fileKinds";
@@ -8,12 +8,13 @@ import { scriptsAllowed, withRunScripts } from "../lib/settings";
 import { formatBytes, shortSha } from "../lib/format";
 import { languageFor, monaco } from "../monaco";
 import { useStore } from "../store";
-import { isLive, isWorktreeTab, type DocumentTab, type FileTab, type Tab } from "../tabs";
+import { docKey, isLive, isWorktreeFile, isWorktreeTab, type DocumentTab, type FileTab } from "../tabs";
 import { Button, Empty, menuAtElement, PathLabel, Toggle, Toolbar, Tray } from "../ui";
 import { Icon } from "./Icon";
 import { HtmlPreview } from "./HtmlPreview";
 import { ImageView } from "./ImageView";
 import { MarkdownPreview } from "./MarkdownPreview";
+import { AccessTags } from "./AccessTags";
 
 type Editor = monaco.editor.IStandaloneCodeEditor;
 type DiffEditor = monaco.editor.IStandaloneDiffEditor;
@@ -33,13 +34,32 @@ interface Doc {
   /** Files and diffs: shown as pictures (`images`, one per side) or as text in the editors. */
   mode?: "image" | "text";
   images?: ImageSource[];
+  /** Worktree files: whether they may be edited, asked again at each load. */
+  access?: FileAccess;
+  /** Worktree files: the text as read from disk (not as Monaco normalised it), which a save must still find there. */
+  base?: string;
+  /** The model's alternative version id when it last held `base` or was saved; any other means unsaved edits. */
+  savedVersion?: number;
+  /** As last told to the store. */
+  dirty?: boolean;
+  /** Set while the view itself replaces the model's text, so that is not taken for an edit. */
+  applying?: boolean;
+  /** The file changed on disk under unsaved edits, seen by a reload or refused by a save. */
+  conflict?: boolean;
+  saving?: boolean;
+  saveError?: string;
 }
+
+/** Whether the model holds edits that are not on disk. */
+const hasEdits = (d: Doc) => d.savedVersion !== undefined && !!d.modified && d.modified.getAlternativeVersionId() !== d.savedVersion;
 
 /** The editor commands keyboard shortcuts reach from outside Monaco. */
 export const editorCommands = {
   focus: () => {},
   run: (_id: string) => {},
   goToDiff: (_dir: "next" | "previous") => {},
+  /** Ctrl+S: saves the active tab when it is an editable file with edits. The app's own shortcut, since it keeps Ctrl+S from the page. */
+  save: () => {},
 };
 
 function describe(c: Content): string | null {
@@ -55,9 +75,6 @@ function showsImage(t: DocumentTab, preview: boolean): boolean {
   if (!isWorktreeTab(t)) return false;
   return viewKind(t.path) === "image" && (preview || !/\.svg$/i.test(t.path));
 }
-
-/** Tabs of different worktrees may share an id, and `HEAD` differs between them. */
-const docKey = (t: Tab) => `${isWorktreeTab(t) ? t.cwd : ""}\n${t.id}`;
 
 /** Below this width the diff toolbar moves its two toggles into a More menu. */
 const COMPACT_TOOLBAR = 600;
@@ -88,6 +105,7 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
   const blameOn = useStore((s) => s.blame);
   const toggleBlame = useStore((s) => s.toggleBlame);
   const covered = useStore((s) => s.view === "overview");
+  const unsaved = useStore((s) => s.unsaved);
 
   const stack = useRef<HTMLDivElement>(null);
   const diffHost = useRef<HTMLDivElement>(null);
@@ -100,6 +118,8 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
   const shown = useRef<string | null>(null);
   /** The blame the file editor's margin shows, and the line count it was laid out for. */
   const blameShown = useRef<{ blame: Blame; lines: number } | null>(null);
+  /** Whether the file editor currently takes typing; it starts read-only. */
+  const typing = useRef(false);
   const [, rerender] = useState(0);
   const [compact, setCompact] = useState(false);
 
@@ -190,6 +210,8 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
 
   // Dispose models of closed tabs, and of tabs parked with their worktree: an open worktree with
   // many tabs costs memory only while shown. Parked tabs load again, where they were, on return.
+  // A parked tab with unsaved edits keeps its model (the edits live only there) until its worktree is
+  // shown again or the store lets the edits go.
   useEffect(() => {
     const open = new Set(tabs.map(docKey));
     const parked = new Set(Object.values(useStore.getState().parked).flatMap((v) => v.tabs.map((p) => docKey(p.tab))));
@@ -201,13 +223,14 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
         codeEditor.current?.setModel(null);
         shown.current = null;
       }
+      if (key in unsaved) continue;
       if (parked.has(key) && d.viewState) parkedViews.current.set(key, d.viewState);
       d.original?.dispose();
       d.modified?.dispose();
       docs.current.delete(key);
     }
     for (const key of parkedViews.current.keys()) if (!parked.has(key) && !open.has(key)) parkedViews.current.delete(key);
-  }, [tabs]);
+  }, [tabs, unsaved]);
 
   /** Line numbers of the file editor: the blame margin while one is shown, else as set. */
   const lineNumberOptions = (): monaco.editor.IEditorOptions => {
@@ -243,7 +266,11 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
         model.updateOptions({ tabSize: useStore.getState().settings.editor.tabSize });
         return model;
       }
-      if (model.getValue() !== text) model.setValue(text);
+      if (model.getValue() !== text) {
+        doc.applying = true;
+        model.setValue(text);
+        doc.applying = false;
+      }
       return model;
     };
     if (tab.kind === "settings") {
@@ -285,12 +312,22 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
     }
     doc.mode = "text";
     doc.images = undefined;
+    const worktreeFile = isWorktreeFile(tab);
     try {
+      // Asked alongside the read: the patterns or git's view of the file may have changed since the last load.
+      const access = worktreeFile ? api.fileAccess(at, tab.path).catch(() => undefined) : undefined;
       const contents = await api.readSources(at, sources);
       if (!docs.current.has(key)) return;
       doc.loadedTick = useStore.getState().tick;
+      if (worktreeFile) doc.access = await access;
+      if (!docs.current.has(key)) return;
       const message = contents.map(describe).find(Boolean);
-      if (tab.kind === "file" && contents[0].kind === "missing") {
+      if (worktreeFile && hasEdits(doc)) {
+        // Unsaved edits are never replaced: a file that no longer holds what they started from is only flagged.
+        // During a save the file holds the new text before the answer arrives; the save itself tells.
+        const c = contents[0];
+        if (!doc.saving && (c.kind !== "text" || c.text !== doc.base)) doc.conflict = true;
+      } else if (tab.kind === "file" && contents[0].kind === "missing") {
         doc.state = "message";
         doc.message = "This file does not exist.";
       } else if (message) {
@@ -302,7 +339,14 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
           doc.original = setText(doc.original, textOf(contents[0]), tab.origPath ? languageFor(tab.origPath) : lang);
           doc.modified = setText(doc.modified, textOf(contents[1]), lang);
         } else {
+          const fresh = !doc.modified;
           doc.modified = setText(doc.modified, textOf(contents[0]), lang);
+          if (worktreeFile) {
+            doc.base = textOf(contents[0]);
+            doc.savedVersion = doc.modified.getAlternativeVersionId();
+            doc.conflict = false;
+            if (fresh) doc.modified.onDidChangeContent(() => !doc.applying && noteEdits(tab, doc));
+          }
         }
         doc.state = "ready";
       }
@@ -311,6 +355,48 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
       doc.message = errorText(e);
     }
     rerender((n) => n + 1);
+  };
+
+  /** After an edit or a save: tells the store whether the tab has unsaved edits, and redraws when that changed. */
+  const noteEdits = (tab: FileTab, doc: Doc) => {
+    const dirty = hasEdits(doc);
+    if (dirty === !!doc.dirty) return;
+    doc.dirty = dirty;
+    useStore.getState().markUnsaved(tab, dirty);
+    if (docs.current.get(docKey(tab)) === doc) rerender((n) => n + 1);
+  };
+
+  /** Writes the editor's text, if the file still holds what it was loaded with (or, with `overwrite`, whatever it holds). */
+  const save = async (tab: FileTab, doc: Doc, overwrite = false) => {
+    if (doc.saving || !doc.modified || !doc.access?.editable) return;
+    const text = doc.modified.getValue();
+    const version = doc.modified.getAlternativeVersionId();
+    doc.saving = true;
+    doc.saveError = undefined;
+    rerender((n) => n + 1);
+    try {
+      const outcome = await api.saveFile({ repo: tab.repo, cwd: tab.cwd }, tab.path, overwrite ? null : (doc.base ?? null), text);
+      if (outcome === "written") {
+        doc.base = text;
+        doc.savedVersion = version;
+        doc.conflict = false;
+      } else doc.conflict = true;
+    } catch (e) {
+      doc.saveError = errorText(e);
+    }
+    doc.saving = false;
+    noteEdits(tab, doc);
+    rerender((n) => n + 1);
+  };
+
+  /** Throws the edits away and shows the file as it is on disk. */
+  const reload = (tab: FileTab, doc: Doc) => {
+    if (!doc.modified) return;
+    doc.savedVersion = doc.modified.getAlternativeVersionId();
+    doc.conflict = false;
+    doc.saveError = undefined;
+    noteEdits(tab, doc);
+    void load(tab, doc);
   };
 
   // Load the active tab, and reload it when the worktree changed and it shows files from disk
@@ -358,6 +444,36 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
       activeDoc.revealed = true;
     }
   });
+
+  // The editable-file patterns may have changed: ask again whether the shown file can be edited.
+  useEffect(() => {
+    const doc = activeDoc;
+    if (!active || !isWorktreeFile(active) || doc?.state !== "ready" || doc.mode !== "text" || !settingsSaved) return;
+    let live = true;
+    api.fileAccess({ repo: active.repo, cwd: active.cwd }, active.path).then(
+      (access) => {
+        if (!live || docs.current.get(docKey(active)) !== doc) return;
+        doc.access = access;
+        rerender((n) => n + 1);
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsSaved]);
+
+  // Both editors are made read-only; the file editor takes typing only while it shows an editable worktree file.
+  const editable = !!active && isWorktreeFile(active) && activeDoc?.state === "ready" && activeDoc.mode === "text" && !!activeDoc.access?.editable;
+  useEffect(() => {
+    if (typing.current === editable) return;
+    typing.current = editable;
+    codeEditor.current?.updateOptions({ readOnly: !editable, domReadOnly: !editable });
+  });
+  editorCommands.save = () => {
+    if (editable && !covered && active?.kind === "file" && activeDoc?.dirty) void save(active, activeDoc);
+  };
 
   // Search results can re-target an open file at a new line.
   useEffect(() => {
@@ -435,7 +551,37 @@ export function DocumentView({ tab: active }: { tab: DocumentTab | null }) {
                 {active.leftLabel} ↔ {active.rightLabel}
               </span>
             )}
+            {active.kind === "file" && activeDoc?.access && <AccessTags access={activeDoc.access} />}
             <span className="spacer" />
+            {editable && active.kind === "file" && activeDoc && (
+              <>
+                {activeDoc.conflict && (
+                  <>
+                    <span className="err-text ell" role="status" title="The file changed on disk after you started editing it.">
+                      Changed on disk
+                    </span>
+                    <Button size="sm" text="Reload" tip="Discard your edits and show the file as it is on disk" onClick={() => reload(active, activeDoc)} />
+                    <Button size="sm" text="Overwrite" tip="Save your version over the one on disk" loading={activeDoc.saving} onClick={() => void save(active, activeDoc, true)} />
+                  </>
+                )}
+                {activeDoc.saveError && (
+                  <span className="err-text ell" role="alert" title={activeDoc.saveError}>
+                    Not saved: {activeDoc.saveError}
+                  </span>
+                )}
+                {!activeDoc.conflict && (
+                  <Button
+                    kind={activeDoc.dirty ? "primary" : "ghost"}
+                    size="sm"
+                    text="Save"
+                    tip="Save (Ctrl+S)"
+                    disabled={activeDoc.dirty ? undefined : "No unsaved changes"}
+                    loading={activeDoc.saving}
+                    onClick={() => void save(active, activeDoc)}
+                  />
+                )}
+              </>
+            )}
             {active.kind === "file" && (isMarkdown || isHtml || isSvg) && (
               <>
                 {showHtml && (

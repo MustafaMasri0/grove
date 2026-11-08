@@ -25,7 +25,7 @@ import { activityBetween, addActivity, DEFAULT_OVERVIEW_SORT, editsOf, readableP
 import { sortPaths } from "./lib/tree";
 
 import { normalizeSettings, defaultSettings, type ChangesMode, type Settings } from "./lib/settings";
-import { fileTab, isAppTab, issueTab, parkTabs, revisionTab, settingsTab, uncommittedTab, unparkTabs, type ParkedTab, type Tab, type TabDraft } from "./tabs";
+import { docKey, fileTab, isAppTab, issueTab, parkTabs, revisionTab, settingsTab, uncommittedTab, unparkTabs, type ParkedTab, type Tab, type TabDraft } from "./tabs";
 
 export type { ChangesMode, Settings, Theme } from "./lib/settings";
 export type LeftTab = "changes" | "history" | "explorer" | "search";
@@ -140,6 +140,8 @@ interface State {
   tick: number;
   tabs: Tab[];
   activeTab: string | null;
+  /** `docKey` → tab title, for every document with edits not saved yet: open tabs and those parked with their worktree. */
+  unsaved: Record<string, string>;
   /** What the palette is searching while it is open: everything (Ctrl+K), or the worktree's files (Ctrl+P). */
   palette: PaletteScope | null;
   searchFocus: number;
@@ -160,7 +162,8 @@ interface State {
   init(): Promise<void>;
   updateSettings(patch: Partial<Settings>): void;
   addRepo(path: string): Promise<void>;
-  removeRepo(path: string): void;
+  /** Asks first when the repository's tabs have unsaved edits. */
+  removeRepo(path: string): Promise<void>;
   selectRepo(id: string): Promise<void>;
   selectWorktree(path: string): Promise<void>;
   selectBranch(b: BranchRef): Promise<void>;
@@ -197,9 +200,12 @@ interface State {
   openIssue(number: number, title: string | undefined, pin: boolean): void;
   setTabTitle(id: string, title: string): void;
   pinTab(id: string): void;
-  closeTab(id: string): void;
-  /** Closes several tabs; `keep` becomes active if the active tab is among them. */
-  closeTabs(ids: string[], keep?: string): void;
+  /** Asks first when the tab has unsaved edits; with none it closes at once. */
+  closeTab(id: string): Promise<void>;
+  /** Closes several tabs, asking first about unsaved edits; `keep` becomes active if the active tab is among them. */
+  closeTabs(ids: string[], keep?: string): Promise<void>;
+  /** Records whether a tab's document has edits not saved yet; a tab with edits is kept open rather than replaced as a preview. */
+  markUnsaved(tab: Tab, unsaved: boolean): void;
   activateTab(id: string): void;
   cycleTab(delta: number): void;
   setPalette(scope: PaletteScope | null): void;
@@ -349,6 +355,24 @@ export const useStore = create<State>()((set, get) => {
 
   const showWork = () => set({ view: "work", settingsOpen: false });
 
+  /**
+   * Whether the unsaved edits of these documents (`docKey`s; all of them when left out) may be thrown away: true at
+   * once when none has any, else the user's answer. Callers check `=== true` before awaiting, so closing without
+   * edits stays synchronous.
+   */
+  const mayDiscard = (keys?: readonly string[]): true | Promise<boolean> => {
+    const { unsaved } = get();
+    const names = (keys ?? Object.keys(unsaved)).flatMap((k) => (k in unsaved ? [unsaved[k]] : []));
+    return names.length === 0 ? true : api.confirmDiscard(names);
+  };
+
+  /** `unsaved` without these documents. */
+  const forget = (keys: readonly string[]) => {
+    const unsaved = { ...get().unsaved };
+    for (const k of keys) delete unsaved[k];
+    return unsaved;
+  };
+
   /** With no repository the work view exists only for settings.json: without a tab it goes back to the welcome page. */
   const afterClosing = (rest: readonly Tab[]) => (!get().repo && rest.length === 0 ? { view: "overview" as const } : {});
 
@@ -479,6 +503,7 @@ export const useStore = create<State>()((set, get) => {
     tick: 0,
     tabs: [],
     activeTab: null,
+    unsaved: {},
     palette: null,
     searchFocus: 0,
     issuesFocus: false,
@@ -532,15 +557,23 @@ export const useStore = create<State>()((set, get) => {
       await get().selectRepo(trimmed);
     },
 
-    removeRepo(path) {
+    async removeRepo(path) {
+      if (get().repo?.id === path) {
+        const ok = mayDiscard();
+        if (ok !== true && !(await ok)) return;
+      }
       const { settings, repo } = get();
       get().updateSettings({ repos: settings.repos.filter((r) => r !== path), lastRepo: settings.lastRepo === path ? null : settings.lastRepo });
-      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, view: "overview", overview: null, ...keepAppTabs() });
+      if (repo?.id === path) set({ repo: null, worktrees: [], cwd: null, branches: [], status: null, parked: {}, viewBranch: null, view: "overview", overview: null, unsaved: {}, ...keepAppTabs() });
     },
 
     async selectRepo(id) {
+      // Every worktree tab closes, so all unsaved edits would go.
+      const ok = mayDiscard();
+      if (ok !== true && !(await ok)) return;
       const pick = ++repoPick;
       set({
+        unsaved: {},
         repoError: null,
         viewBranch: null,
         parked: {},
@@ -854,18 +887,27 @@ export const useStore = create<State>()((set, get) => {
       set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, isPreview: false } : t)) }));
     },
 
-    closeTab(id) {
+    async closeTab(id) {
+      const tab = get().tabs.find((t) => t.id === id);
+      if (!tab) return;
+      const ok = mayDiscard([docKey(tab)]);
+      if (ok !== true && !(await ok)) return;
+      // Read again: the tabs may have changed while the user was asked.
       const { tabs, activeTab } = get();
       const idx = tabs.findIndex((t) => t.id === id);
       if (idx < 0) return;
       const rest = tabs.filter((t) => t.id !== id);
       const nextActive = activeTab === id ? (rest[idx] ?? rest[idx - 1])?.id ?? null : activeTab;
-      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
+      set({ tabs: rest, activeTab: nextActive, unsaved: forget([docKey(tabs[idx])]), ...afterClosing(rest) });
     },
 
-    closeTabs(ids, keep) {
-      const { tabs, activeTab } = get();
+    async closeTabs(ids, keep) {
       const gone = new Set(ids);
+      const closing = get().tabs.filter((t) => gone.has(t.id));
+      if (closing.length === 0) return;
+      const ok = mayDiscard(closing.map(docKey));
+      if (ok !== true && !(await ok)) return;
+      const { tabs, activeTab } = get();
       const rest = tabs.filter((t) => !gone.has(t.id));
       if (rest.length === tabs.length) return;
       let nextActive = activeTab;
@@ -874,7 +916,14 @@ export const useStore = create<State>()((set, get) => {
         const before = tabs.slice(0, tabs.findIndex((t) => t.id === activeTab)).filter((t) => !gone.has(t.id));
         nextActive = (keep && !gone.has(keep) ? keep : before.at(-1)?.id ?? rest[0]?.id) ?? null;
       }
-      set({ tabs: rest, activeTab: nextActive, ...afterClosing(rest) });
+      set({ tabs: rest, activeTab: nextActive, unsaved: forget(tabs.filter((t) => gone.has(t.id)).map(docKey)), ...afterClosing(rest) });
+    },
+
+    markUnsaved(tab, unsaved) {
+      const key = docKey(tab);
+      if (unsaved === key in get().unsaved) return;
+      if (!unsaved) return set({ unsaved: forget([key]) });
+      set((s) => ({ unsaved: { ...s.unsaved, [key]: tab.title }, tabs: s.tabs.map((t) => (t.id === tab.id && t.isPreview ? { ...t, isPreview: false } : t)) }));
     },
 
     activateTab(id) {

@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, Ref } from "react";
+import type { InputHTMLAttributes, ReactNode, Ref, TextareaHTMLAttributes } from "react";
 import { Icon } from "../components/Icon";
 import { cx } from "./classes";
 
@@ -37,6 +37,29 @@ export function Field({ label, search, suffix, invalid, mono, quiet, className, 
       {input}
       {suffix && <span className="field-sfx">{suffix}</span>}
     </span>
+  );
+}
+
+export interface TextAreaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "children"> {
+  /** The accessible name; defaults to the placeholder. */
+  label?: string;
+  invalid?: boolean;
+  /** The code font, for paths and patterns. */
+  mono?: boolean;
+  ref?: Ref<HTMLTextAreaElement>;
+}
+
+/** Multi-line text field, with the same look as Field. */
+export function TextArea({ label, invalid, mono, className, rows = 4, ...rest }: TextAreaProps) {
+  return (
+    <textarea
+      {...rest}
+      rows={rows}
+      className={cx("field", "multi", mono && "mono", invalid && "invalid", className)}
+      aria-label={label ?? rest.placeholder}
+      aria-invalid={invalid ? true : undefined}
+      spellCheck={false}
+    />
   );
 }
 

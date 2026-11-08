@@ -3,9 +3,9 @@ import { describe, expect, test, vi } from "vitest";
 import { Button, Toggle } from "./Button";
 import { STATUS_LETTER, STATUS_TITLE, cx, splitDisplayPath, thumbInsets } from "./classes";
 import { Banner, HelpTip } from "./Feedback";
-import { Checkbox, Field } from "./Field";
+import { Checkbox, Field, TextArea } from "./Field";
 import { Badge, Chip, Mark, StateTag } from "./Status";
-import { Row } from "./Structure";
+import { EditorTab, Row } from "./Structure";
 import { SortHeader, TableRow } from "./Table";
 import { Tray } from "./Tray";
 
@@ -171,5 +171,23 @@ describe("HelpTip", () => {
     expect(out).toContain('data-tip="Why"');
     expect(out).toContain('tabindex="0"');
     expect(out).toContain('aria-label="Why"');
+  });
+});
+
+describe("EditorTab", () => {
+  test("a tab with unsaved edits shows a dot a screen reader names", () => {
+    const out = html(<EditorTab text=".env" dirty />);
+    expect(out).toContain("tab dirty");
+    expect(out).toContain('aria-label="Unsaved changes"');
+    expect(html(<EditorTab text=".env" />)).not.toContain("tab-dot");
+  });
+});
+
+describe("TextArea", () => {
+  test("looks like a field, is named by its label and does not spell-check", () => {
+    const out = html(<TextArea label="Editable files" mono value=".env" readOnly />);
+    expect(out).toContain('class="field multi mono"');
+    expect(out).toContain('aria-label="Editable files"');
+    expect(out).toContain('spellCheck="false"');
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commitFileTab, fileTab, isAppTab, isDocumentTab, issueTab, parkTabs, revealPathOf, settingsTab, tabsToClose, uncommittedTab, unparkTabs, type Tab, type TabDraft } from "./tabs";
+import { commitFileTab, docKey, fileTab, isAppTab, isDocumentTab, isWorktreeFile, issueTab, parkTabs, revealPathOf, settingsTab, tabsToClose, uncommittedTab, unparkTabs, type Tab, type TabDraft } from "./tabs";
 
 const tabs = ["a", "b", "c", "d"].map((id) => ({ id }));
 
@@ -119,5 +119,24 @@ describe("issue tabs", () => {
   it("are not shown by the document view", () => {
     expect(isDocumentTab(issue)).toBe(false);
     expect(isDocumentTab(settingsTab("settings.json"))).toBe(true);
+  });
+});
+
+describe("documents", () => {
+  const at = (cwd: string, rev: string | null): Tab => ({ ...fileTab(cwd, ".env", rev), isPreview: false, repo: "/src/example", cwd });
+
+  it("are told apart by worktree, even for tabs with the same id", () => {
+    const branchTip = (cwd: string) => at(cwd, "refs/heads/main");
+    expect(branchTip("/a").id).toBe(branchTip("/b").id);
+    expect(docKey(branchTip("/a"))).not.toBe(docKey(branchTip("/b")));
+    expect(docKey(settingsTab("settings.json"))).toBe(docKey(settingsTab("settings.json")));
+  });
+
+  it("can be edited only as the worktree's own file", () => {
+    expect(isWorktreeFile(at("/a", null))).toBe(true);
+    expect(isWorktreeFile(at("/a", "HEAD"))).toBe(false);
+    const diff: Tab = { ...uncommittedTab("/a", { path: ".env", origPath: null, kind: "modified", staged: ".", unstaged: "M" }), isPreview: false, repo: "/src/example", cwd: "/a" };
+    expect(isWorktreeFile(diff)).toBe(false);
+    expect(isWorktreeFile(settingsTab("settings.json"))).toBe(false);
   });
 });

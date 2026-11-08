@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { errorText } from "../api";
 import { loginReader, type RepoLogins } from "../lib/issueLogins";
-import { RANGES, defaultSettings, getSetting, isDefault, resetAll, withSetting, type SettingPath } from "../lib/settings";
+import { RANGES, defaultSettings, getSetting, isDefault, resetAll, listLines, sameValue, withSetting, type SettingPath, type SettingValue } from "../lib/settings";
 import { SECTIONS, SETTINGS, filterSettings, groupBySection, matchesQuery, type Control, type SectionId, type SettingDef } from "../lib/settingsSchema";
 import { SHORTCUTS } from "../lib/shortcuts";
 import { useStore } from "../store";
-import { Badge, Button, Checkbox, Dialog, EmptyLine, Field, Keys, Select, SettingRow, Toggle } from "../ui";
+import { Badge, Button, Checkbox, Dialog, EmptyLine, Field, Keys, Select, SettingRow, TextArea, Toggle } from "../ui";
 import "../settings.css";
 
 const sectionTitle = (id: SectionId) => SECTIONS.find((s) => s.id === id)!.title;
@@ -184,7 +184,7 @@ export function SettingsDialog() {
 
 function SettingLine({ def }: { def: SettingDef }) {
   const changed = useStore((s) => !isDefault(s.settings, def.path));
-  const set = (v: string | number | boolean) => {
+  const set = (v: SettingValue) => {
     const { settings, updateSettings } = useStore.getState();
     updateSettings(withSetting(settings, def.path, v));
   };
@@ -196,17 +196,18 @@ function SettingLine({ def }: { def: SettingDef }) {
       htmlFor={id}
       modified={changed}
       control={<SettingControl id={id} def={def} onChange={set} />}
-      reset={changed && <Button kind="link" size="sm" className="set-rst" text="Reset to default" tip={`Default: ${describeDefault(def)}`} onClick={() => set(getSetting(defaultSettings, def.path) as string | number | boolean)} />}
+      reset={changed && <Button kind="link" size="sm" className="set-rst" text="Reset to default" tip={`Default: ${describeDefault(def)}`} onClick={() => set(getSetting(defaultSettings, def.path))} />}
     />
   );
 }
 
-function SettingControl({ id, def, onChange }: { id: string; def: SettingDef; onChange: (v: string | number | boolean) => void }) {
+function SettingControl({ id, def, onChange }: { id: string; def: SettingDef; onChange: (v: SettingValue) => void }) {
   const value = useStore((s) => getSetting(s.settings, def.path));
   const c = def.control;
   if (c.kind === "toggle") return <Checkbox id={id} label={def.label} checked={value === true} onChange={(e) => onChange(e.target.checked)} />;
   if (c.kind === "number") return <NumberInput id={id} label={def.label} path={def.path} value={value as number} control={c} onChange={onChange} />;
   if (c.kind === "text") return <TextInput id={id} label={def.label} value={value as string} placeholder={c.placeholder} onChange={onChange} />;
+  if (c.kind === "list") return <ListInput id={id} label={def.label} value={value as readonly string[]} placeholder={c.placeholder} onChange={onChange} />;
   const at = c.options.findIndex((o) => o.value === value);
   // A hand-edited value that is no option shows as it is.
   return <Select id={id} label={def.label} value={at < 0 ? String(value) : String(at)} options={c.options.map((o, i) => ({ value: String(i), label: o.label }))} popWidth={220} onPick={(v) => onChange(c.options[Number(v)].value)} />;
@@ -216,6 +217,7 @@ function describeDefault(def: SettingDef): string {
   const v = getSetting(defaultSettings, def.path);
   if (def.control.kind === "select") return def.control.options.find((o) => o.value === v)?.label ?? String(v);
   if (def.control.kind === "toggle") return v ? "on" : "off";
+  if (Array.isArray(v)) return v.join(", ");
   return String(v);
 }
 
@@ -279,6 +281,30 @@ function TextInput(p: { id: string; label: string; value: string; placeholder?: 
         if (e.target.value.trim()) p.onChange(e.target.value);
       }}
       onBlur={() => !draft.trim() && setDraft(p.value)}
+    />
+  );
+}
+
+/** A list of strings, one per line, applied as typed. The draft keeps blank lines while it is edited, and is tidied when it loses focus. */
+function ListInput(p: { id: string; label: string; value: readonly string[]; placeholder?: string; onChange: (v: string[]) => void }) {
+  const [draft, setDraft] = useState(p.value.join("\n"));
+  // A change from elsewhere (Reset to default) replaces the draft; the draft's own changes do not.
+  useEffect(() => setDraft((d) => (sameValue(listLines(d), p.value) ? d : p.value.join("\n"))), [p.value]);
+  return (
+    <TextArea
+      id={p.id}
+      className="set-list"
+      label={p.label}
+      mono
+      rows={Math.min(10, Math.max(4, p.value.length + 1))}
+      value={draft}
+      placeholder={p.placeholder}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const v = listLines(e.target.value);
+        if (!sameValue(v, p.value)) p.onChange(v);
+      }}
+      onBlur={() => setDraft(p.value.join("\n"))}
     />
   );
 }

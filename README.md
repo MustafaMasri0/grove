@@ -9,12 +9,14 @@ at a glance.
 
 Grove is free and open source under the [MIT licence](LICENSE).
 
-- **Safe by default.** Today Grove does not change your working tree, index,
-  branches or stashes. The only git commands that write anything are `fetch`,
+- **Safe by default.** Grove does not change your index, branches or stashes,
+  and of your working tree it only writes the local config and secret files you
+  name (`.env` and the like, see Editable files below), when you save one. The
+  only git commands that write anything are `fetch`,
   `push` (never forced), `push -u origin <branch>` and `clone` into a new
   folder, each started by an explicit button. Every git command Grove may run, in the app and in its
   helper, is on an allowlist, and reads are limited to known commands and
-  options. Editing files and more git actions are planned. They will go
+  options. More git actions are planned. They will go
   through the same allowlist.
 - **Windows only, for now.** It is a Tauri 2 app that uses WebView2. Linux and
   macOS builds are not supported yet. Contributions are welcome.
@@ -112,6 +114,17 @@ address.
   by message, author, email or SHA prefix.
 - **File history** follows renames. **Blame** shows each line's last commit in
   the margin. Click one to open that commit.
+- **Editable files**: every file opens read-only, except the local config and
+  secret files the Editable files setting names, as gitignore-style patterns
+  (by default `.env`, `.env.*`, `*.local.*`, `*.tfvars` and `.dev.vars`). Such a
+  file, opened from Explorer, search or Quick Open (not a diff), shows
+  **Editable**, and whether git tracks it, so a save would show up as a change
+  to commit. Ctrl+S or Save writes it, unless it changed on disk since it was
+  loaded: then Reload takes the disk's version and Overwrite keeps yours. A
+  refresh never replaces unsaved edits. Closing a tab, the window, or switching
+  repository asks before throwing edits away. Files tools own (`.git`,
+  `.terraform`, Terraform state) are never editable, and the backend checks the
+  saved patterns again on every save.
 - **Markdown** files open rendered, with working links between files.
 - **Images** (png, jpg, gif, webp, svg, ico, bmp, avif) open as pictures,
   fitted to the window, over a checkerboard where they are transparent, with
@@ -137,7 +150,7 @@ address.
 
 Shortcuts: Ctrl+, settings, Ctrl+K search, Ctrl+P quick open, Ctrl+Shift+F search,
 Ctrl+Shift+O worktrees overview, Ctrl+I issues, Ctrl+B fold the rail, Ctrl+F find,
-Ctrl+G go to line, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
+Ctrl+G go to line, Ctrl+S save an editable file, F7 / Shift+F7 next/previous change, Ctrl+W close tab,
 Ctrl+Tab / Ctrl+Shift+Tab switch tabs, F5 refresh, Ctrl+= / Ctrl+- / Ctrl+0
 zoom.
 

@@ -1,5 +1,6 @@
 // Typed wrappers around the Rust commands. Shapes mirror wv-core's serde types.
 import { invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 
 export type ChangeKind = "modified" | "added" | "deleted" | "renamed" | "copied" | "untracked" | "ignored" | "conflicted";
 
@@ -123,6 +124,18 @@ export type Content =
   | { kind: "binary"; size: number }
   | { kind: "tooLarge"; size: number }
   | { kind: "missing" };
+
+/** Whether Grove may edit a worktree file: only files the `editableFiles` patterns name, and never what tools own. */
+export interface FileAccess {
+  editable: boolean;
+  /** Why a file the patterns name still cannot be edited (not UTF-8, too large); null otherwise. */
+  reason: string | null;
+  /** Git tracks the file, so saved changes show up as changes to commit. */
+  tracked: boolean;
+}
+
+/** How a save ended: written, or refused because the file no longer holds the text the editor loaded. */
+export type SaveOutcome = "written" | "changedOnDisk";
 
 /** One side of an image view: where it loads from (a wvfile: URL), or why it is not shown. */
 export type ImageSource = { kind: "image"; size: number; url: string } | { kind: "tooLarge"; size: number } | { kind: "missing" };
@@ -341,6 +354,18 @@ export const api = {
   blame: (a: At, source: Source) => invoke<Blame>("blame", { ...a, source }),
   commit: (a: At, sha: string) => invoke<CommitWithFiles>("commit", { ...a, sha }),
   readSources: (a: At, sources: Source[]) => invoke<Content[]>("read_sources", { ...a, sources }),
+  /** Whether worktree file `path` can be edited; the backend reads the patterns from the saved settings. */
+  fileAccess: (a: At, path: string) => invoke<FileAccess>("file_access", { ...a, path }),
+  /** Writes `text` to an editable worktree file if it still holds `base` (the text loaded); `base` null overwrites. */
+  saveFile: (a: At, path: string, base: string | null, text: string) => invoke<SaveOutcome>("save_file", { ...a, path, base, text }),
+  /** Asks whether to throw away the unsaved changes of the files named. */
+  confirmDiscard: (names: readonly string[]) =>
+    ask(names.length === 1 ? `${names[0]} has unsaved changes. Discard them?` : `These files have unsaved changes:\n\n${names.join("\n")}\n\nDiscard them?`, {
+      title: "Discard changes?",
+      kind: "warning",
+      okLabel: "Discard",
+      cancelLabel: "Cancel",
+    }),
   listFiles: (a: At, rev: string | null, ignored: boolean) => invoke<FileList>("list_files", { ...a, rev, ignored }),
   listDir: (a: At, rel: string) => invoke<DirEntry[]>("list_dir", { ...a, rel }),
   grep: (a: At, rev: string | null, query: GrepQuery) => invoke<GrepResult>("grep", { ...a, rev, query }),

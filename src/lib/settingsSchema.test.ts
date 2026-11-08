@@ -92,7 +92,16 @@ describe("the settings catalogue", () => {
       if (d.control.kind === "toggle") expect(typeof v).toBe("boolean");
       if (d.control.kind === "number") expect(typeof v).toBe("number");
       if (d.control.kind === "text") expect(typeof v).toBe("string");
+      if (d.control.kind === "list") expect(Array.isArray(v)).toBe(true);
     }
+  });
+
+  it("says next to the editable-file patterns that tool-owned files never are", () => {
+    const d = SETTINGS.find((x) => x.path === "editableFiles")!;
+    expect(d).toMatchObject({ section: "editor", control: { kind: "list" } });
+    expect(d.description).toMatch(/one pattern per line/);
+    expect(d.description).toMatch(/\.git, \.terraform and Terraform state\) are never editable/);
+    expect(filterSettings(SETTINGS, "env").map((x) => x.path)).toContain("editableFiles");
   });
 
   it("lists the Settings shortcut", () => {

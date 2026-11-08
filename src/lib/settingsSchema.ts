@@ -22,7 +22,9 @@ export type Control =
   | { kind: "toggle" }
   | { kind: "select"; options: readonly Option[] }
   | { kind: "number"; min: number; max: number; step: number; unit?: string }
-  | { kind: "text"; placeholder?: string };
+  | { kind: "text"; placeholder?: string }
+  /** A list of strings, one per line. */
+  | { kind: "list"; placeholder?: string };
 
 export interface SettingDef {
   path: SettingPath;
@@ -159,6 +161,15 @@ export const SETTINGS: readonly SettingDef[] = [
         { value: "off", label: "Off" },
       ],
     },
+  },
+  {
+    path: "editableFiles",
+    section: "editor",
+    label: "Editable files",
+    description:
+      "Grove opens every file read-only, except local config and secret files named here: one pattern per line, as in .gitignore. A pattern without / matches the file name in any folder, one with / matches from the worktree root, and ** spans folders. Files that tools own (.git, .terraform and Terraform state) are never editable.",
+    keywords: "edit save write env secrets config local read-only patterns",
+    control: { kind: "list", placeholder: ".env" },
   },
 
   {

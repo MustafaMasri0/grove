@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type Overview, type RepoInfo } from "./api";
 import { actionOf, useStore } from "./store";
-import type { TabDraft } from "./tabs";
+import { docKey, type Tab, type TabDraft } from "./tabs";
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -19,6 +19,7 @@ vi.mock("./api", async (original) => ({
     commit: vi.fn(),
     runAction: vi.fn(),
     settingsFile: vi.fn(async () => ({ path: "settings.json", text: null })),
+    confirmDiscard: vi.fn(async () => true),
   },
 }));
 
@@ -357,5 +358,94 @@ describe("issue tabs", () => {
     (api as unknown as { openRepo: typeof openRepo }).openRepo = openRepo;
     await useStore.getState().selectRepo("other");
     expect(useStore.getState().tabs).toEqual([]);
+  });
+});
+
+describe("unsaved edits", () => {
+  const env: TabDraft = { kind: "file", id: "file:/w:.env", title: ".env", description: "", path: ".env", source: { kind: "worktree", path: ".env" } };
+  const readme: TabDraft = { kind: "file", id: "file:/w:README.md", title: "README.md", description: "", path: "README.md", source: { kind: "worktree", path: "README.md" } };
+  const confirm = vi.mocked(api.confirmDiscard);
+  const tab = (id: string) => useStore.getState().tabs.find((t) => t.id === id) as Tab;
+  const ids = () => useStore.getState().tabs.map((t) => t.id);
+
+  beforeEach(() => {
+    confirm.mockReset();
+    confirm.mockResolvedValue(true);
+    useStore.setState({ repo: { id: "r", root: "/w" } as RepoInfo, cwd: "/w", tabs: [], activeTab: null, unsaved: {}, parked: {}, view: "work", appWidth: 1440 });
+    useStore.getState().openTab(readme, true);
+    useStore.getState().openTab(env, false);
+  });
+
+  it("are recorded by document, and keep a preview tab from being replaced", () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    expect(useStore.getState().unsaved).toEqual({ [docKey(tab(env.id))]: ".env" });
+    expect(tab(env.id).isPreview).toBe(false);
+    useStore.getState().openTab({ ...readme, id: "other", title: "other.ts" }, false);
+    expect(ids()).toContain(env.id);
+    useStore.getState().markUnsaved(tab(env.id), false);
+    expect(useStore.getState().unsaved).toEqual({});
+  });
+
+  it("let a tab without them close at once, without asking", () => {
+    void useStore.getState().closeTab(readme.id);
+    expect(ids()).toEqual([env.id]);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("are asked about before a tab closes; no keeps the tab and its edits", async () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    confirm.mockResolvedValueOnce(false);
+    await useStore.getState().closeTab(env.id);
+    expect(confirm).toHaveBeenCalledWith([".env"]);
+    expect(ids()).toContain(env.id);
+    expect(Object.keys(useStore.getState().unsaved)).toHaveLength(1);
+    await useStore.getState().closeTab(env.id);
+    expect(ids()).toEqual([readme.id]);
+    expect(useStore.getState().unsaved).toEqual({});
+  });
+
+  it("are asked about once when several tabs close, naming only the files with edits", async () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    await useStore.getState().closeTabs([readme.id, env.id]);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith([".env"]);
+    expect(ids()).toEqual([]);
+    expect(useStore.getState().unsaved).toEqual({});
+  });
+
+  it("stay with a tab parked by a worktree switch, without asking", async () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    await useStore.getState().selectWorktree("/other");
+    expect(confirm).not.toHaveBeenCalled();
+    expect(useStore.getState().parked["/w"].tabs.map((p) => p.tab.id)).toContain(env.id);
+    expect(Object.values(useStore.getState().unsaved)).toEqual([".env"]);
+  });
+
+  it("are asked about before the repository changes; no leaves everything as it was", async () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    confirm.mockResolvedValueOnce(false);
+    const openRepo = vi.fn(async () => ({ id: "other", root: "/o" }) as RepoInfo);
+    (api as unknown as { openRepo: typeof openRepo }).openRepo = openRepo;
+    await useStore.getState().selectRepo("other");
+    expect(openRepo).not.toHaveBeenCalled();
+    expect(useStore.getState().repo?.id).toBe("r");
+    expect(ids()).toContain(env.id);
+
+    await useStore.getState().selectRepo("other");
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(openRepo).toHaveBeenCalledWith("other");
+    expect(ids()).not.toContain(env.id);
+    expect(useStore.getState().unsaved).toEqual({});
+  });
+
+  it("are asked about before the open repository is removed, not another one", async () => {
+    useStore.getState().markUnsaved(tab(env.id), true);
+    await useStore.getState().removeRepo("someone-else");
+    expect(confirm).not.toHaveBeenCalled();
+    confirm.mockResolvedValueOnce(false);
+    await useStore.getState().removeRepo("r");
+    expect(useStore.getState().repo?.id).toBe("r");
+    await useStore.getState().removeRepo("r");
+    expect(useStore.getState()).toMatchObject({ repo: null, unsaved: {} });
   });
 });
