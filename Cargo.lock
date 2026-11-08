@@ -1402,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "grove"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "arboard",
  "async-trait",
@@ -4946,7 +4946,7 @@ dependencies = [
 
 [[package]]
 name = "wv-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64 0.22.1",
  "notify",
@@ -4957,7 +4957,7 @@ dependencies = [
 
 [[package]]
 name = "wv-helper"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
