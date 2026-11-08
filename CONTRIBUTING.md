@@ -49,6 +49,7 @@ To try the app against a repository, pass it at run time rather than in a commit
 - `scripts/test-run.ps1 -Repo <path>` starts a separate instance with its own settings folder.
 - `scripts/make-worktrees-demo.sh <folder>` builds a throwaway repository with three overlapping worktrees, to try the Worktrees overview on.
 - `scripts/take-screenshots.ps1` retakes the README screenshots in `docs/images`, in both themes, from a demo repository built by `scripts/make-screenshot-demo.sh`. Run it after a visible UI change.
+- `scripts/record-demo.ps1` records the README's overview demo, `docs/images/overview.gif`, from the same demo repository while made-up agents work in it. It needs ffmpeg on `PATH`.
 - `scripts/shot.ps1` captures the Grove window to a PNG, and `scripts/measure-memory.ps1 -Proc <name>` sums an instance's memory use.
 
 ### Test hooks

@@ -13,10 +13,7 @@ Browse, search and review every worktree side by side: ideal when coding agents 
 
 [Features](#features) • [Install](#install) • [Quick start](#quick-start) • [Docs](#documentation)
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png" />
-  <img src="docs/images/overview-light.png" alt="The Worktrees overview: five worktrees side by side, with their changes, commits ahead and behind, possible conflicts and live activity" width="900" />
-</picture>
+<img src="docs/images/overview.gif" alt="The Worktrees overview updating live while agents commit and edit in four worktrees, until two of them change README.md and it is flagged as a possible conflict" width="900" />
 
 </div>
 
