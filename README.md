@@ -4,8 +4,8 @@
 
 # Grove
 
-**A Git client for worktrees.**<br/>
-See what every worktree is doing, at a glance: ideal when coding agents work in parallel.
+**A read-only code explorer and Git client for worktrees.**<br/>
+Browse, search and review every worktree side by side: ideal when coding agents write the code.
 
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4?style=flat-square)](#install)
 [![Built with Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app)
@@ -20,19 +20,21 @@ See what every worktree is doing, at a glance: ideal when coding agents work in 
 
 </div>
 
-Grove is a small, fast Windows desktop app for working across git repositories and their worktrees: branches, uncommitted changes, history, blame and files, with diffs in VS Code's editor.
+Grove is a small, fast Windows desktop app for reading code across git repositories and their worktrees. Explore and search the files of any worktree or branch, and review its changes, history and blame, all in VS Code's editor. Everything opens read-only, so you can look inside a worktree an agent is busy in without getting in its way.
 
+- **A read-only editor with an Explorer.** Every file of every worktree or branch, with Quick Open, `git grep` search, syntax highlighting, and Markdown, images and HTML rendered. Only the `.env` and local config files you choose can be edited.
 - **Worktrees first.** Every worktree side by side, watched live, with files that two of them both change flagged before they become merge conflicts.
 - **Safe by default.** Grove never changes your index, commits or stashes. Every git command is on an allowlist, and the few that write (`fetch`, `push`, `clone`) only run when you click a button.
 - **Local, WSL and SSH.** Repositories can live on Windows, in any WSL distro, or on another machine. For WSL and SSH, a small helper runs git next to the repository, so nothing goes over a slow file share.
 
 ## Features
 
-- **Worktrees overview** with branches, changes, ahead/behind counts, possible conflicts and a live activity feed
-- **Changes, History and Explorer** for any worktree or branch, without checking anything out
-- **Side-by-side or inline diffs** in Monaco, with blame and rename-aware file history
-- **Search** with `git grep`, Quick Open and a command palette
+- **Explorer** for any worktree or branch, without checking anything out, that follows the file you are reading
+- **Read-only editor** (Monaco) with syntax highlighting, find, go to line, and tabs for files, diffs and issues
+- **Search** with `git grep`, Quick Open and a command palette that finds worktrees, changed files and commands
 - **Rendered Markdown, images and HTML**, with image diffs and a sandboxed HTML preview
+- **Worktrees overview** with branches, changes, ahead/behind counts, possible conflicts and a live activity feed
+- **Changes and History** with side-by-side or inline diffs, blame and rename-aware file history
 - **Editable `.env` and local config files**, while everything else stays read-only
 - **GitHub issues**, read-only, beside your code
 
@@ -40,20 +42,20 @@ Grove is a small, fast Windows desktop app for working across git repositories a
   <tr>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/diff-dark.png" />
-        <img src="docs/images/diff-light.png" alt="A side-by-side diff of a branch against its base" />
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/explorer-dark.png" />
+        <img src="docs/images/explorer-light.png" alt="The Explorer showing a worktree's folders, with a source file open read-only in the editor" />
       </picture>
     </td>
     <td width="50%">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/images/history-dark.png" />
-        <img src="docs/images/history-light.png" alt="Commit history with author avatars and blame in the editor margin" />
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/diff-dark.png" />
+        <img src="docs/images/diff-light.png" alt="A side-by-side diff of a branch against its base" />
       </picture>
     </td>
   </tr>
   <tr>
+    <td align="center"><em>Explorer and read-only editor</em></td>
     <td align="center"><em>Branch vs base diff</em></td>
-    <td align="center"><em>History and blame</em></td>
   </tr>
 </table>
 

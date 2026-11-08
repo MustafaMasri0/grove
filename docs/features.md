@@ -1,23 +1,17 @@
 # Features
 
-A tour of everything Grove does. For a short overview, see the [README](../README.md).
+A tour of everything Grove does: a read-only editor and Explorer for every worktree and branch, the git views around it, and the Worktrees overview. For a short overview, see the [README](../README.md).
 
+- [Exploring and reading code](#exploring-and-reading-code)
 - [Worktrees at a glance](#worktrees-at-a-glance)
-- [Browsing a worktree](#browsing-a-worktree)
 - [Viewers and editing](#viewers-and-editing)
 - [Issues](#issues)
 - [Settings](#settings)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 
-## Worktrees at a glance
+## Exploring and reading code
 
-- **Rail**: the repository, Overview, Issues, the worktrees with what each one is doing (*Changing*, *Has changes*, *Clean*, *Push rejected*), and Settings. Filter it, or show only worktrees with changes. Ctrl+B folds it to icons and its edge resizes it. Below 1100px wide it is icons on its own, with the left pane as a drawer that Ctrl+B opens.
-- **Worktrees overview** (Overview in the rail, or Ctrl+Shift+O): every worktree of the repository side by side, with its branch, uncommitted files, commits ahead of and behind the base branch and origin, and its last commit, in a table you can sort. It keeps its order while the pointer is over it. The overview uses only read commands (`status`, `diff`, `rev-list`, `merge-base`, `log`).
-- **Live activity**: Grove watches all worktrees while it is open. A worktree whose files are changing reads *Changing*, and an activity feed lists commits, branch switches and file edits in any of them.
-- **Possible conflicts**: files that two worktrees both change, committed since the base or not committed yet. A file committed on both sides only counts when the two versions differ and neither branch already contains the other. The rail counts them per worktree. A checkbox on the overview (also in Settings) turns this off, and Grove then skips the git commands behind it.
-- **Base branch**: what *Branch vs base* and the Worktrees overview compare with. Pick it with **Base** on either, or in Settings; it is remembered per repository. Until then Grove uses `development`, `main` or `master` (local first, then origin's), else the default branch of origin (`origin/HEAD`).
-
-## Browsing a worktree
+Every file opens read-only in VS Code's editor (Monaco), from a worktree or from any branch, without checking anything out. The only exceptions are the [editable files](#viewers-and-editing) you name.
 
 - **Page header**: the worktree, its branch selector, commits ahead of and behind the base, and one action button (*Fetch origin*, *Push origin ↑N* or *Publish branch*), with *Fetch origin* behind its chevron. Picking a branch never checks it out. If a worktree has it, the app switches to that worktree. Otherwise the branch is shown read-only (the files and history of its tip).
 - **Left pane** (Ctrl+1/2/3): Changes (uncommitted, or branch vs its base), History and Explorer. Ctrl+Shift+F opens Search (`git grep`), and Ctrl+P opens Quick Open. Ctrl+K finds worktrees, the files each one has changed, and commands.
@@ -27,6 +21,14 @@ A tour of everything Grove does. For a short overview, see the [README](../READM
 - **History**: commit list with author avatars. Selecting a commit opens its changed files and details. The search box searches the branch's whole history by message, author, email or SHA prefix.
 - **File history** follows renames. **Blame** shows each line's last commit in the margin. Click one to open that commit.
 - **Context menus** on files, folders, tabs, commits, worktrees, repositories and branches, on the rail and the overview table: open a worktree in a terminal (Windows Terminal if installed; `ssh` for SSH repositories), copy paths (WSL paths come out as `\\wsl.localhost\<distro>\…`), reveal in File Explorer (not for SSH repositories), open a commit on GitHub, and more.
+
+## Worktrees at a glance
+
+- **Rail**: the repository, Overview, Issues, the worktrees with what each one is doing (*Changing*, *Has changes*, *Clean*, *Push rejected*), and Settings. Filter it, or show only worktrees with changes. Ctrl+B folds it to icons and its edge resizes it. Below 1100px wide it is icons on its own, with the left pane as a drawer that Ctrl+B opens.
+- **Worktrees overview** (Overview in the rail, or Ctrl+Shift+O): every worktree of the repository side by side, with its branch, uncommitted files, commits ahead of and behind the base branch and origin, and its last commit, in a table you can sort. It keeps its order while the pointer is over it. The overview uses only read commands (`status`, `diff`, `rev-list`, `merge-base`, `log`).
+- **Live activity**: Grove watches all worktrees while it is open. A worktree whose files are changing reads *Changing*, and an activity feed lists commits, branch switches and file edits in any of them.
+- **Possible conflicts**: files that two worktrees both change, committed since the base or not committed yet. A file committed on both sides only counts when the two versions differ and neither branch already contains the other. The rail counts them per worktree. A checkbox on the overview (also in Settings) turns this off, and Grove then skips the git commands behind it.
+- **Base branch**: what *Branch vs base* and the Worktrees overview compare with. Pick it with **Base** on either, or in Settings; it is remembered per repository. Until then Grove uses `development`, `main` or `master` (local first, then origin's), else the default branch of origin (`origin/HEAD`).
 
 ## Viewers and editing
 

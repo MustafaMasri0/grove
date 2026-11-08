@@ -68,6 +68,6 @@ function Take([string]$Theme, [string]$Name, [string]$Worktree, [hashtable]$Env,
 foreach ($theme in "light", "dark") {
   Take $theme overview "" @{ WV_WORKTREES = "1" } @{} -Activity
   Take $theme diff fix-retry @{ WV_LEFT_TAB = "changes"; WV_OPEN_DIFFS = "1" } @{ railCollapsed = $true; leftWidth = 250 }
-  Take $theme history cache @{ WV_LEFT_TAB = "history"; WV_OPEN_FILE = "src/api/client.ts"; WV_BLAME = "1" } @{ railCollapsed = $true; leftWidth = 330 }
+  Take $theme explorer cache @{ WV_LEFT_TAB = "explorer"; WV_OPEN_FILE = "src/api/client.ts" } @{ railCollapsed = $true; leftWidth = 280 }
 }
 Stop-Process -Name grove-test -ErrorAction SilentlyContinue
