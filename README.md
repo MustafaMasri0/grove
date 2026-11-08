@@ -214,7 +214,13 @@ repositories won't open.
 cargo test           # core parsers, path routing, helper protocol and install
 pnpm test            # UI logic (Vitest)
 pnpm ui-check        # design system and shell, in headless Edge
+pnpm ui-check --fast # the same at high priority, when you wait on it
 ```
+
+`pnpm ui-check` builds the harness pages once, then runs its checks across four
+headless Edge tabs at below-normal priority, so the machine stays usable while
+it runs. `--fast` raises it to high priority instead; `--tabs=1` runs every
+check in one tab, in turn.
 
 `cargo test` covers the shared crates on any OS, against that OS's git.
 `cargo test -p grove` covers the Tauri side. `bash scripts/test-ssh-host.sh` runs the
