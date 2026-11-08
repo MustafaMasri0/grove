@@ -46,6 +46,8 @@ fn main() {
             commands::search_log,
             commands::blame,
             commands::read_sources,
+            commands::file_access,
+            commands::save_file,
             commands::list_files,
             commands::list_dir,
             commands::grep,

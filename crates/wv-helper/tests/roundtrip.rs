@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use wv_core::helper_client::HelperClient;
-use wv_core::host::{GitHost, WatchSpec};
+use wv_core::host::{GitHost, WatchSpec, WriteOutcome};
 use wv_core::local::LocalHost;
 
 fn helper() -> HelperClient {
@@ -252,4 +252,19 @@ fn blame_runs_in_the_helper_but_not_with_options_that_read_other_files() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("\thello\n"));
     let err = h.raw_git_unchecked(&repo, &s(&["blame", "--porcelain", "--contents", "/etc/passwd", "--", "a.txt"])).unwrap_err();
     assert!(err.contains("only `git blame --porcelain"), "{err}");
+}
+
+#[test]
+fn files_are_saved_inside_the_helper_which_refuses_protected_ones() {
+    let (_d, repo) = repo();
+    let h = helper();
+    let env = format!("{repo}/.env");
+    std::fs::write(&env, "A=1\n").unwrap();
+    assert_eq!(h.write_file(&env, b"A=2\n", b"A=1\n").unwrap(), WriteOutcome::Written);
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), "A=2\n");
+    assert_eq!(h.write_file(&env, b"A=3\n", b"A=1\n").unwrap(), WriteOutcome::ChangedOnDisk);
+    let config = format!("{repo}/.git/config");
+    let before = std::fs::read(&config).unwrap();
+    assert!(h.write_file(&config, b"x", &before).is_err());
+    assert_eq!(std::fs::read(&config).unwrap(), before);
 }

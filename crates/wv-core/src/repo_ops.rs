@@ -1,7 +1,8 @@
 //! Everything the UI asks of a repository, written once against [`GitHost`]
 //! so Windows and WSL repositories behave the same.
 
-use crate::host::{join, GitHost, GitOutput, Progress, WatchSpec};
+use crate::editable::Rules;
+use crate::host::{join, GitHost, GitOutput, Progress, WatchSpec, WriteOutcome};
 use crate::porcelain::blame::{parse_blame, Blame};
 use crate::porcelain::grep::{parse_grep, GrepResult};
 use crate::porcelain::log::{parse_commit, parse_file_log, parse_log, CommitDetail, CommitSummary, COMMIT_FORMAT, FILE_LOG_FORMAT, LOG_FORMAT};
@@ -267,7 +268,7 @@ pub fn decode(bytes: &[u8]) -> Content {
     if bytes[..bytes.len().min(BINARY_SNIFF)].contains(&0) {
         return Content::Binary { size: bytes.len() as u64 };
     }
-    let bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes);
+    let bytes = bytes.strip_prefix(BOM).unwrap_or(bytes);
     Content::Text { text: String::from_utf8_lossy(bytes).into_owned() }
 }
 
@@ -300,6 +301,52 @@ pub fn read_source(h: &dyn GitHost, cwd: &str, source: &Source) -> Result<Conten
             }
         }
     }
+}
+
+const BOM: &[u8] = b"\xEF\xBB\xBF";
+
+/// Whether a worktree file may be edited, and whether git tracks it (then a saved edit
+/// is a change to commit, which matters for a file that holds secrets).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileAccess {
+    pub editable: bool,
+    /// Why it is read-only, for files the editable patterns name but Grove cannot edit.
+    pub reason: Option<String>,
+    pub tracked: bool,
+}
+
+pub fn file_access(h: &dyn GitHost, cwd: &str, rel: &str, rules: &Rules) -> Result<FileAccess, String> {
+    let tracked = !run(h, cwd, &["ls-files", "-z", "--", rel])?.is_empty();
+    let editable = rules.check(rel).and_then(|()| editable_text(h, &join(cwd, rel)).map(|_| ()));
+    Ok(FileAccess { editable: editable.is_ok(), reason: editable.err().filter(|_| rules.allows(rel)), tracked })
+}
+
+/// The file's bytes, and where its text starts (after a BOM), when Grove can edit it as text.
+fn editable_text(h: &dyn GitHost, full: &str) -> Result<(Vec<u8>, usize), String> {
+    let read = h.read_file(full, MAX_FILE_BYTES)?;
+    let data = read.data.ok_or_else(|| "the file is too large to edit".to_string())?;
+    let start = if data.starts_with(BOM) { BOM.len() } else { 0 };
+    // Text Grove would show with replacement characters would be saved with them.
+    if data[..data.len().min(BINARY_SNIFF)].contains(&0) || std::str::from_utf8(&data[start..]).is_err() {
+        return Err("only UTF-8 text files can be edited".into());
+    }
+    Ok((data, start))
+}
+
+/// Saves `text` to the worktree file `rel` if the user's patterns allow it, keeping a BOM the file
+/// had. With `base`, the text the editor started from, a file changed on disk since then is left
+/// alone and reported; without it, the edit replaces whatever the file holds now.
+pub fn save_file(h: &dyn GitHost, cwd: &str, rel: &str, base: Option<&str>, text: &str, rules: &Rules) -> Result<WriteOutcome, String> {
+    rules.check(rel)?;
+    let full = join(cwd, rel);
+    let (current, start) = editable_text(h, &full)?;
+    if base.is_some_and(|b| b.as_bytes() != &current[start..]) {
+        return Ok(WriteOutcome::ChangedOnDisk);
+    }
+    let mut data = current[..start].to_vec();
+    data.extend_from_slice(text.as_bytes());
+    h.write_file(&full, &data, &current)
 }
 
 /// Raw bytes (images in Markdown previews); None when missing, empty or over [`MAX_FILE_BYTES`].

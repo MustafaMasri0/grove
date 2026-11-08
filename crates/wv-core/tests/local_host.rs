@@ -6,7 +6,7 @@ use common::{git, temp_repo, wait_for};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use wv_core::host::{Change, GitHost, WatchSpec};
+use wv_core::host::{Change, GitHost, WatchSpec, WriteOutcome};
 use wv_core::local::LocalHost;
 
 fn s(v: &[&str]) -> Vec<String> {
@@ -147,4 +147,55 @@ fn watcher_sees_git_dir_changes_like_a_new_commit_and_tells_them_from_file_edits
     std::fs::write(repo.path.join("a.txt"), "edited\n").unwrap();
     assert!(wait_for(|| changes.lock().unwrap().iter().any(|ch| ch.files && ch.paths == ["a.txt"])), "{:?}", changes.lock().unwrap());
     host.unwatch(id);
+}
+
+#[test]
+fn write_file_replaces_contents_only_when_they_are_as_expected() {
+    let repo = temp_repo();
+    let host = LocalHost::new();
+    let p = repo.path.join(".env");
+    std::fs::write(&p, "A=1\n").unwrap();
+    let path = p.to_str().unwrap();
+    assert_eq!(host.write_file(path, b"A=2\n", b"A=1\n").unwrap(), WriteOutcome::Written);
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), "A=2\n");
+    // Someone else changed it meanwhile: left alone.
+    assert_eq!(host.write_file(path, b"A=3\n", b"A=1\n").unwrap(), WriteOutcome::ChangedOnDisk);
+    assert_eq!(std::fs::read_to_string(&p).unwrap(), "A=2\n");
+    // No temporary copy is left behind.
+    let names: Vec<_> = host.list_dir(repo.path_str()).unwrap().into_iter().map(|e| e.name).filter(|n| n.contains("grove")).collect();
+    assert!(names.is_empty(), "{names:?}");
+}
+
+#[test]
+fn write_file_refuses_protected_missing_and_non_regular_files() {
+    let repo = temp_repo();
+    let host = LocalHost::new();
+    let config = repo.path.join(".git/config");
+    let before = std::fs::read(&config).unwrap();
+    assert!(host.write_file(config.to_str().unwrap(), b"x", &before).is_err());
+    assert_eq!(std::fs::read(&config).unwrap(), before);
+    std::fs::write(repo.path.join("prod.tfstate"), "{}").unwrap();
+    assert!(host.write_file(repo.path.join("prod.tfstate").to_str().unwrap(), b"x", b"{}").is_err());
+    assert!(host.write_file(repo.path.join("missing.env").to_str().unwrap(), b"x", b"").is_err());
+    assert!(!repo.path.join("missing.env").exists());
+    std::fs::create_dir(repo.path.join("dir.env")).unwrap();
+    assert!(host.write_file(repo.path.join("dir.env").to_str().unwrap(), b"x", b"").is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn write_file_keeps_permissions_and_does_not_follow_links() {
+    use std::os::unix::fs::PermissionsExt;
+    let repo = temp_repo();
+    let host = LocalHost::new();
+    let p = repo.path.join(".env");
+    std::fs::write(&p, "A=1\n").unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).unwrap();
+    host.write_file(p.to_str().unwrap(), b"A=2\n", b"A=1\n").unwrap();
+    assert_eq!(std::fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o600);
+    let outside = repo.dir.path().join("outside");
+    std::fs::write(&outside, "keep").unwrap();
+    std::os::unix::fs::symlink(&outside, repo.path.join("link.env")).unwrap();
+    assert!(host.write_file(repo.path.join("link.env").to_str().unwrap(), b"x", b"keep").is_err());
+    assert_eq!(std::fs::read_to_string(&outside).unwrap(), "keep");
 }

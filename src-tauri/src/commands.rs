@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
-use wv_core::host::{Change, DirEntry, GitHost};
+use wv_core::editable::Rules;
+use wv_core::host::{Change, DirEntry, GitHost, WriteOutcome};
 use wv_core::overview::Overview;
 use wv_core::paths::{display_path, local_separator, Route};
 use wv_core::preview;
@@ -19,7 +20,7 @@ use wv_core::porcelain::log::CommitSummary;
 use wv_core::porcelain::refs::BranchRef;
 use wv_core::porcelain::status::Status;
 use wv_core::porcelain::worktree::Worktree;
-use wv_core::repo_ops::{self as ops, Action, BaseDiff, BranchStatus, CommitWithFiles, Content, FileHistoryEntry, FileList, GrepQuery, HistorySearch, Source};
+use wv_core::repo_ops::{self as ops, Action, BaseDiff, BranchStatus, CommitWithFiles, Content, FileAccess, FileHistoryEntry, FileList, GrepQuery, HistorySearch, Source};
 
 #[derive(Default)]
 pub struct App {
@@ -179,6 +180,25 @@ pub async fn read_sources(state: State<'_, AppState>, repo: String, cwd: String,
             handles.into_iter().map(|t| t.join().map_err(|_| "reader panicked".to_string())?).collect()
         })
     })
+}
+
+/// The editable files as saved in settings.json, read at each use: what the UI was told is
+/// editable can never widen what is written.
+fn editable_rules(app: &AppHandle) -> Res<Rules> {
+    Ok(Rules::from_settings(&load_settings(app.clone())?))
+}
+
+#[tauri::command]
+pub async fn file_access(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwd: String, path: String) -> Res<FileAccess> {
+    let rules = editable_rules(&app_handle)?;
+    with_host!(state, repo, |h| ops::file_access(h, &cwd, &path, &rules))
+}
+
+/// Saves an editable worktree file. `base` is the text the editor started from; null overwrites.
+#[tauri::command]
+pub async fn save_file(app_handle: AppHandle, state: State<'_, AppState>, repo: String, cwd: String, path: String, base: Option<String>, text: String) -> Res<WriteOutcome> {
+    let rules = editable_rules(&app_handle)?;
+    with_host!(state, repo, |h| ops::save_file(h, &cwd, &path, base.as_deref(), &text, &rules))
 }
 
 #[tauri::command]

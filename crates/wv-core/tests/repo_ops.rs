@@ -4,7 +4,7 @@ mod common;
 
 use common::{git, temp_repo, TempRepo};
 use std::sync::Mutex;
-use wv_core::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
+use wv_core::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec, WriteOutcome};
 use wv_core::local::LocalHost;
 use wv_core::overview::{self, Overview};
 use wv_core::porcelain::ChangeKind;
@@ -55,6 +55,9 @@ impl GitHost for RecordingHost {
     }
     fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String> {
         self.inner.read_file(path, max)
+    }
+    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
+        self.inner.write_file(path, data, expected)
     }
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String> {
         self.inner.list_dir(path)
@@ -595,4 +598,48 @@ fn overview_runs_no_overlap_commands_unless_asked() {
     let o = on.overview(&cwds, Some("main"), true).unwrap();
     assert_eq!(o.overlaps[0].files, ["f.txt"]);
     assert!(on.ran("--name-only"));
+}
+
+#[test]
+fn file_access_follows_the_patterns_and_reports_tracking() {
+    let r = temp_repo();
+    std::fs::write(r.path.join(".env"), "A=1\n").unwrap();
+    std::fs::write(r.path.join(".env.example"), "A=\n").unwrap();
+    std::fs::write(r.path.join("bin.env"), b"\0\x01").unwrap();
+    git(&r.path, &["add", ".env.example"]);
+    git(&r.path, &["commit", "-q", "-m", "example"]);
+    let rules = wv_core::editable::Rules::new(vec![".env*".into(), "*.env".into()]);
+    let access = |p: &str| ops::file_access(&h(), r.path_str(), p, &rules).unwrap();
+    assert_eq!(access(".env"), ops::FileAccess { editable: true, reason: None, tracked: false });
+    assert_eq!(access(".env.example"), ops::FileAccess { editable: true, reason: None, tracked: true });
+    assert_eq!(access("a.txt"), ops::FileAccess { editable: false, reason: None, tracked: true });
+    let binary = access("bin.env");
+    assert!(!binary.editable && binary.reason.as_deref().is_some_and(|r| r.contains("UTF-8")), "{binary:?}");
+}
+
+#[test]
+fn save_file_writes_allowed_files_and_detects_changes_on_disk() {
+    let r = temp_repo();
+    std::fs::write(r.path.join(".env"), b"\xEF\xBB\xBFA=1\r\n").unwrap();
+    let rules = wv_core::editable::Rules::default();
+    let save = |base: Option<&str>, text: &str| ops::save_file(&h(), r.path_str(), ".env", base, text, &rules);
+    assert_eq!(save(Some("A=1\r\n"), "A=2\r\n").unwrap(), WriteOutcome::Written);
+    // The BOM the file had stays.
+    assert_eq!(std::fs::read(r.path.join(".env")).unwrap(), b"\xEF\xBB\xBFA=2\r\n");
+    // The editor started from older text: nothing is written.
+    assert_eq!(save(Some("A=1\r\n"), "A=3\r\n").unwrap(), WriteOutcome::ChangedOnDisk);
+    assert_eq!(std::fs::read(r.path.join(".env")).unwrap(), b"\xEF\xBB\xBFA=2\r\n");
+    // Without a base it overwrites.
+    assert_eq!(save(None, "A=4\n").unwrap(), WriteOutcome::Written);
+    assert_eq!(std::fs::read(r.path.join(".env")).unwrap(), b"\xEF\xBB\xBFA=4\n");
+}
+
+#[test]
+fn save_file_refuses_what_the_patterns_do_not_name() {
+    let r = temp_repo();
+    let rules = wv_core::editable::Rules::default();
+    let err = ops::save_file(&h(), r.path_str(), "a.txt", None, "changed\n", &rules).unwrap_err();
+    assert!(err.contains("read-only"), "{err}");
+    assert!(ops::save_file(&h(), r.path_str(), "../.env", None, "x", &rules).is_err());
+    assert_eq!(std::fs::read_to_string(r.path.join("a.txt")).unwrap(), "one\ntwo\n");
 }

@@ -34,6 +34,15 @@ pub struct FileRead {
     pub data: Option<Vec<u8>>,
 }
 
+/// What [`GitHost::write_file`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WriteOutcome {
+    Written,
+    /// The file no longer holds what the caller expected, so it was left alone.
+    ChangedOnDisk,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirEntry {
@@ -72,6 +81,11 @@ pub trait GitHost: Send + Sync {
     /// `Err` means git could not be run at all (or the command was refused).
     fn git(&self, cwd: &str, args: &[String], progress: Option<Progress>) -> Result<GitOutput, String>;
     fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String>;
+    /// Replaces an existing regular file's contents with `data`, if it still holds `expected`.
+    /// The only write Grove makes to a worktree: the caller checks the user's editable files
+    /// first, and every host refuses the files `editable::protected` names on its own.
+    /// Errors name the file, never its contents.
+    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String>;
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String>;
     /// Modification time in unix seconds, None if the path does not exist.
     fn mtime(&self, path: &str) -> Result<Option<i64>, String>;
@@ -91,7 +105,7 @@ pub fn join(base: &str, rel: &str) -> String {
     format!("{}/{}", base.trim_end_matches(['/', '\\']), rel.trim_start_matches('/'))
 }
 
-mod b64 {
+pub(crate) mod b64 {
     use base64::{engine::general_purpose::STANDARD, Engine};
     use serde::{Deserialize, Deserializer, Serializer};
 

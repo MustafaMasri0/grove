@@ -66,6 +66,7 @@ fn handle(host: &LocalHost, out: &Out, gates: &Gates, req: Request) {
             reply(out, gates, id, host.git(&cwd, &args, p));
         }
         Op::ReadFile { path, max } => reply(out, gates, id, host.read_file(&path, max)),
+        Op::WriteFile { path, data, expected } => reply(out, gates, id, host.write_file(&path, &data.0, &expected.0)),
         Op::ListDir { path } => reply(out, gates, id, host.list_dir(&path)),
         Op::Mtime { path } => reply(out, gates, id, host.mtime(&path)),
         Op::Watch { spec } => {

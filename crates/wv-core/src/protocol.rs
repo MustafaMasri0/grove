@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 /// after it opened, with requests still arriving. Little in flight at a time avoids it.
 pub const LARGE_REPLY: usize = 128 * 1024;
 
+/// A file's contents on the wire. Its `Debug` gives only the size: requests are traced
+/// (`WV_HELPER_LOG`), and an edited file is often a secret.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileBytes(#[serde(with = "crate::host::b64")] pub Vec<u8>);
+
+impl std::fmt::Debug for FileBytes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<{} bytes>", self.0.len())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Request {
     pub id: u64,
@@ -22,6 +33,7 @@ pub struct Request {
 pub enum Op {
     Git { cwd: String, args: Vec<String>, progress: bool },
     ReadFile { path: String, max: u64 },
+    WriteFile { path: String, data: FileBytes, expected: FileBytes },
     ListDir { path: String },
     Mtime { path: String },
     Watch { spec: WatchSpec },
@@ -58,6 +70,16 @@ mod tests {
     fn a_change_from_an_older_helper_reads_as_unknown() {
         let m: Message = serde_json::from_str(r#"{"type":"changed","watchId":3}"#).unwrap();
         assert!(matches!(m, Message::Changed { watch_id: 3, change } if change == Change::default()));
+    }
+
+    #[test]
+    fn written_contents_never_reach_the_trace() {
+        let op = Op::WriteFile { path: "/x/.env".into(), data: FileBytes(b"TOKEN=secret".to_vec()), expected: FileBytes(b"TOKEN=old".to_vec()) };
+        let traced = format!("{op:?}");
+        assert!(!traced.contains("secret") && !traced.contains("old") && !traced.contains("84"), "{traced}");
+        assert!(traced.contains("<12 bytes>"), "{traced}");
+        let line = serde_json::to_string(&Request { id: 1, op }).unwrap();
+        assert!(matches!(serde_json::from_str::<Request>(&line).unwrap().op, Op::WriteFile { data, .. } if data.0 == b"TOKEN=secret"));
     }
 
     #[test]

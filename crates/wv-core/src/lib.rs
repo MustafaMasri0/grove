@@ -1,4 +1,5 @@
 pub mod allowlist;
+pub mod editable;
 pub mod exec;
 pub mod helper_client;
 pub mod host;

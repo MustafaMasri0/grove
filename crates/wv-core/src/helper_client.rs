@@ -2,9 +2,9 @@
 //! (behind `wsl.exe` or `ssh`, see `remote`) and multiplexes concurrent calls over it.
 
 use crate::allowlist;
-use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec};
+use crate::host::{DirEntry, FileRead, GitHost, GitOutput, OnChange, Progress, WatchSpec, WriteOutcome};
 use crate::overview::Overview;
-use crate::protocol::{Message, Op, Request};
+use crate::protocol::{FileBytes, Message, Op, Request};
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -306,6 +306,10 @@ impl GitHost for HelperClient {
 
     fn read_file(&self, path: &str, max: u64) -> Result<FileRead, String> {
         self.call(Op::ReadFile { path: path.into(), max }, None)
+    }
+
+    fn write_file(&self, path: &str, data: &[u8], expected: &[u8]) -> Result<WriteOutcome, String> {
+        self.call(Op::WriteFile { path: path.into(), data: FileBytes(data.to_vec()), expected: FileBytes(expected.to_vec()) }, None)
     }
 
     fn list_dir(&self, path: &str) -> Result<Vec<DirEntry>, String> {
