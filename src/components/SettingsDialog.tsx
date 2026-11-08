@@ -4,7 +4,7 @@ import { loginReader, type RepoLogins } from "../lib/issueLogins";
 import { RANGES, defaultSettings, getSetting, isDefault, resetAll, listLines, sameValue, withSetting, type SettingPath, type SettingValue } from "../lib/settings";
 import { SECTIONS, SETTINGS, filterSettings, groupBySection, matchesQuery, type Control, type SectionId, type SettingDef } from "../lib/settingsSchema";
 import { SHORTCUTS } from "../lib/shortcuts";
-import { useStore } from "../store";
+import { repoName, useStore } from "../store";
 import { Badge, Button, Checkbox, Dialog, EmptyLine, Field, Keys, Select, SettingRow, TextArea, Toggle } from "../ui";
 import "../settings.css";
 
@@ -319,7 +319,7 @@ function RepoRow({ id, n, readLogins }: { id: string; n: number; readLogins: Ret
   const setRepoBase = useStore((s) => s.setRepoBase);
   const removeRepo = useStore((s) => s.removeRepo);
 
-  const name = info && "name" in info ? info.name : id.split(/[\\/]/).filter(Boolean).pop() ?? id;
+  const name = repoName(id, info);
   const automatic = isCurrent && resolved && !saved ? `Automatic: ${resolved}` : "Automatic (development, main or master)";
   const choices = [...new Set([...(branches ?? []).map((b) => b.name), ...(saved ? [saved] : [])])];
   const selectId = `repo-base-${n}`;

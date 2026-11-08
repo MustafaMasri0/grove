@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api, type Overview, type RepoInfo } from "./api";
-import { actionOf, useStore } from "./store";
+import { actionOf, repoName, useStore } from "./store";
 import { docKey, type Tab, type TabDraft } from "./tabs";
 
 vi.mock("./api", async (original) => ({
@@ -447,5 +447,37 @@ describe("unsaved edits", () => {
     expect(useStore.getState().repo?.id).toBe("r");
     await useStore.getState().removeRepo("r");
     expect(useStore.getState()).toMatchObject({ repo: null, unsaved: {} });
+  });
+});
+
+describe("saved repositories", () => {
+  const wsl = String.raw`\\wsl.localhost\Ubuntu\home\user\src\example`;
+  const local = String.raw`D:\src\other`;
+  let openRepo: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    openRepo = vi.fn(async (id: string) => ({ id, name: "x", root: "/x" }) as RepoInfo);
+    const stub = api as unknown as Record<string, unknown>;
+    stub.openRepo = openRepo;
+    stub.loadSettings = vi.fn(async () => ({ repos: [wsl, local], lastRepo: local }));
+    useStore.setState({ repo: null, repos: {}, unsaved: {} });
+  });
+
+  it("open only the last one at startup, so other machines stay asleep", async () => {
+    await useStore.getState().init();
+    expect(openRepo.mock.calls.map((c) => c[0])).toEqual([local]);
+  });
+
+  it("keep why one could not be opened once it is picked", async () => {
+    openRepo.mockRejectedValueOnce("not a git repository");
+    await useStore.getState().selectRepo(wsl);
+    expect(useStore.getState().repos[wsl]).toEqual({ error: "not a git repository" });
+    expect(useStore.getState().repoError).toBe("not a git repository");
+  });
+
+  it("are named after their saved path until opened", () => {
+    expect(repoName(wsl, undefined)).toBe("example");
+    expect(repoName("ssh://host/srv/repo/", undefined)).toBe("repo");
+    expect(repoName(wsl, { id: wsl, name: "real" } as RepoInfo)).toBe("real");
   });
 });

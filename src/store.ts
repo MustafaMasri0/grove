@@ -90,7 +90,8 @@ interface State {
   settingsQuery: string;
   /** The section Settings opens at. */
   settingsSection: SectionId;
-  repos: Record<string, RepoInfo | { error: string }>;
+  /** Repositories opened this session, or why opening failed; saved ones open only when picked. */
+  repos: Record<string, KnownRepo>;
   repo: RepoInfo | null;
   repoError: string | null;
   worktrees: WorktreeInfo[];
@@ -523,12 +524,7 @@ export const useStore = create<State>()((set, get) => {
       }
       const settings = normalizeSettings(saved);
       set({ settings, settingsLoaded: true });
-      for (const r of settings.repos) {
-        api.openRepo(r).then(
-          (info) => set((s) => ({ repos: { ...s.repos, [r]: info } })),
-          (e) => set((s) => ({ repos: { ...s.repos, [r]: { error: errorText(e) } } })),
-        );
-      }
+      // Only the last repository opens: opening one starts its machine (a WSL distro, an SSH connection).
       if (settings.lastRepo && settings.repos.includes(settings.lastRepo)) await get().selectRepo(settings.lastRepo);
     },
 
@@ -596,10 +592,17 @@ export const useStore = create<State>()((set, get) => {
       });
       edited = new Map();
       resetViews();
+      let info: RepoInfo;
       try {
-        const info = await api.openRepo(id);
-        if (pick !== repoPick) return;
-        set((s) => ({ repo: info, repos: { ...s.repos, [id]: info } }));
+        info = await api.openRepo(id);
+      } catch (e) {
+        // Kept by the picker and Settings, which show it beside the repository.
+        if (pick === repoPick) set((s) => ({ repo: null, repoError: errorText(e), repos: { ...s.repos, [id]: { error: errorText(e) } } }));
+        return;
+      }
+      if (pick !== repoPick) return;
+      set((s) => ({ repo: info, repos: { ...s.repos, [id]: info } }));
+      try {
         get().updateSettings({ lastRepo: id });
         api.githubRepo({ repo: id, cwd: info.root }).then(
           (githubRepo) => {
@@ -1058,6 +1061,14 @@ export const useStore = create<State>()((set, get) => {
     },
   };
 });
+
+/** A repository opened this session, or why it could not be. */
+export type KnownRepo = RepoInfo | { error: string };
+
+/** The repository's name: its top folder once opened, else the saved path's last part. */
+export function repoName(id: string, known: KnownRepo | undefined): string {
+  return known && "name" in known ? known.name : (id.split(/[\\/]/).filter(Boolean).pop() ?? id);
+}
 
 export function useAt() {
   const repo = useStore((s) => s.repo);

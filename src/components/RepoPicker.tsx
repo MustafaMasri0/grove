@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { repoItems } from "../lib/contextMenus";
 import { canReveal, displayPath } from "../lib/hostPaths";
 import { menuEnv } from "../menuEnv";
-import { useStore } from "../store";
+import { repoName, useStore } from "../store";
 import { Button, closeOverlay, Picker, type PickerItem } from "../ui";
 import { AddRepoDialog } from "./AddRepoDialog";
 import { Icon } from "./Icon";
@@ -20,7 +20,7 @@ export function RepoPicker() {
 
   const items: PickerItem[] = settings.repos.map((r) => {
     const info = repos[r];
-    const name = info && "name" in info ? info.name : r.split(/[\\/]/).filter(Boolean).pop() ?? r;
+    const name = repoName(r, info);
     return {
       key: r,
       label: name,
